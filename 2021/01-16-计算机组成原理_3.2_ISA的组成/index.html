@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+<meta http-equiv="X-UA-Compatible" content="ie=edge">
+
+    <meta name="author" content="SeikoSrp">
+
+
+
+
+
+
+<title>计算机组成原理_3.2_ISA的组成 | a blog</title>
+
+
+
+    <link rel="icon" href="/haidao.ico">
+
+
+
+
+    <!-- stylesheets list from _config.yml -->
+    
+    <link rel="stylesheet" href="/css/style.css">
+    
+
+
+
+    <!-- scripts list from _config.yml -->
+    
+    <script src="/js/script.js"></script>
+    
+    <script src="/js/tocbot.min.js"></script>
+    
+    <script src="/js/jquery.min.js"></script>
+    
+
+
+
+    
+    
+        
+    
+
+
+
+
+    <script>
+    function searchToggle() {
+        const width = $(document.body).width()
+        if(width > 479) {
+            return;
+        }
+        const search = $('.search');
+        const searchForm = $('.form-search');
+        const menuToggle = $('.menu-toggle');
+        const title = $('.navbar-header-title');
+
+        if(!search.hasClass("mobile-search")) {
+            search.addClass("mobile-search");
+            menuToggle.addClass("open-search")
+            title.addClass("mobile-title-hidden")
+        } else {
+            search.removeClass("mobile-search");
+            menuToggle.removeClass("open-search")
+            // title.css({visibility: 'visible'})
+            title.removeClass("mobile-title-hidden")
+        } 
+    }
+
+    function search(searchInputEl, formEl, flag) {
+        const path = "/" + "search.json"; // 可以在public 下查看这个search.json
+        $(formEl).submit(function(e){
+            e.preventDefault();
+            let target = null
+            if(searchInputEl == null) {
+                const screenWidth = $(document.body).width();
+                target = screenWidth > 479 ? $('#pc-search-input') : $('#mobile-search-input');
+                console.log(target);
+            } else {
+                target = $(searchInputEl)
+            }
+
+            if(!flag && target.val() === '') {
+                return ;
+            }
+
+            $("#u-search").fadeIn(500, function() {
+                $("body > .wrapper").addClass("modal-active");
+
+                $.ajax({
+                    url: path,
+                    dataType: "json",
+                    beforeSend: function (xhr) {
+                        $input = target.val();
+                        $(".form-input").val($input);
+                        const loadingBar = $('.search-loading-bar') 
+                        loadingBar.css({
+                            width:'100%',
+                            display: 'block'
+                        });
+                    },
+                    success: function( datas ) {
+                        // console.log(datas);
+                        const $resultPanel = $(".modal-body")[0];
+                        let str = `<ul class="modal-results">`;
+                        var keywords = $(".form-input").val().trim().toLowerCase().split(/[\s\-]+/);
+                        $resultPanel.innerHTML = "";
+                        let hasResult = false
+                        let text = `<div class="no-result">找不到与关键词相关的内容....</div>`;
+
+                        if ($(".form-input").val().trim().length <= 0) {
+                            // 没有结果
+                            $resultPanel.innerHTML = text;
+                            return;
+                        }
+                        datas.forEach(function (data) {
+                            var isMatch = true;
+                            if (!data.title || data.title.trim() === '') {
+                                data.title = "Untitled";
+                            }
+                            var data_title = data.title.trim().toLowerCase();
+                            var data_content = data.content.trim().replace(/<[^>]+>/g, "").toLowerCase();
+                            var data_url = data.url;
+                            var index_title = -1;
+                            var index_content = -1;
+                            var first_occur = -1;
+                            // only match artiles with not empty contents
+                            if (data_content !== '') {
+                                keywords.forEach(function (keyword, i) {
+                                    index_title = data_title.indexOf(keyword);
+                                    index_content = data_content.indexOf(keyword);
+
+                                    if (index_title < 0 && index_content < 0) {
+                                        isMatch = false;
+                                    } else {
+                                        hasResult = true
+                                        if (index_content < 0) {
+                                            index_content = 0;
+                                        }
+                                        if (i == 0) {
+                                            first_occur = index_content;
+                                        }
+                                    }
+                                });
+                            } else {
+                                isMatch = false;
+                            }
+                            // show search results
+                            if (isMatch) {
+                                str += `<li class='result-item'><a href='${data_url}' class='result-item-detail'> <span class="title">${data_title}</span>`;
+                                var content = data.content.trim().replace(/<[^>]+>/g, "");
+                                if (first_occur >= 0) {
+                                    // cut out 200 characters
+                                    var start = first_occur - 40;
+                                    var end = first_occur + 160;
+
+                                    if (start < 0) {
+                                        start = 0;
+                                    }
+
+                                    if (start == 0) {
+                                        end = 200;
+                                    }
+
+                                    if (end > content.length) {
+                                        end = content.length;
+                                    }
+
+                                    var match_content = content.substring(start, end);
+
+                                    // highlight all keywords
+                                    keywords.forEach(function (keyword) {
+                                        var regS = new RegExp(keyword, "gi");
+                                        match_content = match_content.replace(regS, `<em class="search-keyword">${keyword}</em>`);
+                                    });
+
+                                    str += `<span class="content"> ${match_content} ...</span></a>`;
+                                }
+                                str += "</li>";
+                            }
+                        });
+                        str += "</ul>";
+                        if(hasResult) {
+                            $resultPanel.innerHTML = str;
+                        } else {
+                            $resultPanel.innerHTML = text;
+                        }
+
+                    },
+                    complete: function() {
+                        setTimeout(() => {
+                                const loadingBar = $('.search-loading-bar') 
+                                loadingBar.css({
+                                    width:'0%',
+                                    display: 'none'
+                                });
+                        }, 300)
+                    }
+                });
+            })
+
+        });
+    }
+
+    $(document).ready(function() {
+        $('.modal-close').click(function () { 
+            $("#u-search").fadeOut();
+            $("body > .wrapper").removeClass("modal-active")
+        })
+
+        $('.modal-overlay').click(function() {
+            $("#u-search").fadeOut();
+            $("body > .wrapper").removeClass("modal-active")
+        })
+        search(null, ".form-search", false)
+        search("#u-search-modal-form .form-input", ".u-search-modal-form", true)
+    })
+</script>
+
+<meta name="generator" content="Hexo 4.2.1"></head>
+<body>
+<!-- Chic/layout.ejs -->
+ <div id="u-search">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="container">
+                    <form id="u-search-modal-form" class="u-search-modal-form">
+                        <button type="submit" class="form-submit-btn">
+                            <img src="/image/search.png" class="search-btn-img" />
+                        </button>
+                        <input placeholder="搜索文章。。。" class="form-input" id="modal-form-input">
+                    </form>
+                    <a class="modal-close">x</a>
+                </div>
+                <div class="search-loading">
+                    <div class="search-loading-bar"></div>
+                </div>
+            </div>
+            <div class="modal-body">
+                <!-- ul 格式如下 -->
+                <!-- <ul class="modal-results">
+                    <li class="result-item">
+                        <a class="result-item-detail">
+                            <span class="title">页面配置</span>
+                            <span class="content">
+                                content
+                            </span>
+                        </a>
+                    </li>
+                </ul> -->
+            </div>
+        </div>
+        <div class="modal-overlay"></div>
+    </div>
+    <div class="wrapper">
+        <header>
+    <nav class="navbar">
+        <div class="container">
+            <div class="navbar-header header-logo"><a href="/">SeikoSrp&#39;s Blog</a></div>
+            <div class="menu navbar-right">
+                <!-- 这里表示的是pc端搜索框 -->
+                
+                
+    <div class="search ">
+        <div class="search-btn" onClick="searchToggle()">
+            <img src="/image/search.png" class="search-btn-img" />
+        </div>
+        <form class="form-search">
+            <input class="input" placeholder="搜索文章" autocomplete="off" id="pc-search-input"/>
+        </form>
+    </div>
+
+                
+                    <a class="menu-item" href="/archives">文章</a>
+                
+                    <a class="menu-item" href="/category">分类</a>
+                
+                    <a class="menu-item" href="/about">关于</a>
+                
+                <input id="switch_default" type="checkbox" class="switch_default">
+                <label for="switch_default" class="toggleBtn"></label>
+            </div>
+        </div>
+    </nav>
+
+    
+    <nav class="navbar-mobile" id="nav-mobile">
+        <div class="container">
+            <div class="navbar-header">
+                <div>
+                    <a href="/">SeikoSrp&#39;s Blog</a><a id="mobile-toggle-theme">·&nbsp;Light</a>
+                </div>
+                <div class="navbar-mobile-right">
+                    
+                    
+    <div class="search ">
+        <div class="search-btn" onClick="searchToggle()">
+            <img src="/image/search.png" class="search-btn-img" />
+        </div>
+        <form class="form-search">
+            <input class="input" placeholder="搜索文章" autocomplete="off" id="mobile-search-input"/>
+        </form>
+    </div>
+
+                    <div class="menu-toggle" onclick="mobileBtn()">&#9776; 目录</div>
+                </div>
+                
+            </div>
+            <div class="menu" id="mobile-menu">
+                
+                    <a class="menu-item" href="/archives">文章</a>
+                
+                    <a class="menu-item" href="/category">分类</a>
+                
+                    <a class="menu-item" href="/about">关于</a>
+                
+            </div>
+        </div>
+    </nav>
+
+</header>
+<script>
+    var mobileBtn = function f() {
+        var toggleMenu = document.getElementsByClassName("menu-toggle")[0];
+        var mobileMenu = document.getElementById("mobile-menu");
+        if(toggleMenu.classList.contains("active")){
+           toggleMenu.classList.remove("active")
+            mobileMenu.classList.remove("active")
+        }else{
+            toggleMenu.classList.add("active")
+            mobileMenu.classList.add("active")
+        }
+    }
+</script>
+        <div class="main">
+            <div class="container">
+    
+    
+        <div class="post-toc">
+    <div class="tocbot-list">
+    </div>
+    <div class="tocbot-list-menu">
+        <a class="tocbot-toc-expand" onclick="expand_toc()">全部展开</a>
+        <a onclick="go_top()">回到顶部</a>
+        <a onclick="go_bottom()">前往底部</a>
+    </div>
+</div>
+
+<script>
+    document.ready(
+        function () {
+            tocbot.init({
+                tocSelector: '.tocbot-list',
+                contentSelector: '.post-content',
+                headingSelector: 'h1, h2, h3, h4, h5',
+                collapseDepth: 1,
+                orderedList: false,
+                scrollSmooth: true,
+            })
+        }
+    )
+
+    function expand_toc() {
+        var b = document.querySelector(".tocbot-toc-expand");
+        tocbot.init({
+            tocSelector: '.tocbot-list',
+            contentSelector: '.post-content',
+            headingSelector: 'h1, h2, h3, h4, h5',
+            collapseDepth: 6,
+            orderedList: false,
+            scrollSmooth: true,
+        });
+        b.setAttribute("onclick", "collapse_toc()");
+        b.innerHTML = "全部折叠"
+    }
+
+    function collapse_toc() {
+        var b = document.querySelector(".tocbot-toc-expand");
+        tocbot.init({
+            tocSelector: '.tocbot-list',
+            contentSelector: '.post-content',
+            headingSelector: 'h1, h2, h3, h4, h5',
+            collapseDepth: 1,
+            orderedList: false,
+            scrollSmooth: true,
+        });
+        b.setAttribute("onclick", "expand_toc()");
+        b.innerHTML = "全部展开"
+    }
+
+    function go_top() {
+        window.scrollTo(0, 0);
+    }
+
+    function go_bottom() {
+        window.scrollTo(0, document.body.scrollHeight);
+    }
+
+</script>
+    
+
+    
+    <article class="post-wrap">
+        <header class="post-header">
+            <h1 class="post-title">计算机组成原理_3.2_ISA的组成</h1>
+            
+                <div class="post-meta">
+                    
+                        作者: <a itemprop="author" rel="author" href="/">SeikoSrp</a>
+                    
+
+                    
+                        <span class="post-time">
+                        发布于: <a href="#">一月 16, 2021&nbsp;&nbsp;14:53:03</a>
+                        </span>
+                    
+                    
+                        <span class="post-category">
+                    分类:
+                            
+                                <a href="/categories/%E8%AE%A1%E7%AE%97%E6%9C%BA%E5%9F%BA%E7%A1%80/">计算机基础</a>
+                            
+                        </span>
+                    
+                </div>
+            
+        </header>
+
+        <div class="post-content">
+            <h1 id="什么是ISA和RISC"><a href="#什么是ISA和RISC" class="headerlink" title="什么是ISA和RISC"></a>什么是ISA和RISC</h1><p>ISA全程是指令集体系结构（Instruction Set Architecture）</p>
+<p>精简指令集计算机（英語：reduced instruction set computer，缩写：<em>RISC</em>）</p>
+<h1 id="组成ISA的三个部分"><a href="#组成ISA的三个部分" class="headerlink" title="组成ISA的三个部分"></a>组成ISA的三个部分</h1><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">1、寄存器</span><br><span class="line">2、寻址方式</span><br><span class="line">3、指令格式</span><br></pre></td></tr></table></figure>
+
+<h2 id="1、寄存器"><a href="#1、寄存器" class="headerlink" title="1、寄存器"></a>1、寄存器</h2><p>上一节中也简单的说了些寄存器相关的内容，一般来说CPU寄存器内可直接访问的数据越多，处理器的速度就越快</p>
+<h3 id="什么是Load-store计算机"><a href="#什么是Load-store计算机" class="headerlink" title="什么是Load-store计算机"></a>什么是Load-store计算机</h3><p>计算机中的片内寄存器有限，所有的数据处理，都只能针对寄存器的内容，就需要不同的通过指令将数据在寄存器和内存之间传递</p>
+<p>也就是说，对存储器进行的操作只能是将数据传送到寄存器中或者从寄存器中取出数据。</p>
+<h3 id="寄存器的大小"><a href="#寄存器的大小" class="headerlink" title="寄存器的大小"></a>寄存器的大小</h3><p>寄存器的大小（也就是位宽）通常等于计算机完成的数据处理操作的最大位宽。</p>
+<p>16位的计算机的寄存器为16位，也就是说寄存器通常情况下是和总线的位宽相同的。总线的位宽决定了计算机的位数。</p>
+<h2 id="2、寻址方式"><a href="#2、寻址方式" class="headerlink" title="2、寻址方式"></a>2、寻址方式</h2><p>寻址方式有很多变种，下面是三种基本的寻址方式</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">立即数寻址</span><br><span class="line">直接寻址</span><br><span class="line">间接寻址</span><br></pre></td></tr></table></figure>
+
+<h3 id="立即数寻址"><a href="#立即数寻址" class="headerlink" title="立即数寻址"></a>立即数寻址</h3><p>也就是通过立即操作数寻址，它不需要保存在存储器或者寄存器中，而是直接是指令的一部分。</p>
+<p>立即数寻址意味着操作数为常数，比如：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">ADD r1,r2,#5</span><br><span class="line">等价于：</span><br><span class="line">[r1] &lt;- [r2]+</span><br></pre></td></tr></table></figure>
+
+<p>或者是</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">MOV AL,0x04</span><br><span class="line">;翻译成机器码为：</span><br><span class="line">0xB004</span><br><span class="line">;这个机器码是一个指令，其高字节为操作码：0xB0告诉CPU把一个立即数放入寄存器AL中（MOV AL, immed8），低字节0x04是操作数，代表立即数的值。</span><br></pre></td></tr></table></figure>
+
+<h3 id="直接寻址"><a href="#直接寻址" class="headerlink" title="直接寻址"></a>直接寻址</h3><p>直接寻址就是将操作数地址用作指令的一部分，</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">汇编：MOV AL， [0x04]</span><br><span class="line"></span><br><span class="line">机器码：0x8A0425**04000000**</span><br><span class="line"></span><br><span class="line">这里的操作码：0x8A0425告诉CPU从一个偏移地址的内存中取出一个字节数据到AL中。</span><br><span class="line"></span><br><span class="line">操作数: 0x04为该偏移地址，这里的0x04是一个立即数，只不过解释为偏移地址（是立即数，又是操作数，所以也可以成为立即操作数）。</span><br></pre></td></tr></table></figure>
+
+<h3 id="间接寻址"><a href="#间接寻址" class="headerlink" title="间接寻址"></a>间接寻址</h3><p>也称为相对寻址，或者是寄存器间接寻址，指令会给出包含操作数地址的寄存器的地址。</p>
+<p>相比前面立即数是指令的一部分，间接寻址需要三步操作：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">1、读指令</span><br><span class="line">2、读含有操作数地址的寄存器</span><br><span class="line">3、读出实际的操作数</span><br></pre></td></tr></table></figure>
+
+<p>含有操作数地址的寄存器，被叫做指针寄存器。Load-store型计算机（比如ARM），使用这种寻址方式访问存储器操作数。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">汇编：MOV AL，[RCX+0x04]</span><br><span class="line"></span><br><span class="line">机器码：8A4104</span><br><span class="line"></span><br><span class="line">操作码：0x8A41,告诉CPU利用RCX中的值和偏移量一起作为内存偏移地址，取出该偏移地址中内存的一个字节数据到AL中</span><br><span class="line"></span><br><span class="line">操作数：0x04，就是一个固定偏移量，是一个立即数，解释为地址偏移量。</span><br></pre></td></tr></table></figure>
+
+<p>这种方式对于访问表格和数组很有用，因为它可以操作指针寄存器访问数组元素。</p>
+<h4 id="微处理器的三种指令模式"><a href="#微处理器的三种指令模式" class="headerlink" title="微处理器的三种指令模式"></a>微处理器的三种指令模式</h4><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">存储器 - 寄存器型</span><br><span class="line">寄存器 - 存储器型</span><br><span class="line">寄存器 - 寄存器型</span><br></pre></td></tr></table></figure>
+
+<h2 id="3、指令格式"><a href="#3、指令格式" class="headerlink" title="3、指令格式"></a>3、指令格式</h2><p>体系结构就是计算机指令本身，这是指令集的重点所在。</p>
+<p>在计算机中，指令长度是有限制的，如果一个计算机的字长为32位且寄存器也是32位，则其指令字长为32位宽。所以指令集的设计者会受到指令字长的约束。</p>
+<p>指令包含操作码和操作数，想要增加一个字段的长度，另一个就要减少，因为总的字长只有32位。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">操作码位数 + 操作数位数 &#x3D; 计算机字长</span><br></pre></td></tr></table></figure>
+
+<h2 id="4、操作码与指令"><a href="#4、操作码与指令" class="headerlink" title="4、操作码与指令"></a>4、操作码与指令</h2><p>指令可以进行分类，下面是根据操作数地址的数量进行分类的几种指令：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">三地址</span><br><span class="line">ADD r1,r2,r3	;[r1] &lt;- [r2]+[r3]</span><br><span class="line"></span><br><span class="line">双地址</span><br><span class="line">ADD r1,r2		;[r1] &lt;- [r1]+[r2]</span><br><span class="line"></span><br><span class="line">单地址</span><br><span class="line">ADD P			;P和累加器相加，结果放入累加器</span><br><span class="line"></span><br><span class="line">零地址</span><br><span class="line">ADD				;从栈顶弹出两个数相加，结果放入栈顶</span><br></pre></td></tr></table></figure>
+
+<h3 id="三地址计算机"><a href="#三地址计算机" class="headerlink" title="三地址计算机"></a>三地址计算机</h3><p>格式为：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">operation destination,source1,source2</span><br></pre></td></tr></table></figure>
+
+<p>后两个为源操作数，第一个是目的操作数</p>
+<h3 id="双地址计算机"><a href="#双地址计算机" class="headerlink" title="双地址计算机"></a>双地址计算机</h3><p>缺点是其中一个源操作数的内容会因为复写而被破坏。</p>
+<h3 id="单地址计算机"><a href="#单地址计算机" class="headerlink" title="单地址计算机"></a>单地址计算机</h3><p>单地址计算机只有一个操作数，另一个操作数是使用了一个叫做累加器的固定寄存器，无需指定。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">ADD P</span><br><span class="line">等于</span><br><span class="line">[A] &lt;- [A]+[P]</span><br></pre></td></tr></table></figure>
+
+<h3 id="零地址计算机"><a href="#零地址计算机" class="headerlink" title="零地址计算机"></a>零地址计算机</h3><p>没有地址，也就是说只有操作码，也被称为栈计算机</p>
+<h3 id="一个半地址计算机"><a href="#一个半地址计算机" class="headerlink" title="一个半地址计算机"></a>一个半地址计算机</h3><p>Intel IA32和Freescale系列通常称为一个半地址计算机，因为他们的指令指定了两个操作数，一个操作数是存储器地址，一个是寄存器地址，寄存器地址被称为半个地址。</p>
+
+        </div>
+
+        
+            <section class="post-copyright">
+                
+                
+                
+                
+
+            </section>
+        
+        <section class="post-tags">
+            <div>
+                <span>Tag(s):</span>
+                <span class="tag">
+                    
+                </span>
+            </div>
+            <div>
+                <a href="javascript:window.history.back();">back</a>
+                <span>· </span>
+                <a href="/">home</a>
+            </div>
+        </section>
+        <section class="post-nav">
+            
+                <a class="prev" rel="prev" href="/2021/01-16-%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BB%84%E6%88%90%E5%8E%9F%E7%90%86_3.3_ARM%E6%8C%87%E4%BB%A4%E9%9B%86%E4%BD%93%E7%B3%BB%E7%BB%93%E6%9E%84/">计算机组成原理_3.3_ARM指令集体系结构</a>
+            
+            
+            <a class="next" rel="next" href="/2021/01-15-%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BB%84%E6%88%90%E5%8E%9F%E7%90%86_3.1_%E5%AD%98%E5%82%A8%E7%A8%8B%E5%BA%8F%E8%AE%A1%E7%AE%97%E6%9C%BA/">计算机组成原理_3.1_存储程序计算机</a>
+            
+        </section>
+	
+		<section id="comments" class="comments">
+		  <style>
+			.comments{margin:30px;padding:10px;background:#fff}
+			@media screen and (max-width:800px){.comments{margin:auto;padding:10px;background:#fff}}
+		  </style>
+		  <div class="valine_comment"></div>
+<!--载入js，在</body>之前插入即可-->
+<!--Leancloud 操作库:-->
+<script src="//cdn1.lncld.net/static/js/3.0.4/av-min.js"></script>
+<!--Valine 的核心代码库-->
+<script src="//unpkg.com/valine/dist/Valine.min.js"></script>
+<script>
+  new Valine({
+      el: '.valine_comment',
+      app_id: 'ehQ0k7G3fcpwmkyxhG8U6DzL-gzGzoHsz',
+      app_key: 'AwwXGgbdqswiimAY0qJYhtRa',
+      placeholder: '这里留言。。',
+      notify: 'true',
+      verify: 'true',
+    });
+</script>
+		</section>
+	
+
+    </article>
+</div>
+
+        </div>
+        <footer id="footer" class="footer">
+    <div class="copyright">
+        <span>© SeikoSrp | Powered by <a href="https://hexo.io" target="_blank">Hexo</a> & <a href="https://github.com/Siricee/hexo-theme-Chic" target="_blank">Chic</a></span>
+    </div>
+</footer>
+
+    </div>
+</body>
+</html>

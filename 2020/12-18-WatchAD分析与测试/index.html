@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+<meta http-equiv="X-UA-Compatible" content="ie=edge">
+
+    <meta name="author" content="SeikoSrp">
+
+
+
+
+
+
+<title>WatchAD分析与测试 | a blog</title>
+
+
+
+    <link rel="icon" href="/haidao.ico">
+
+
+
+
+    <!-- stylesheets list from _config.yml -->
+    
+    <link rel="stylesheet" href="/css/style.css">
+    
+
+
+
+    <!-- scripts list from _config.yml -->
+    
+    <script src="/js/script.js"></script>
+    
+    <script src="/js/tocbot.min.js"></script>
+    
+    <script src="/js/jquery.min.js"></script>
+    
+
+
+
+    
+    
+        
+    
+
+
+
+
+    <script>
+    function searchToggle() {
+        const width = $(document.body).width()
+        if(width > 479) {
+            return;
+        }
+        const search = $('.search');
+        const searchForm = $('.form-search');
+        const menuToggle = $('.menu-toggle');
+        const title = $('.navbar-header-title');
+
+        if(!search.hasClass("mobile-search")) {
+            search.addClass("mobile-search");
+            menuToggle.addClass("open-search")
+            title.addClass("mobile-title-hidden")
+        } else {
+            search.removeClass("mobile-search");
+            menuToggle.removeClass("open-search")
+            // title.css({visibility: 'visible'})
+            title.removeClass("mobile-title-hidden")
+        } 
+    }
+
+    function search(searchInputEl, formEl, flag) {
+        const path = "/" + "search.json"; // 可以在public 下查看这个search.json
+        $(formEl).submit(function(e){
+            e.preventDefault();
+            let target = null
+            if(searchInputEl == null) {
+                const screenWidth = $(document.body).width();
+                target = screenWidth > 479 ? $('#pc-search-input') : $('#mobile-search-input');
+                console.log(target);
+            } else {
+                target = $(searchInputEl)
+            }
+
+            if(!flag && target.val() === '') {
+                return ;
+            }
+
+            $("#u-search").fadeIn(500, function() {
+                $("body > .wrapper").addClass("modal-active");
+
+                $.ajax({
+                    url: path,
+                    dataType: "json",
+                    beforeSend: function (xhr) {
+                        $input = target.val();
+                        $(".form-input").val($input);
+                        const loadingBar = $('.search-loading-bar') 
+                        loadingBar.css({
+                            width:'100%',
+                            display: 'block'
+                        });
+                    },
+                    success: function( datas ) {
+                        // console.log(datas);
+                        const $resultPanel = $(".modal-body")[0];
+                        let str = `<ul class="modal-results">`;
+                        var keywords = $(".form-input").val().trim().toLowerCase().split(/[\s\-]+/);
+                        $resultPanel.innerHTML = "";
+                        let hasResult = false
+                        let text = `<div class="no-result">找不到与关键词相关的内容....</div>`;
+
+                        if ($(".form-input").val().trim().length <= 0) {
+                            // 没有结果
+                            $resultPanel.innerHTML = text;
+                            return;
+                        }
+                        datas.forEach(function (data) {
+                            var isMatch = true;
+                            if (!data.title || data.title.trim() === '') {
+                                data.title = "Untitled";
+                            }
+                            var data_title = data.title.trim().toLowerCase();
+                            var data_content = data.content.trim().replace(/<[^>]+>/g, "").toLowerCase();
+                            var data_url = data.url;
+                            var index_title = -1;
+                            var index_content = -1;
+                            var first_occur = -1;
+                            // only match artiles with not empty contents
+                            if (data_content !== '') {
+                                keywords.forEach(function (keyword, i) {
+                                    index_title = data_title.indexOf(keyword);
+                                    index_content = data_content.indexOf(keyword);
+
+                                    if (index_title < 0 && index_content < 0) {
+                                        isMatch = false;
+                                    } else {
+                                        hasResult = true
+                                        if (index_content < 0) {
+                                            index_content = 0;
+                                        }
+                                        if (i == 0) {
+                                            first_occur = index_content;
+                                        }
+                                    }
+                                });
+                            } else {
+                                isMatch = false;
+                            }
+                            // show search results
+                            if (isMatch) {
+                                str += `<li class='result-item'><a href='${data_url}' class='result-item-detail'> <span class="title">${data_title}</span>`;
+                                var content = data.content.trim().replace(/<[^>]+>/g, "");
+                                if (first_occur >= 0) {
+                                    // cut out 200 characters
+                                    var start = first_occur - 40;
+                                    var end = first_occur + 160;
+
+                                    if (start < 0) {
+                                        start = 0;
+                                    }
+
+                                    if (start == 0) {
+                                        end = 200;
+                                    }
+
+                                    if (end > content.length) {
+                                        end = content.length;
+                                    }
+
+                                    var match_content = content.substring(start, end);
+
+                                    // highlight all keywords
+                                    keywords.forEach(function (keyword) {
+                                        var regS = new RegExp(keyword, "gi");
+                                        match_content = match_content.replace(regS, `<em class="search-keyword">${keyword}</em>`);
+                                    });
+
+                                    str += `<span class="content"> ${match_content} ...</span></a>`;
+                                }
+                                str += "</li>";
+                            }
+                        });
+                        str += "</ul>";
+                        if(hasResult) {
+                            $resultPanel.innerHTML = str;
+                        } else {
+                            $resultPanel.innerHTML = text;
+                        }
+
+                    },
+                    complete: function() {
+                        setTimeout(() => {
+                                const loadingBar = $('.search-loading-bar') 
+                                loadingBar.css({
+                                    width:'0%',
+                                    display: 'none'
+                                });
+                        }, 300)
+                    }
+                });
+            })
+
+        });
+    }
+
+    $(document).ready(function() {
+        $('.modal-close').click(function () { 
+            $("#u-search").fadeOut();
+            $("body > .wrapper").removeClass("modal-active")
+        })
+
+        $('.modal-overlay').click(function() {
+            $("#u-search").fadeOut();
+            $("body > .wrapper").removeClass("modal-active")
+        })
+        search(null, ".form-search", false)
+        search("#u-search-modal-form .form-input", ".u-search-modal-form", true)
+    })
+</script>
+
+<meta name="generator" content="Hexo 4.2.1"></head>
+<body>
+<!-- Chic/layout.ejs -->
+ <div id="u-search">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="container">
+                    <form id="u-search-modal-form" class="u-search-modal-form">
+                        <button type="submit" class="form-submit-btn">
+                            <img src="/image/search.png" class="search-btn-img" />
+                        </button>
+                        <input placeholder="搜索文章。。。" class="form-input" id="modal-form-input">
+                    </form>
+                    <a class="modal-close">x</a>
+                </div>
+                <div class="search-loading">
+                    <div class="search-loading-bar"></div>
+                </div>
+            </div>
+            <div class="modal-body">
+                <!-- ul 格式如下 -->
+                <!-- <ul class="modal-results">
+                    <li class="result-item">
+                        <a class="result-item-detail">
+                            <span class="title">页面配置</span>
+                            <span class="content">
+                                content
+                            </span>
+                        </a>
+                    </li>
+                </ul> -->
+            </div>
+        </div>
+        <div class="modal-overlay"></div>
+    </div>
+    <div class="wrapper">
+        <header>
+    <nav class="navbar">
+        <div class="container">
+            <div class="navbar-header header-logo"><a href="/">SeikoSrp&#39;s Blog</a></div>
+            <div class="menu navbar-right">
+                <!-- 这里表示的是pc端搜索框 -->
+                
+                
+    <div class="search ">
+        <div class="search-btn" onClick="searchToggle()">
+            <img src="/image/search.png" class="search-btn-img" />
+        </div>
+        <form class="form-search">
+            <input class="input" placeholder="搜索文章" autocomplete="off" id="pc-search-input"/>
+        </form>
+    </div>
+
+                
+                    <a class="menu-item" href="/archives">文章</a>
+                
+                    <a class="menu-item" href="/category">分类</a>
+                
+                    <a class="menu-item" href="/about">关于</a>
+                
+                <input id="switch_default" type="checkbox" class="switch_default">
+                <label for="switch_default" class="toggleBtn"></label>
+            </div>
+        </div>
+    </nav>
+
+    
+    <nav class="navbar-mobile" id="nav-mobile">
+        <div class="container">
+            <div class="navbar-header">
+                <div>
+                    <a href="/">SeikoSrp&#39;s Blog</a><a id="mobile-toggle-theme">·&nbsp;Light</a>
+                </div>
+                <div class="navbar-mobile-right">
+                    
+                    
+    <div class="search ">
+        <div class="search-btn" onClick="searchToggle()">
+            <img src="/image/search.png" class="search-btn-img" />
+        </div>
+        <form class="form-search">
+            <input class="input" placeholder="搜索文章" autocomplete="off" id="mobile-search-input"/>
+        </form>
+    </div>
+
+                    <div class="menu-toggle" onclick="mobileBtn()">&#9776; 目录</div>
+                </div>
+                
+            </div>
+            <div class="menu" id="mobile-menu">
+                
+                    <a class="menu-item" href="/archives">文章</a>
+                
+                    <a class="menu-item" href="/category">分类</a>
+                
+                    <a class="menu-item" href="/about">关于</a>
+                
+            </div>
+        </div>
+    </nav>
+
+</header>
+<script>
+    var mobileBtn = function f() {
+        var toggleMenu = document.getElementsByClassName("menu-toggle")[0];
+        var mobileMenu = document.getElementById("mobile-menu");
+        if(toggleMenu.classList.contains("active")){
+           toggleMenu.classList.remove("active")
+            mobileMenu.classList.remove("active")
+        }else{
+            toggleMenu.classList.add("active")
+            mobileMenu.classList.add("active")
+        }
+    }
+</script>
+        <div class="main">
+            <div class="container">
+    
+    
+        <div class="post-toc">
+    <div class="tocbot-list">
+    </div>
+    <div class="tocbot-list-menu">
+        <a class="tocbot-toc-expand" onclick="expand_toc()">全部展开</a>
+        <a onclick="go_top()">回到顶部</a>
+        <a onclick="go_bottom()">前往底部</a>
+    </div>
+</div>
+
+<script>
+    document.ready(
+        function () {
+            tocbot.init({
+                tocSelector: '.tocbot-list',
+                contentSelector: '.post-content',
+                headingSelector: 'h1, h2, h3, h4, h5',
+                collapseDepth: 1,
+                orderedList: false,
+                scrollSmooth: true,
+            })
+        }
+    )
+
+    function expand_toc() {
+        var b = document.querySelector(".tocbot-toc-expand");
+        tocbot.init({
+            tocSelector: '.tocbot-list',
+            contentSelector: '.post-content',
+            headingSelector: 'h1, h2, h3, h4, h5',
+            collapseDepth: 6,
+            orderedList: false,
+            scrollSmooth: true,
+        });
+        b.setAttribute("onclick", "collapse_toc()");
+        b.innerHTML = "全部折叠"
+    }
+
+    function collapse_toc() {
+        var b = document.querySelector(".tocbot-toc-expand");
+        tocbot.init({
+            tocSelector: '.tocbot-list',
+            contentSelector: '.post-content',
+            headingSelector: 'h1, h2, h3, h4, h5',
+            collapseDepth: 1,
+            orderedList: false,
+            scrollSmooth: true,
+        });
+        b.setAttribute("onclick", "expand_toc()");
+        b.innerHTML = "全部展开"
+    }
+
+    function go_top() {
+        window.scrollTo(0, 0);
+    }
+
+    function go_bottom() {
+        window.scrollTo(0, document.body.scrollHeight);
+    }
+
+</script>
+    
+
+    
+    <article class="post-wrap">
+        <header class="post-header">
+            <h1 class="post-title">WatchAD分析与测试</h1>
+            
+                <div class="post-meta">
+                    
+                        作者: <a itemprop="author" rel="author" href="/">SeikoSrp</a>
+                    
+
+                    
+                        <span class="post-time">
+                        发布于: <a href="#">十二月 18, 2020&nbsp;&nbsp;18:47:41</a>
+                        </span>
+                    
+                    
+                        <span class="post-category">
+                    分类:
+                            
+                                <a href="/categories/RedTeam-%E5%9F%9F%E5%AE%89%E5%85%A8/">RedTeam&域安全</a>
+                            
+                        </span>
+                    
+                </div>
+            
+        </header>
+
+        <div class="post-content">
+            <h1 id="前言"><a href="#前言" class="headerlink" title="前言"></a>前言</h1><p>因为是在测试环境下测的，整个环境都是在单台电脑上，有时候可能出现日志不全之类的情况，所以不是每一条都是准确的，可以作为参考，但是不能作为最终结论。</p>
+<h1 id="安装WatchAD"><a href="#安装WatchAD" class="headerlink" title="安装WatchAD"></a>安装WatchAD</h1><p><img src="WatchAD.assets/Architecture.png" alt="Architecture"></p>
+<h2 id="服务端"><a href="#服务端" class="headerlink" title="服务端"></a>服务端</h2><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">git clone https:&#x2F;&#x2F;github.com&#x2F;0Kee-Team&#x2F;WatchAD.git</span><br><span class="line">cd WatchAD</span><br><span class="line">pip3 install -r requirements.txt		&#x2F;&#x2F;安装依赖包</span><br><span class="line">vim docker-compose.yaml	修改taml文件中的es版本，原包中的5.2.2版本会报错，使用5.3.2版本</span><br></pre></td></tr></table></figure>
+
+<p><img src="WatchAD.assets/image-20200327151923624.png" alt="image-20200327151923624"></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line">创建非root账号，否则运行es会提示使用非root账户</span><br><span class="line">useradd -r watchaduser</span><br><span class="line">usermod -s &#x2F;bin&#x2F;bash watchaduser</span><br><span class="line">useradd -d &#x2F;home&#x2F;watchaduser -m watchaduser</span><br><span class="line">passwd watchaduser			&#x2F;&#x2F;密码是admin123</span><br><span class="line"></span><br><span class="line">安装watchAD服务</span><br><span class="line">python3 WatchAD.py --install -d test.local -s 192.168.10.128 -u test\\administrator -p admin123!</span><br><span class="line"></span><br><span class="line">起docker的各种服务</span><br><span class="line">service docker start</span><br><span class="line">su - watchaduser</span><br><span class="line">sudo docker-compose up</span><br><span class="line"></span><br><span class="line">运行WatchAD服务</span><br><span class="line">python3 WatchAD.py --start</span><br></pre></td></tr></table></figure>
+
+<h2 id="安装-winlogbeat"><a href="#安装-winlogbeat" class="headerlink" title="安装 winlogbeat"></a>安装 winlogbeat</h2><p>下载解压：</p>
+<p>修改文件winlogbeat.yml</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">#----------------------------- Logstash output --------------------------------</span><br><span class="line">output.logstash:</span><br><span class="line">  # The Logstash hosts</span><br><span class="line">  hosts: [&quot;192.168.244.129:5044&quot;]</span><br></pre></td></tr></table></figure>
+
+<p>运行：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">cd &#39;C:\Program Files\Winlogbeat&#39;</span><br><span class="line">.\install-service-winlogbeat.ps1</span><br><span class="line">Start-Service winlogbeat</span><br></pre></td></tr></table></figure>
+
+<h2 id="web端"><a href="#web端" class="headerlink" title="web端"></a>web端</h2><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">git clone https:&#x2F;&#x2F;github.com&#x2F;0Kee-Team&#x2F;WatchAD-Web.git</span><br><span class="line"></span><br><span class="line">把&#123;WatchAD-Web&#125;&#x2F;server&#x2F;config&#x2F;database_config.py 此文件中的127.0.0.1全改为WatchAD所在的服务器IP。</span><br><span class="line"></span><br><span class="line">docker-compose build</span><br><span class="line">docker-compose up</span><br></pre></td></tr></table></figure>
+
+<p>然后访问</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">http:&#x2F;&#x2F;127.0.0.1&#x2F;activity_timeline.html#&#x2F;</span><br></pre></td></tr></table></figure>
+
+<p>即可进入界面</p>
+<h2 id="启动"><a href="#启动" class="headerlink" title="启动"></a>启动</h2><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line">docker：</span><br><span class="line">cd &#x2F;opt&#x2F;WatchAD&#x2F;</span><br><span class="line">service docker start</span><br><span class="line">su - watchaduser</span><br><span class="line">sudo docker-compose up</span><br><span class="line"></span><br><span class="line">服务端：</span><br><span class="line">cd &#x2F;opt&#x2F;WatchAD&#x2F;</span><br><span class="line">python3 WatchAD.py --start</span><br><span class="line">#watchAD虚拟机地址要是变了需要修改&#123;WatchAD&#125;&#x2F;settings&#x2F;winlogbeat&#x2F;winlogbeat.yml中域控的地址</span><br><span class="line"></span><br><span class="line">WEB：</span><br><span class="line">cd &#x2F;opt&#x2F;WatchAD-Web&#x2F;</span><br><span class="line">docker-compose up</span><br><span class="line"></span><br><span class="line">kibana</span><br><span class="line">cd &#x2F;opt&#x2F;kibana-5.3.2-linux-x86_64&#x2F;</span><br><span class="line">.&#x2F;bin&#x2F;kibana</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">WEB界面：</span><br><span class="line">http:&#x2F;&#x2F;127.0.0.1&#x2F;activity_timeline.html#&#x2F;</span><br></pre></td></tr></table></figure>
+
+<h1 id="规则提取与分析"><a href="#规则提取与分析" class="headerlink" title="规则提取与分析"></a>规则提取与分析</h1><p>所有的规则全部在detect目录下，下面分别做总结：</p>
+<p><img src="WatchAD.assets/image-20200327172716907.png" alt="image-20200327172716907"></p>
+<p>WatchAD的日志结构：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line">        &quot;_index&quot;: &quot;dc_log_2020.04.23&quot;,</span><br><span class="line">        &quot;_type&quot;: &quot;security_log&quot;,</span><br><span class="line">        &quot;_id&quot;: &quot;AXGk2y109aA2nixs3l0L&quot;,</span><br><span class="line">        &quot;_score&quot;: 1,</span><br><span class="line">        &quot;_source&quot;: &#123;</span><br><span class="line">          &quot;computer_name&quot;: &quot;dc2012.test.local&quot;,</span><br><span class="line">          &quot;opcode&quot;: &quot;信息&quot;,</span><br><span class="line">          &quot;task&quot;: &quot;其他策略更改事件&quot;,</span><br><span class="line">          &quot;message&quot;: &quot;&quot;&quot;</span><br><span class="line">已更改 Windows 筛选平台筛选器。</span><br><span class="line">	</span><br><span class="line">使用者:</span><br><span class="line">	安全 ID:		S-1-5-19</span><br><span class="line">	帐户名称:		NT AUTHORITY\LOCAL SERVICE</span><br><span class="line"></span><br><span class="line">进程信息:</span><br><span class="line">	进程 ID:	740</span><br><span class="line"></span><br><span class="line">提供程序信息:</span><br><span class="line">	ID:		&#123;DECC16CA-3F33-4346-BE1E-8FB4AE0F3D62&#125;</span><br><span class="line">	名称:		Microsoft Corporation</span><br><span class="line"></span><br><span class="line">更改信息:</span><br><span class="line">	更改类型:	添加</span><br><span class="line"></span><br><span class="line">筛选器信息:</span><br><span class="line">	ID:		&#123;C8BB3B0F-13F6-4131-ABA1-E5FB9FA8DA05&#125;</span><br><span class="line">	名称:		Windows 远程管理(HTTP-In)</span><br><span class="line">	类型:		非永久</span><br><span class="line">	运行时 ID:	65855</span><br><span class="line"></span><br><span class="line">层信息:</span><br><span class="line">	ID:		&#123;7AC9DE24-17DD-4814-B4BD-A9FBC95A321B&#125;</span><br><span class="line">	名称:		ALE 侦听 v6 层</span><br><span class="line">	运行时 ID:	42</span><br><span class="line"></span><br><span class="line">标注信息:</span><br><span class="line">	ID:		&#123;00000000-0000-0000-0000-000000000000&#125;</span><br><span class="line">	名称:		-</span><br><span class="line"></span><br><span class="line">其他信息:</span><br><span class="line">	权重:	10376293541528731584	</span><br><span class="line">	条件:	</span><br><span class="line">	条件 ID:	&#123;d78e1e87-8644-4ea5-9437-d809ecefc971&#125;</span><br><span class="line">	匹配值:		等于</span><br><span class="line">	条件值:		</span><br><span class="line">    00000000  53 00 79 00 73 00 74 00-65 00 6d 00 00 00        S.y.s.t.e.m...</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">	条件 ID:	&#123;0c1ba1af-5765-453f-af22-a8f791ac775b&#125;</span><br><span class="line">	匹配值:		等于</span><br><span class="line">	条件值:		0x1761</span><br><span class="line"></span><br><span class="line">	筛选器操作:	允许</span><br><span class="line">&quot;&quot;&quot;,</span><br><span class="line">          &quot;thread_id&quot;: 608,</span><br><span class="line">          &quot;record_number&quot;: &quot;1209238&quot;,</span><br><span class="line">          &quot;log_name&quot;: &quot;Security&quot;,</span><br><span class="line">          &quot;level&quot;: &quot;信息&quot;,</span><br><span class="line">          &quot;process_id&quot;: 544,</span><br><span class="line">          &quot;beat&quot;: &#123;</span><br><span class="line">            &quot;version&quot;: &quot;6.2.2&quot;,</span><br><span class="line">            &quot;name&quot;: &quot;dc2012&quot;,</span><br><span class="line">            &quot;hostname&quot;: &quot;dc2012&quot;</span><br><span class="line">          &#125;,</span><br><span class="line">          &quot;tags&quot;: [</span><br><span class="line">            &quot;beats_input_codec_plain_applied&quot;</span><br><span class="line">          ],</span><br><span class="line">          &quot;keywords&quot;: [</span><br><span class="line">            &quot;审核成功&quot;</span><br><span class="line">          ],</span><br><span class="line">          &quot;host&quot;: &quot;dc2012&quot;,</span><br><span class="line">          &quot;event_data&quot;: &#123;</span><br><span class="line">            &quot;LayerName&quot;: &quot;ALE 侦听 v6 层&quot;,</span><br><span class="line">            &quot;ProcessId&quot;: &quot;740&quot;,</span><br><span class="line">            &quot;UserSid&quot;: &quot;S-1-5-19&quot;,</span><br><span class="line">            &quot;FilterName&quot;: &quot;Windows 远程管理(HTTP-In)&quot;,</span><br><span class="line">            &quot;CalloutKey&quot;: &quot;&#123;00000000-0000-0000-0000-000000000000&#125;&quot;,</span><br><span class="line">            &quot;Action&quot;: &quot;%%16390&quot;,</span><br><span class="line">            &quot;UserName&quot;: &quot;NT AUTHORITY\\LOCAL SERVICE&quot;,</span><br><span class="line">            &quot;Weight&quot;: &quot;10376293541528731584&quot;,</span><br><span class="line">            &quot;ProviderKey&quot;: &quot;&#123;DECC16CA-3F33-4346-BE1E-8FB4AE0F3D62&#125;&quot;,</span><br><span class="line">            &quot;FilterKey&quot;: &quot;&#123;C8BB3B0F-13F6-4131-ABA1-E5FB9FA8DA05&#125;&quot;,</span><br><span class="line">            &quot;FilterType&quot;: &quot;%%16388&quot;,</span><br><span class="line">            &quot;CalloutName&quot;: &quot;-&quot;,</span><br><span class="line">            &quot;ProviderName&quot;: &quot;Microsoft Corporation&quot;,</span><br><span class="line">            &quot;Conditions&quot;: &quot;&quot;&quot;</span><br><span class="line"></span><br><span class="line">	条件 ID:	&#123;d78e1e87-8644-4ea5-9437-d809ecefc971&#125;</span><br><span class="line">	匹配值:		等于</span><br><span class="line">	条件值:		</span><br><span class="line">    00000000  53 00 79 00 73 00 74 00-65 00 6d 00 00 00        S.y.s.t.e.m...</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">	条件 ID:	&#123;0c1ba1af-5765-453f-af22-a8f791ac775b&#125;</span><br><span class="line">	匹配值:		等于</span><br><span class="line">	条件值:		0x1761</span><br><span class="line">&quot;&quot;&quot;,</span><br><span class="line">            &quot;LayerId&quot;: &quot;42&quot;,</span><br><span class="line">            &quot;FilterId&quot;: &quot;65855&quot;,</span><br><span class="line">            &quot;ChangeType&quot;: &quot;%%16384&quot;,</span><br><span class="line">            &quot;LayerKey&quot;: &quot;&#123;7AC9DE24-17DD-4814-B4BD-A9FBC95A321B&#125;&quot;</span><br><span class="line">          &#125;,</span><br><span class="line">          &quot;source_name&quot;: &quot;Microsoft-Windows-Security-Auditing&quot;,</span><br><span class="line">          &quot;provider_guid&quot;: &quot;&#123;54849625-5478-4994-A5BA-3E3B0328C30D&#125;&quot;,</span><br><span class="line">          &quot;type&quot;: &quot;wineventlog&quot;,</span><br><span class="line">          &quot;@version&quot;: &quot;1&quot;,</span><br><span class="line">          &quot;@timestamp&quot;: &quot;2020-04-23T02:17:58.751Z&quot;,</span><br><span class="line">          &quot;event_id&quot;: 5447</span><br><span class="line">        &#125;</span><br><span class="line">      &#125;,</span><br></pre></td></tr></table></figure>
+
+<p>查询语句：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">GET &#x2F;dc_log_2020.04.23&#x2F;_search</span><br></pre></td></tr></table></figure>
+
+<h2 id="Credential-dumping"><a href="#Credential-dumping" class="headerlink" title="Credential dumping"></a>Credential dumping</h2><h3 id="ASRepRoasting"><a href="#ASRepRoasting" class="headerlink" title="ASRepRoasting"></a>ASRepRoasting</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">4768事件</span><br><span class="line">特征：</span><br><span class="line">    ServiceName krbtgt</span><br><span class="line">    TicketEncryptionType 0x17		&#x2F;&#x2F;rc4算法</span><br><span class="line">    PreAuthType 0		&#x2F;&#x2F;预身份认证关闭</span><br></pre></td></tr></table></figure>
+
+<p>命令：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">. .\ASREPRoast.ps1</span><br><span class="line">Get-ASREPHash -Domain test.local -Username xiaom</span><br></pre></td></tr></table></figure>
+
+<p>测试发现成功告警：</p>
+<p><img src="WatchAD.assets/image-20200410181403415.png" alt="image-20200410181403415"></p>
+<p><img src="WatchAD.assets/image-20200410182334015.png" alt="image-20200410182334015"></p>
+<p>XML：</p>
+<figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br></pre></td><td class="code"><pre><span class="line">- <span class="tag">&lt;<span class="name">Event</span> <span class="attr">xmlns</span>=<span class="string">"http://schemas.microsoft.com/win/2004/08/events/event"</span>&gt;</span></span><br><span class="line">- <span class="tag">&lt;<span class="name">System</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">Provider</span> <span class="attr">Name</span>=<span class="string">"Microsoft-Windows-Security-Auditing"</span> <span class="attr">Guid</span>=<span class="string">"&#123;54849625-5478-4994-A5BA-3E3B0328C30D&#125;"</span> /&gt;</span> </span><br><span class="line">  <span class="tag">&lt;<span class="name">EventID</span>&gt;</span>4768<span class="tag">&lt;/<span class="name">EventID</span>&gt;</span> </span><br><span class="line">  <span class="tag">&lt;<span class="name">Version</span>&gt;</span>0<span class="tag">&lt;/<span class="name">Version</span>&gt;</span> </span><br><span class="line">  <span class="tag">&lt;<span class="name">Level</span>&gt;</span>0<span class="tag">&lt;/<span class="name">Level</span>&gt;</span> </span><br><span class="line">  <span class="tag">&lt;<span class="name">Task</span>&gt;</span>14339<span class="tag">&lt;/<span class="name">Task</span>&gt;</span> </span><br><span class="line">  <span class="tag">&lt;<span class="name">Opcode</span>&gt;</span>0<span class="tag">&lt;/<span class="name">Opcode</span>&gt;</span> </span><br><span class="line">  <span class="tag">&lt;<span class="name">Keywords</span>&gt;</span>0x8020000000000000<span class="tag">&lt;/<span class="name">Keywords</span>&gt;</span> </span><br><span class="line">  <span class="tag">&lt;<span class="name">TimeCreated</span> <span class="attr">SystemTime</span>=<span class="string">"2020-04-10T10:21:30.718875000Z"</span> /&gt;</span> </span><br><span class="line">  <span class="tag">&lt;<span class="name">EventRecordID</span>&gt;</span>667255<span class="tag">&lt;/<span class="name">EventRecordID</span>&gt;</span> </span><br><span class="line">  <span class="tag">&lt;<span class="name">Correlation</span> /&gt;</span> </span><br><span class="line">  <span class="tag">&lt;<span class="name">Execution</span> <span class="attr">ProcessID</span>=<span class="string">"544"</span> <span class="attr">ThreadID</span>=<span class="string">"1064"</span> /&gt;</span> </span><br><span class="line">  <span class="tag">&lt;<span class="name">Channel</span>&gt;</span>Security<span class="tag">&lt;/<span class="name">Channel</span>&gt;</span> </span><br><span class="line">  <span class="tag">&lt;<span class="name">Computer</span>&gt;</span>dc2012.test.local<span class="tag">&lt;/<span class="name">Computer</span>&gt;</span> </span><br><span class="line">  <span class="tag">&lt;<span class="name">Security</span> /&gt;</span> </span><br><span class="line">  <span class="tag">&lt;/<span class="name">System</span>&gt;</span></span><br><span class="line">- <span class="tag">&lt;<span class="name">EventData</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">Data</span> <span class="attr">Name</span>=<span class="string">"TargetUserName"</span>&gt;</span>xiaom<span class="tag">&lt;/<span class="name">Data</span>&gt;</span> </span><br><span class="line">  <span class="tag">&lt;<span class="name">Data</span> <span class="attr">Name</span>=<span class="string">"TargetDomainName"</span>&gt;</span>test.local<span class="tag">&lt;/<span class="name">Data</span>&gt;</span> </span><br><span class="line">  <span class="tag">&lt;<span class="name">Data</span> <span class="attr">Name</span>=<span class="string">"TargetSid"</span>&gt;</span>S-1-5-21-2212815815-1602272524-4203810894-1106<span class="tag">&lt;/<span class="name">Data</span>&gt;</span> </span><br><span class="line">  <span class="tag">&lt;<span class="name">Data</span> <span class="attr">Name</span>=<span class="string">"ServiceName"</span>&gt;</span>krbtgt<span class="tag">&lt;/<span class="name">Data</span>&gt;</span> </span><br><span class="line">  <span class="tag">&lt;<span class="name">Data</span> <span class="attr">Name</span>=<span class="string">"ServiceSid"</span>&gt;</span>S-1-5-21-2212815815-1602272524-4203810894-502<span class="tag">&lt;/<span class="name">Data</span>&gt;</span> </span><br><span class="line">  <span class="tag">&lt;<span class="name">Data</span> <span class="attr">Name</span>=<span class="string">"TicketOptions"</span>&gt;</span>0x40800010<span class="tag">&lt;/<span class="name">Data</span>&gt;</span> </span><br><span class="line">  <span class="tag">&lt;<span class="name">Data</span> <span class="attr">Name</span>=<span class="string">"Status"</span>&gt;</span>0x0<span class="tag">&lt;/<span class="name">Data</span>&gt;</span> </span><br><span class="line">  <span class="tag">&lt;<span class="name">Data</span> <span class="attr">Name</span>=<span class="string">"TicketEncryptionType"</span>&gt;</span>0x17<span class="tag">&lt;/<span class="name">Data</span>&gt;</span> </span><br><span class="line">  <span class="tag">&lt;<span class="name">Data</span> <span class="attr">Name</span>=<span class="string">"PreAuthType"</span>&gt;</span>0<span class="tag">&lt;/<span class="name">Data</span>&gt;</span> </span><br><span class="line">  <span class="tag">&lt;<span class="name">Data</span> <span class="attr">Name</span>=<span class="string">"IpAddress"</span>&gt;</span>::ffff:192.168.244.131<span class="tag">&lt;/<span class="name">Data</span>&gt;</span> </span><br><span class="line">  <span class="tag">&lt;<span class="name">Data</span> <span class="attr">Name</span>=<span class="string">"IpPort"</span>&gt;</span>49221<span class="tag">&lt;/<span class="name">Data</span>&gt;</span> </span><br><span class="line">  <span class="tag">&lt;<span class="name">Data</span> <span class="attr">Name</span>=<span class="string">"CertIssuerName"</span> /&gt;</span> </span><br><span class="line">  <span class="tag">&lt;<span class="name">Data</span> <span class="attr">Name</span>=<span class="string">"CertSerialNumber"</span> /&gt;</span> </span><br><span class="line">  <span class="tag">&lt;<span class="name">Data</span> <span class="attr">Name</span>=<span class="string">"CertThumbprint"</span> /&gt;</span> </span><br><span class="line">  <span class="tag">&lt;/<span class="name">EventData</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;/<span class="name">Event</span>&gt;</span></span><br></pre></td></tr></table></figure>
+
+<h3 id="绕过DumpPassword"><a href="#绕过DumpPassword" class="headerlink" title="绕过DumpPassword"></a>绕过DumpPassword</h3><h4 id="远程WMIC-VSSCopy"><a href="#远程WMIC-VSSCopy" class="headerlink" title="远程WMIC VSSCopy"></a>远程WMIC VSSCopy</h4><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">wmic &#x2F;node:dc2012 &#x2F;user:test\administrator &#x2F;password:admin123! process call create &quot;cmd &#x2F;c vssadmin create shadow &#x2F;for&#x3D;C: 2&gt;&amp;1&quot;</span><br><span class="line"></span><br><span class="line">wmic &#x2F;node:dc2012 &#x2F;user:test\administrator &#x2F;password:admin123! process call create &quot;cmd &#x2F;c copy \\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy1\Windows\NTDS\NTDS.dit C:\ntds.dit 2&gt;&amp;1&quot;</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">最终事件ID：8222事件</span><br><span class="line">事件流：</span><br><span class="line">	4688 -&gt; 4688 -&gt; 4904 -&gt; 8222</span><br><span class="line">向前查找：</span><br><span class="line">4904日志：</span><br><span class="line">	get_term_statement(&quot;event_data.ProcessName.keyword&quot;,r&quot;C:\Windows\System32\VSSVC.exe&quot;),</span><br><span class="line">	get_term_statement(&quot;event_data.AuditSourceName.keyword&quot;, &quot;VSSAudit&quot;)</span><br><span class="line">4688日志：</span><br><span class="line">	get_term_statement(&quot;event_data.NewProcessName.keyword&quot;,r&quot;C:\Windows\System32\VSSVC.exe&quot;)</span><br><span class="line">	or</span><br><span class="line">	get_term_statement(&quot;event_data.NewProcessName.keyword&quot;,r&quot;C:\Windows\System32\vssadmin.exe&quot;)</span><br></pre></td></tr></table></figure>
+
+<p>4688日志为进程创建，上面命令执行后会触发</p>
+<p><img src="WatchAD.assets/image-20200410190414876.png" alt="image-20200410190414876"></p>
+<p>4904日志</p>
+<p><img src="WatchAD.assets/image-20200420173806781.png" alt="image-20200420173806781"></p>
+<p>进程名称为VSSVC.exe</p>
+<p>8222日志没有产生，网上有个链接说的8222产生于创建卷影副本的时候：</p>
+<p><a href="https://jpcertcc.github.io/ToolAnalysisResultSheet/details/vssadmin.htm" target="_blank" rel="noopener">https://jpcertcc.github.io/ToolAnalysisResultSheet/details/vssadmin.htm</a></p>
+<h4 id="远程Invoke-mimikatz"><a href="#远程Invoke-mimikatz" class="headerlink" title="远程Invoke-mimikatz"></a>远程Invoke-mimikatz</h4><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line">最终事件ID：4674事件</span><br><span class="line">事件流：</span><br><span class="line">	4656 -&gt; 4674 -&gt; 4688 -&gt; 4674</span><br><span class="line"></span><br><span class="line">&lt;Data Name&#x3D;&quot;ProcessName&quot;&gt;c:\windows\system32\wbem\wmiprvse.exe&lt;&#x2F;Data&gt; </span><br><span class="line">&lt;Data Name&#x3D;&quot;ObjectName&quot;&gt;\registry\machine\software\microsoft\windows nt\currentversion\perflib&lt;&#x2F;Data&gt;</span><br><span class="line">向前查找：</span><br><span class="line">4688日志：&#x2F;&#x2F;进程创建</span><br><span class="line">get_term_statement(&quot;event_data.NewProcessName.keyword&quot;,r&quot;C:\Windows\System32\wbem\WmiPrvSE.exe&quot;)</span><br><span class="line"></span><br><span class="line">4674日志：&#x2F;&#x2F;敏感权限使用</span><br><span class="line">get_term_statement(&quot;event_data.SubjectUserName.keyword&quot;, user_name),</span><br><span class="line">get_term_statement(&quot;event_data.ProcessName.keyword&quot;,r&quot;C:\Windows\System32\wsmprovhost.exe&quot;),</span><br><span class="line">get_match_must_all(&quot;event_data.ObjectName&quot;,r&quot;\REGISTRY\MACHINE\SYSTEM\ControlSet001\services\WinSock2\Parameters&quot;),)</span><br><span class="line"></span><br><span class="line">4656日志：</span><br><span class="line">get_term_statement(&quot;event_data.ProcessName.keyword&quot;,r&quot;C:\Windows\System32\wsmprovhost.exe&quot;)get_match_must_all(&quot;event_data.ObjectName&quot;,r&quot;\REGISTRY\MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\WSMAN&quot;),)</span><br></pre></td></tr></table></figure>
+
+<p>使用mimikatz.exe进行Dcsync没发现告警：查看日志没看到4674日志</p>
+<h4 id="远程Invoke-NinjaCopy"><a href="#远程Invoke-NinjaCopy" class="headerlink" title="远程Invoke-NinjaCopy"></a>远程Invoke-NinjaCopy</h4><p>命令：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">. .\Invoke-NinjaCopy.ps1</span><br><span class="line">Invoke-NinjaCopy -Path &quot;c:\windows\ntds\ntds.dit&quot; -ComputerName &quot;dc2012&quot; -LocalDestination &quot;c:\ntds.dit&quot;</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">4658事件</span><br><span class="line"></span><br><span class="line">向前查找：</span><br><span class="line">4656日志：</span><br><span class="line">get_term_statement(&quot;event_data.SubjectUserName.keyword&quot;, user_name),</span><br><span class="line">get_match_must_all(&quot;event_data.ObjectName&quot;,r&quot;\REGISTRY\MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\WSMAN&quot;),</span><br><span class="line">get_term_statement(&quot;event_data.ProcessName.keyword&quot;,r&quot;C:\Windows\System32\wsmprovhost.exe&quot;)</span><br><span class="line"></span><br><span class="line">4688日志：&#x2F;&#x2F;进程创建</span><br><span class="line">get_term_statement(&quot;event_data.NewProcessName.keyword&quot;,r&quot;C:\Windows\System32\wsmprovhost.exe&quot;)</span><br></pre></td></tr></table></figure>
+
+<p>4658事件：<a href="https://www.manageengine.com/products/active-directory-audit/kb/object-access-events/event-id-4658.html" target="_blank" rel="noopener">https://www.manageengine.com/products/active-directory-audit/kb/object-access-events/event-id-4658.html</a></p>
+<p><img src="WatchAD.assets/image-20200422133804545.png" alt="image-20200422133804545"></p>
+<p><img src="WatchAD.assets/image-20200422133909955.png" alt="image-20200422133909955"></p>
+<p>4656和4658日志会产生，4688日志也产生了，但是没有告警</p>
+<h2 id="Defense-evasion"><a href="#Defense-evasion" class="headerlink" title="Defense evasion"></a>Defense evasion</h2><h3 id="绕过ClearLog"><a href="#绕过ClearLog" class="headerlink" title="绕过ClearLog"></a>绕过ClearLog</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">清除日志会产生1102事件</span><br></pre></td></tr></table></figure>
+
+<p>规则会提取SubjectUserSid、SubjectUserName、SubjectDomainName等内容做展示。</p>
+<p>从kibana上查看发现可以看到对应日志：</p>
+<p><img src="WatchAD.assets/image-20200423143417818.png" alt="image-20200423143417818"></p>
+<p>会产生1102事件，但是不会产生告警。</p>
+<p>凯东分析原因为：</p>
+<p><img src="WatchAD.assets/image-20200423145149830.png" alt="image-20200423145149830"></p>
+<p>在整个data中搜索索event_data，但是整一条不存在event_data字段（上面的日志可见。）</p>
+<h3 id="绕过CloseLogService"><a href="#绕过CloseLogService" class="headerlink" title="绕过CloseLogService"></a>绕过CloseLogService</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">事件日志1100</span><br></pre></td></tr></table></figure>
+
+<p><a href="https://docs.microsoft.com/zh-cn/windows/security/threat-protection/auditing/event-1100" target="_blank" rel="noopener">https://docs.microsoft.com/zh-cn/windows/security/threat-protection/auditing/event-1100</a></p>
+<p>关闭服务的话直接在服务中搜索Windows Event Log服务，然后禁用即可：</p>
+<p><img src="WatchAD.assets/image-20200422140142937.png" alt="image-20200422140142937"></p>
+<p><img src="WatchAD.assets/image-20200422140219149.png" alt="image-20200422140219149"></p>
+<p>可以看到这里有Eventlog日志产生</p>
+<h2 id="Discovery"><a href="#Discovery" class="headerlink" title="Discovery"></a>Discovery</h2><h3 id="有日志没告警EnumerateGroup"><a href="#有日志没告警EnumerateGroup" class="headerlink" title="有日志没告警EnumerateGroup"></a>有日志没告警EnumerateGroup</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">枚举某个内置域管理员成员组</span><br><span class="line">如 net group &quot;Domain Admins&quot; &#x2F;domain</span><br><span class="line"></span><br><span class="line">事件ID 4661</span><br><span class="line">https:&#x2F;&#x2F;docs.microsoft.com&#x2F;zh-cn&#x2F;windows&#x2F;security&#x2F;threat-protection&#x2F;auditing&#x2F;event-4661</span><br></pre></td></tr></table></figure>
+
+<p>检测策略：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">1、如果账号是管理员发起的，直接忽略</span><br><span class="line">2、判断账号是否为Users</span><br></pre></td></tr></table></figure>
+
+<p>执行net group “Domain Admins” /domain未告警，产生了4661日志，并且是Users用户执行的</p>
+<h4 id="改进"><a href="#改进" class="headerlink" title="改进"></a>改进</h4><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">应该加上4658，4624日志一起做判断</span><br></pre></td></tr></table></figure>
+
+<p><img src="WatchAD.assets/image-20200422153357443.png" alt="image-20200422153357443"></p>
+<h3 id="HoneypotUser"><a href="#HoneypotUser" class="headerlink" title="HoneypotUser"></a>HoneypotUser</h3><p>蜜罐账号活动</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">EVENT_ID &#x3D; [4768, 4769, 4770, 4771, 4776, 4624, 4625, 4648]</span><br></pre></td></tr></table></figure>
+
+<p>新增思路，在蜜罐上布置蜜饵</p>
+<p>思路二，钓鱼邮件，先发蜜饵，再发能够拿到shell的钓鱼文件</p>
+<h3 id="有日志未告警PsLoggedOn"><a href="#有日志未告警PsLoggedOn" class="headerlink" title="有日志未告警PsLoggedOn"></a>有日志未告警PsLoggedOn</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">EVENT_ID &#x3D; [5145]</span><br></pre></td></tr></table></figure>
+
+<p>策略：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">判断&quot;ShareName&quot;需要等于r&quot;\\*\IPC$&quot;否则直接return</span><br><span class="line">&quot;RelativeTargetName&quot;等于&quot;srvsvc&quot;，否则return</span><br><span class="line">忽略域管理员访问</span><br></pre></td></tr></table></figure>
+
+<p>命令：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">.\PsLoggedon64.exe \\dc2012</span><br></pre></td></tr></table></figure>
+
+<p><img src="WatchAD.assets/image-20200422153841720.png" alt="image-20200422153841720"></p>
+<p>产生了多条对应日志，但是没有告警，RelativeTargetName的值为下面三条：</p>
+<p><img src="WatchAD.assets/image-20200422154959882.png" alt="image-20200422154959882"></p>
+<p><img src="WatchAD.assets/image-20200422155026142.png" alt="image-20200422155026142"></p>
+<p><img src="WatchAD.assets/image-20200422155058100.png" alt="image-20200422155058100"></p>
+<h3 id="SearchUserDetail"><a href="#SearchUserDetail" class="headerlink" title="SearchUserDetail"></a>SearchUserDetail</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">EVENT_ID &#x3D; [4661]</span><br><span class="line"></span><br><span class="line">会有一个函数调用链：</span><br><span class="line">	查找详细的文件共享， winreg -&gt; lsarpc -&gt; srvsvc</span><br><span class="line"></span><br><span class="line">忽略查询自身的用户</span><br><span class="line">忽略管理员</span><br><span class="line">忽略Users之外的</span><br><span class="line">忽略敏感用户</span><br></pre></td></tr></table></figure>
+
+<h2 id="Escalation"><a href="#Escalation" class="headerlink" title="Escalation"></a>Escalation</h2><h3 id="有日志未告警ACLModify"><a href="#有日志未告警ACLModify" class="headerlink" title="有日志未告警ACLModify"></a>有日志未告警ACLModify</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">EVENT_ID &#x3D; [5136]</span><br><span class="line">会产生5136日志</span><br></pre></td></tr></table></figure>
+
+<p>策略：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">1、判断SID是否为S-1-5-21-开头</span><br><span class="line">2、获取用户信息</span><br><span class="line">3、判断目标是否为管理员权限</span><br></pre></td></tr></table></figure>
+
+<p>测试不告警存在5136日志，未找到原因</p>
+<h3 id="MS17-010"><a href="#MS17-010" class="headerlink" title="MS17-010"></a>MS17-010</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">EVENT_ID &#x3D; [5140]</span><br><span class="line">使用工具 https:&#x2F;&#x2F;github.com&#x2F;apkjet&#x2F;TrustlookWannaCryToolkit 扫描时，会触发该规则</span><br><span class="line">使用原版exp 只触发 5140，且 SubjectLogonId 为一个不存在的值（0x后接5位随机数），即没有任何登录事件与之关联</span><br><span class="line">该检测逻辑不能保证完全准确，单从该日志获取的有限信息只能粗略检测攻击，存在误报的可能性（目前内部观察未出现误报）。</span><br></pre></td></tr></table></figure>
+
+<h3 id="NewGPO"><a href="#NewGPO" class="headerlink" title="NewGPO"></a>NewGPO</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">EVENT_ID &#x3D; [5137]</span><br><span class="line">这里可能存在误报，5137和5136分别是修改和创建目录服务对象，所以不一定是ACL和</span><br><span class="line">5136(S): A directory service object was modified.</span><br><span class="line">5137(S): A directory service object was created.</span><br></pre></td></tr></table></figure>
+
+<p>这里实际同时触发了5136和5137两个日志</p>
+<p><img src="WatchAD.assets/image-20200330160040358.png" alt="image-20200330160040358"></p>
+<p>在域控上直接创建产生了告警</p>
+<p><img src="WatchAD.assets/image-20200422170113926.png" alt="image-20200422170113926"></p>
+<h3 id="NTLMRelay"><a href="#NTLMRelay" class="headerlink" title="NTLMRelay"></a>NTLMRelay</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">EVENT_ID &#x3D; [4624]</span><br><span class="line"></span><br><span class="line">    检测 NTLM 中继认证到域控的行为</span><br><span class="line"></span><br><span class="line">    已知特点如下：</span><br><span class="line">    1. 使用NTLM协议进行验证</span><br><span class="line">    2. 来源主机名为被中继NTLM请求的最初请求</span><br><span class="line">    3. 来源IP为中继攻击者IP</span><br><span class="line">    4. NTLM v1 更容易受到攻击，NTLM v2可开启签名防止篡改和中继</span><br><span class="line"></span><br><span class="line">    根据历史记录情况 判断IP和主机名的对应关系是否一致</span><br><span class="line"></span><br><span class="line">    因为IP经常变动，不建议对所有的请求进行比对，暂时只对固定的敏感机器进行检测</span><br></pre></td></tr></table></figure>
+
+<p>策略：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">1、没有IP地址，直接return</span><br><span class="line">2、判断来源主机是否为敏感主机，如果不是直接return</span><br><span class="line">3、如果是主机名，则根据主机名查询IP地址</span><br><span class="line">4、二次确认，如果上次认证IP与当前IP不相同，则对主机名进行解析，判断IP是否相等</span><br><span class="line">resolver_ips &#x3D; self._get_host_ip(log)</span><br><span class="line">判断两次请求的IP地址是否相同。</span><br></pre></td></tr></table></figure>
+
+<h3 id="ResBasedConsDelegation"><a href="#ResBasedConsDelegation" class="headerlink" title="ResBasedConsDelegation"></a>ResBasedConsDelegation</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">EVENT_ID &#x3D; [5136]</span><br><span class="line">已修改目录服务对象,和ACL使用的同一个日志</span><br><span class="line"></span><br><span class="line">一般RBCD利用会对下面的LDAP的值做修改</span><br><span class="line">AttributeLDAPDisplayName: msDS-AllowedToActOnBehalfOfOtherIdentity</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line">OpCorrelationID &#123;5E009BAB-3CF8-4BC3-8F5A-A92657546634&#125; </span><br><span class="line">  AppCorrelationID - </span><br><span class="line">  SubjectUserSid S-1-5-21-2212815815-1602272524-4203810894-1106 </span><br><span class="line">  SubjectUserName xiaom </span><br><span class="line">  SubjectDomainName TEST </span><br><span class="line">  SubjectLogonId 0x1b8484 </span><br><span class="line">  DSName test.local </span><br><span class="line">  DSType %%14676 </span><br><span class="line">  ObjectDN CN&#x3D;DC2012,OU&#x3D;Domain Controllers,DC&#x3D;test,DC&#x3D;local </span><br><span class="line">  ObjectGUID &#123;8806E7FC-75A2-4396-A328-9787AFD784DB&#125; </span><br><span class="line">  ObjectClass computer </span><br><span class="line">  AttributeLDAPDisplayName msDS-AllowedToActOnBehalfOfOtherIdentity </span><br><span class="line">  AttributeSyntaxOID 2.5.5.15 </span><br><span class="line">  AttributeValue O:BAD:(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;S-1-5-21-2212815815-1602272524-4203810894-2106) </span><br><span class="line">  OperationType %%14674</span><br></pre></td></tr></table></figure>
+
+<p>策略：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">查询拥有特殊DACL权限的SID列表</span><br><span class="line">查询历史委派记录</span><br><span class="line">不存在记录 则新建 并直接告警</span><br><span class="line">存在记录且不变，退出</span><br><span class="line">存在记录 对比历史的sid 无新增 更新记录 退出</span><br><span class="line">存在记录 有新增 更新记录 告警</span><br></pre></td></tr></table></figure>
+
+<p>使用下面命令修改了两次，没有看到告警：</p>
+<figure class="highlight powershell"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">Set-ADComputer</span> dc2012 <span class="literal">-PrincipalsAllowedToDelegateToAccount</span> testrbcd<span class="variable">$</span></span><br></pre></td></tr></table></figure>
+
+<p>总结为如果创建新的computer对象，则会产生5136日志，直接更改现有的computer对象不会产生，会有4742和4624两个日志产出</p>
+<p><img src="WatchAD.assets/image-20200422171410928.png" alt="image-20200422171410928"></p>
+<p>确认之后发现如果有更改则是5136(目录服务查询)，不更改则是4662(目录服务更改)</p>
+<h3 id="SpoolSample"><a href="#SpoolSample" class="headerlink" title="SpoolSample"></a>SpoolSample</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">EVENT_ID &#x3D; [5145]</span><br><span class="line">已检查网络共享对象以查看是否可以向客户授予所需的访问权限???</span><br></pre></td></tr></table></figure>
+
+<h3 id="绕过UnkownAdminLogin"><a href="#绕过UnkownAdminLogin" class="headerlink" title="绕过UnkownAdminLogin"></a>绕过UnkownAdminLogin</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">&quot;&quot;&quot;</span><br><span class="line">    4672 特殊登录</span><br><span class="line"></span><br><span class="line">    提权检测</span><br><span class="line"></span><br><span class="line">    分析当前特殊登录的账号是否在管理员账号列表中，如果不在则告警</span><br><span class="line"></span><br><span class="line">    目前已知的提权漏洞为 MS14-068</span><br><span class="line">&quot;&quot;&quot;</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">.\MS14-068.exe -u xiaom@test.local -s S-1-5-21-2212815815-1602272524-4203810894-1106 -d dc2012.test.local -p admin1234!</span><br></pre></td></tr></table></figure>
+
+<p>产生了对应日志：</p>
+<p><img src="WatchAD.assets/image-20200426163618582.png" alt="image-20200426163618582"></p>
+<p>清除日志之后测试产生的所有日志：</p>
+<p><img src="WatchAD.assets/image-20200426164845701.png" alt="image-20200426164845701"></p>
+<p>可能是这个原因导致没被return，原代码其中一个判断条件</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 排除域控计算机账户的本地特权登录</span></span><br><span class="line">       <span class="keyword">if</span> user_name.endswith(<span class="string">"$"</span>):</span><br><span class="line">           domain = get_netbios_domain(domain_name)</span><br><span class="line">           <span class="keyword">if</span> user_name[:<span class="number">-1</span>] <span class="keyword">in</span> main_config.dc_name_list[domain]:</span><br><span class="line">               <span class="keyword">return</span></span><br></pre></td></tr></table></figure>
+
+<p>建议直接从流量中检测，应该不会有误报</p>
+<h2 id="LateralMovement"><a href="#LateralMovement" class="headerlink" title="LateralMovement"></a>LateralMovement</h2><h3 id="BruteForce"><a href="#BruteForce" class="headerlink" title="BruteForce"></a>BruteForce</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">4625</span><br><span class="line">帐户登录失败</span><br><span class="line">4771</span><br><span class="line">Kerberos 预身份验证失败</span><br></pre></td></tr></table></figure>
+
+<p>策略</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">event ID为4625时：</span><br><span class="line">判断数据中的AuthenticationPackageName是否为MICROSOFT_AUTHENTICATION_PACKAGE_V1_0，不是则return</span><br><span class="line"></span><br><span class="line">忽略机器账户</span><br><span class="line"></span><br><span class="line">判断PreAuthType&#x3D;0</span><br><span class="line"></span><br><span class="line">爆破数量大于100个</span><br></pre></td></tr></table></figure>
+
+<h3 id="绕过ExplicitCredential"><a href="#绕过ExplicitCredential" class="headerlink" title="绕过ExplicitCredential"></a>绕过ExplicitCredential</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">EVENT_ID &#x3D; [4648]	使用显式凭据尝试登录</span><br><span class="line"></span><br><span class="line">如果日志显示IP日志为localhost，则直接return</span><br></pre></td></tr></table></figure>
+
+<p><img src="WatchAD.assets/image-20200422175637466.png" alt="image-20200422175637466"></p>
+<p>产生了4648日志，但是也是localhost</p>
+<h3 id="RemoteCommandExec"><a href="#RemoteCommandExec" class="headerlink" title="RemoteCommandExec"></a>RemoteCommandExec</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">EVENT_ID &#x3D; [5145, 5142]</span><br><span class="line">5145：</span><br><span class="line">已检查网络共享对象以查看是否可以向客户授予所需的访问权限。</span><br><span class="line">5142：</span><br><span class="line">添加了一个网络共享对象。</span><br></pre></td></tr></table></figure>
+
+<p>策略：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line">如果事件ID为5145，则进行下列检查</span><br><span class="line">	psexec</span><br><span class="line">		5145</span><br><span class="line">		ShareName&#x3D;\ADMIN$</span><br><span class="line">		&quot;RelativeTargetName&quot;] &#x3D;&#x3D; &quot;PSEXESVC.exe&quot;</span><br><span class="line">	wmiexec</span><br><span class="line">		5145</span><br><span class="line">		ShareName&#x3D;\ADMIN$</span><br><span class="line">		在&quot;RelativeTargetName&quot;中正则寻找re.search(r&quot;^__\d&#123;10&#125;\.\d&quot;, relative_target_name)，匹配中了return wmi_exec</span><br><span class="line">	wmiexec_vbs</span><br><span class="line">		5142</span><br><span class="line">		&quot;ShareName&quot;] &#x3D;&#x3D; r&quot;\\*\WMI_SHARE&quot;</span><br><span class="line">		&quot;ShareLocalPath&quot;].lower() &#x3D;&#x3D; r&quot;c:\windows\temp&quot;</span><br><span class="line">	smbexec</span><br><span class="line">		5145</span><br><span class="line">		&quot;ShareName&quot; &#x3D;&#x3D; r&quot;\\*\C$&quot;</span><br><span class="line">		&quot;RelativeTargetName&quot; &#x3D;&#x3D; &quot;__output&quot;</span><br></pre></td></tr></table></figure>
+
+<h4 id="Psexec"><a href="#Psexec" class="headerlink" title="Psexec"></a>Psexec</h4><p>使用psexec的时候发现能告警</p>
+<h4 id="绕过WMI"><a href="#绕过WMI" class="headerlink" title="绕过WMI"></a>绕过WMI</h4><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">5145</span><br><span class="line">检测 admin 共享开启, 同时 RelativeTargetName 为时间戳形式</span><br></pre></td></tr></table></figure>
+
+
+
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">wmic &#x2F;node:192.168.244.130 &#x2F;user:test\administrator &#x2F;password:admin123!  process call create &quot;cmd.exe&quot;</span><br></pre></td></tr></table></figure>
+
+<p>直接执行不告警，查日志没找到5145日志</p>
+<p>wmicexec.vbs</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">cscript.exe &#x2F;&#x2F;nologo wmiexec.vbs &#x2F;shell 192.168.244.130 test\administrator admin123!</span><br></pre></td></tr></table></figure>
+
+<p>这一步是发现了5145日志的，但是没有看到5142日志</p>
+<p>同时有脚本判断ShareLocalPath的路径是否为c:\windows\temp，实验发现C:\也是可以的</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">if log.event_data[&quot;ShareLocalPath&quot;].lower() &#x3D;&#x3D; r&quot;c:\windows\temp&quot;:</span><br><span class="line">	return &quot;wmi_exec&quot;</span><br></pre></td></tr></table></figure>
+
+<p><img src="WatchAD.assets/image-20200423154545631.png" alt="image-20200423154545631"></p>
+<p><img src="WatchAD.assets/image-20200424101623687.png" alt="image-20200424101623687"></p>
+<p>这里的路径应该是可以随意设置</p>
+<h3 id="UnkonwFileShare"><a href="#UnkonwFileShare" class="headerlink" title="UnkonwFileShare"></a>UnkonwFileShare</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">EVENT_ID &#x3D; [5145]</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">relative_target_name不等于[&quot;protected_storage&quot;, &quot;lsarpc&quot;, &quot;samr&quot;, &quot;ntsvcs&quot;, &quot;NETLOGON&quot;]</span><br><span class="line">检查历史日志，对该名称的共享使用次数，超过10次判断为正常共享</span><br></pre></td></tr></table></figure>
+
+<p>这个发现只要访问域控的就会触发告警</p>
+<h2 id="Persistence"><a href="#Persistence" class="headerlink" title="Persistence"></a>Persistence</h2><h3 id="AdminSDHolder"><a href="#AdminSDHolder" class="headerlink" title="AdminSDHolder"></a>AdminSDHolder</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">5136</span><br><span class="line"></span><br><span class="line">AdminSDHolder 更改，一般用作权限维持，因为更改情况极少，所以直接告警</span><br></pre></td></tr></table></figure>
+
+<p><img src="WatchAD.assets/image-20200424102756854.png" alt="image-20200424102756854"></p>
+<p>直接在域控上ADSI修改产生告警，使用powerview对AdminSDHolder进行添加ACL</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">. .\pv.ps1</span><br><span class="line">Add-DomainObjectAcl -TargetIdentity &quot;CN&#x3D;AdminSDHolder,CN&#x3D;System,DC&#x3D;test,DC&#x3D;local&quot; -PrincipalIdentity xiaom -Rights All</span><br></pre></td></tr></table></figure>
+
+<p>测试结果发现特征被命中</p>
+<p><img src="WatchAD.assets/image-20200424102901487.png" alt="image-20200424102901487"></p>
+<p>额外补充：在同步时，域控会产生多个4780日志：</p>
+<p><img src="WatchAD.assets/image-20200426135247926.png" alt="image-20200426135247926"></p>
+<h3 id="DCShadow"><a href="#DCShadow" class="headerlink" title="DCShadow"></a>DCShadow</h3><p>需要跟一下DCShadow的原理</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">EVENT_ID &#x3D; [4742, 5137, 5141, 4928]</span><br><span class="line"></span><br><span class="line">分为三部分的特征：</span><br><span class="line">1. 计算机SPN修改  (spn modify)</span><br><span class="line">2. 域控创建和删除  (DC server create and delete)</span><br><span class="line">3. 同步监控 (Replication Monitoring)</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">SPN修改：</span><br><span class="line">event_id  4742</span><br><span class="line">非域控计算机修改SPN为异常值，如果目标服务器为已知的域控计算机名，则忽略</span><br><span class="line"></span><br><span class="line">同时判断spn的值是否以&quot;GC&#x2F;&quot;或者&quot;E3514235-4B06-11D1-AB04-00C04FC2DCD2&#x2F;&quot;开头</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">event_id 5137</span><br><span class="line"></span><br><span class="line">配置名称空间内创建服务，目标非域控计算机</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">event_id 5141</span><br><span class="line"></span><br><span class="line">配置名称空间内服务删除，目标非域控计算机</span><br></pre></td></tr></table></figure>
+
+<p>凯东记录的：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">在NTDS设置、DC服务器创建、DC服务器删除的判断逻辑中，使用了默认域设置的Default-First-Site-Name作为判断列表中的其中一项，真实环境下Site名称都是根据企业自身环境进行命名的，在携程是CNSH、CNNT等，默认Site名称判断导致检测可被绕过</span><br><span class="line"></span><br><span class="line">fix：移除Default-First-Site-Name的判断，对dn添加其他路径名称检测</span><br></pre></td></tr></table></figure>
+
+<h3 id="DSRM"><a href="#DSRM" class="headerlink" title="DSRM"></a>DSRM</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">EVENT_ID &#x3D; [4794]：尝试设置目录服务还原模式管理员密码（要求在2008 R2和更高版本中启用帐户管理&#x2F;用户管理子类别审核）。</span><br></pre></td></tr></table></figure>
+
+<p>只对4794日志做了检测</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">1.监控与DSRM密码重置和使用相关的事件日志 </span><br><span class="line">    4794：试图设置目录服务还原模式管理员密码。 </span><br><span class="line">2.监控如下注册表位置的值，当值为 1 或 2时，应引起警示 </span><br><span class="line">    HKLM\System\CurrentControlSet\Control\Lsa\DSRMAdminLogonBehavior</span><br></pre></td></tr></table></figure>
+
+<p>未绕过</p>
+<h3 id="绕过GPODelegation"><a href="#绕过GPODelegation" class="headerlink" title="绕过GPODelegation"></a>绕过GPODelegation</h3><p>组策略委派</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">EVENT_ID &#x3D; [5136]</span><br><span class="line"></span><br><span class="line">dn字段以&quot;cn&#x3D;policies,cn&#x3D;system,&quot;开头</span><br><span class="line">同时会根据SID判断是否为Users用户，如果不是则忽略</span><br></pre></td></tr></table></figure>
+
+<p>但是根据我的判断，这里的Users指的是domain users，不是OU的Users，所以不论是哪个OU的用户，SID的开头都是S-1-5-21-</p>
+<p>暂时存在几个问题，一是修改具体组策略的时候DN的内容前面是有UUID的值的：</p>
+<p><img src="WatchAD.assets/image-20200424152751569.png" alt="image-20200424152751569"></p>
+<p>二是即使存在了包含CN=Policies,CN=System开头的日志也没有产生告警，代码中判断了是否为管理员权限：</p>
+<p><img src="WatchAD.assets/image-20200424152833234.png" alt="image-20200424152833234"></p>
+<p>三是ObjectClass不一定全部为Container</p>
+<p><img src="WatchAD.assets/image-20200424154502405.png" alt="image-20200424154502405"></p>
+<h3 id="绕过GrantDelegation"><a href="#绕过GrantDelegation" class="headerlink" title="绕过GrantDelegation"></a>绕过GrantDelegation</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">EVENT_ID &#x3D; [4738]</span><br><span class="line"></span><br><span class="line">Kerberos约束委派权限授予</span><br><span class="line">该手法可用作权限维持，通过对某个用户添加高权限的委派</span><br><span class="line"></span><br><span class="line">使用_check_high_risk_spn方法对高危SPN做检测</span><br><span class="line">&quot;&quot;&quot;</span><br><span class="line">增加约束委派权限的高危SPN检测</span><br><span class="line">1. 包含域控主机名 可直接接管域控</span><br><span class="line">2. 服务名包含 krbtgt 变种金票</span><br><span class="line">3. 服务名包含 LDAP 可导致DCSync</span><br><span class="line">等等</span><br><span class="line">&quot;&quot;&quot;</span><br></pre></td></tr></table></figure>
+
+<p>设置主机账户的委派发现未触发4738日志，存在4742日志，凯东已经提过了</p>
+<h3 id="绕过ModifySensitiveGroup"><a href="#绕过ModifySensitiveGroup" class="headerlink" title="绕过ModifySensitiveGroup"></a>绕过ModifySensitiveGroup</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">EVENT_ID &#x3D; </span><br><span class="line">[4728	&#x2F;&#x2F;向启用了安全性的全局组中添加成员</span><br><span class="line">, 4732	&#x2F;&#x2F;</span><br><span class="line">, 4756]</span><br><span class="line"></span><br><span class="line">新增域管理员</span><br><span class="line">准确一点说，是安全组中新增加了用户</span><br><span class="line">这种情况少见，不论情况均告警，可抄送IT部门协助确认</span><br></pre></td></tr></table></figure>
+
+<p>将xiaom添加到domain admins组发现存在告警</p>
+<p>后来发现部分情况会产生4737事件，导致不告警，这里添加adadad到domain admins：</p>
+<p><img src="WatchAD.assets/image-20200426140106495.png" alt="image-20200426140106495"></p>
+<p><img src="WatchAD.assets/image-20200426135724315.png" alt="image-20200426135724315"></p>
+<h3 id="绕过NewServiceInstall"><a href="#绕过NewServiceInstall" class="headerlink" title="绕过NewServiceInstall"></a>绕过NewServiceInstall</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">EVENT_ID &#x3D; [4697] 安装了新的服务</span><br><span class="line"></span><br><span class="line">安装新服务属于敏感事件，全部作为低危信息告警</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">sc create Serv-U binpath&#x3D; &quot;c:\calc.exe&quot; start&#x3D; auto displayname&#x3D; &quot;testcalc&quot;</span><br><span class="line"></span><br><span class="line">sc delete Serv-U binpath&#x3D;&quot;c:\calc.exe&quot; start&#x3D; auto displayname&#x3D; &quot;testcalc&quot;</span><br></pre></td></tr></table></figure>
+
+<p>在windows server 2012是4688事件，没有看到4697事件，未产生告警</p>
+<p><img src="WatchAD.assets/image-20200424171856238.png" alt="image-20200424171856238"></p>
+<h3 id="绕过ScheduledTasks"><a href="#绕过ScheduledTasks" class="headerlink" title="绕过ScheduledTasks"></a>绕过ScheduledTasks</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">EVENT_ID &#x3D; [4698]</span><br><span class="line"></span><br><span class="line">域控的计划任务创建</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">schtasks &#x2F;Create &#x2F;TN TestService1 &#x2F;SC DAILY &#x2F;ST 01:02 &#x2F;TR notepad.exe</span><br></pre></td></tr></table></figure>
+
+<p>可以通过修改原有计划任务实现绕过，windows2012中会默认存在一个计划任务Optimize Start Menu Cache File</p>
+<p><a href="http://windows.fyicenter.com/4349_Optimize_Start_Menu_Cache_Files-S-1-5-21-...-1001_Scheduled_Task_on_Windows_8.html" target="_blank" rel="noopener">http://windows.fyicenter.com/4349_Optimize_Start_Menu_Cache_Files-S-1-5-21-...-1001_Scheduled_Task_on_Windows_8.html</a></p>
+<p><img src="WatchAD.assets/image-20200424183344044.png" alt="image-20200424183344044"></p>
+<p>建议将4072也假如检测事件中，防止对Optimize Start Menu Cache File计划任务的修改</p>
+<h3 id="绕过SidHistory"><a href="#绕过SidHistory" class="headerlink" title="绕过SidHistory"></a>绕过SidHistory</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">EVENT_ID &#x3D; [4765, 4766]</span><br><span class="line"></span><br><span class="line">SIDHistory 权限维持</span><br><span class="line"></span><br><span class="line">只适用于</span><br><span class="line">Windows Server 2003,</span><br><span class="line">Windows Server 2003 R2,</span><br><span class="line">Windows Server 2003 with SP1,</span><br><span class="line">Windows Server 2003 with SP2</span><br><span class="line"></span><br><span class="line">目前不考虑其它情况  出现即告警</span><br></pre></td></tr></table></figure>
+
+<p>利用方式：<a href="http://t3ngyu.leanote.com/post/7697c6e55644" target="_blank" rel="noopener">http://t3ngyu.leanote.com/post/7697c6e55644</a></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">privilege::debug</span><br><span class="line">sid::query &#x2F;sam:xiaom</span><br><span class="line">sid::patch</span><br><span class="line">sid::add &#x2F;sam:xiaom &#x2F;new:S-1-5-21-2212815815-1602272524-4203810894-500</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">sid::clear &#x2F;sam:xiaom</span><br></pre></td></tr></table></figure>
+
+<p>windows server 2012实验产生的是5136日志：</p>
+<p><img src="WatchAD.assets/image-20200426140943323.png" alt="image-20200426140943323"></p>
+<p>也会产生4738日志：</p>
+<p><img src="WatchAD.assets/image-20200426142130737.png" alt="image-20200426142130737"></p>
+<p><img src="WatchAD.assets/image-20200426142159171.png" alt="image-20200426142159171"></p>
+<h3 id="SkeletonKeys"><a href="#SkeletonKeys" class="headerlink" title="SkeletonKeys"></a>SkeletonKeys</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">EVENT_ID &#x3D; [4771]</span><br><span class="line"></span><br><span class="line">万能钥匙 主动检测</span><br><span class="line"></span><br><span class="line">PreAuthType &#x3D; 0 同时 Status 为 0xe</span><br><span class="line">配合 scripts&#x2F;skeleton_key_scan 进行定时扫描</span><br></pre></td></tr></table></figure>
+
+<p>skeleton_key_scan脚本：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">扫描每个域控，使用AES256加密发送 AS_REQ ，如果该域控被注入了万能钥匙，则会触发4771事件，错误代码为 0xe</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">域控执行：</span><br><span class="line">privilege::debug</span><br><span class="line">misc::skeleton</span><br><span class="line"></span><br><span class="line">域内主机可以通过默认的mimikatz密码登录</span><br><span class="line">net use \\dc2012\c$ &#x2F;user:&quot;test\administrator&quot; &quot;mimikatz&quot;</span><br></pre></td></tr></table></figure>
+
+<p>[<a href="https://wooyun.js.org/drops/%E5%9F%9F%E6%B8%97%E9%80%8F%E2%80%94%E2%80%94Skeleton%20Key.html]" target="_blank" rel="noopener">https://wooyun.js.org/drops/%E5%9F%9F%E6%B8%97%E9%80%8F%E2%80%94%E2%80%94Skeleton%20Key.html]</a>(<a href="https://wooyun.js.org/drops/域渗透——Skeleton" target="_blank" rel="noopener">https://wooyun.js.org/drops/域渗透——Skeleton</a> Key.html)</p>
+<p>主动扫描检测，但是扫描的时间在代码中没找到，未发现特别的日志</p>
+
+        </div>
+
+        
+            <section class="post-copyright">
+                
+                
+                
+                
+
+            </section>
+        
+        <section class="post-tags">
+            <div>
+                <span>Tag(s):</span>
+                <span class="tag">
+                    
+                </span>
+            </div>
+            <div>
+                <a href="javascript:window.history.back();">back</a>
+                <span>· </span>
+                <a href="/">home</a>
+            </div>
+        </section>
+        <section class="post-nav">
+            
+                <a class="prev" rel="prev" href="/2020/12-18-windows_via_4.5_%E4%BB%A4%E7%89%8C%E5%92%8C%E6%9D%83%E9%99%90%E6%8F%90%E5%8D%87/">windows_via_4.5_令牌和权限提升</a>
+            
+            
+            <a class="next" rel="next" href="/2020/12-18-PE%E6%96%87%E4%BB%B6%E7%BB%93%E6%9E%84%E6%80%BB%E7%BB%93%E5%8F%8A%E8%87%AA%E9%97%AE%E8%87%AA%E7%AD%94/">PE文件结构总结及自问自答</a>
+            
+        </section>
+	
+		<section id="comments" class="comments">
+		  <style>
+			.comments{margin:30px;padding:10px;background:#fff}
+			@media screen and (max-width:800px){.comments{margin:auto;padding:10px;background:#fff}}
+		  </style>
+		  <div class="valine_comment"></div>
+<!--载入js，在</body>之前插入即可-->
+<!--Leancloud 操作库:-->
+<script src="//cdn1.lncld.net/static/js/3.0.4/av-min.js"></script>
+<!--Valine 的核心代码库-->
+<script src="//unpkg.com/valine/dist/Valine.min.js"></script>
+<script>
+  new Valine({
+      el: '.valine_comment',
+      app_id: 'ehQ0k7G3fcpwmkyxhG8U6DzL-gzGzoHsz',
+      app_key: 'AwwXGgbdqswiimAY0qJYhtRa',
+      placeholder: '这里留言。。',
+      notify: 'true',
+      verify: 'true',
+    });
+</script>
+		</section>
+	
+
+    </article>
+</div>
+
+        </div>
+        <footer id="footer" class="footer">
+    <div class="copyright">
+        <span>© SeikoSrp | Powered by <a href="https://hexo.io" target="_blank">Hexo</a> & <a href="https://github.com/Siricee/hexo-theme-Chic" target="_blank">Chic</a></span>
+    </div>
+</footer>
+
+    </div>
+</body>
+</html>

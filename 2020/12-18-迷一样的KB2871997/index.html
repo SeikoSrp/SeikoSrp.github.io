@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+<meta http-equiv="X-UA-Compatible" content="ie=edge">
+
+    <meta name="author" content="SeikoSrp">
+
+
+
+
+
+
+<title>迷一样的KB2871997 | a blog</title>
+
+
+
+    <link rel="icon" href="/haidao.ico">
+
+
+
+
+    <!-- stylesheets list from _config.yml -->
+    
+    <link rel="stylesheet" href="/css/style.css">
+    
+
+
+
+    <!-- scripts list from _config.yml -->
+    
+    <script src="/js/script.js"></script>
+    
+    <script src="/js/tocbot.min.js"></script>
+    
+    <script src="/js/jquery.min.js"></script>
+    
+
+
+
+    
+    
+        
+    
+
+
+
+
+    <script>
+    function searchToggle() {
+        const width = $(document.body).width()
+        if(width > 479) {
+            return;
+        }
+        const search = $('.search');
+        const searchForm = $('.form-search');
+        const menuToggle = $('.menu-toggle');
+        const title = $('.navbar-header-title');
+
+        if(!search.hasClass("mobile-search")) {
+            search.addClass("mobile-search");
+            menuToggle.addClass("open-search")
+            title.addClass("mobile-title-hidden")
+        } else {
+            search.removeClass("mobile-search");
+            menuToggle.removeClass("open-search")
+            // title.css({visibility: 'visible'})
+            title.removeClass("mobile-title-hidden")
+        } 
+    }
+
+    function search(searchInputEl, formEl, flag) {
+        const path = "/" + "search.json"; // 可以在public 下查看这个search.json
+        $(formEl).submit(function(e){
+            e.preventDefault();
+            let target = null
+            if(searchInputEl == null) {
+                const screenWidth = $(document.body).width();
+                target = screenWidth > 479 ? $('#pc-search-input') : $('#mobile-search-input');
+                console.log(target);
+            } else {
+                target = $(searchInputEl)
+            }
+
+            if(!flag && target.val() === '') {
+                return ;
+            }
+
+            $("#u-search").fadeIn(500, function() {
+                $("body > .wrapper").addClass("modal-active");
+
+                $.ajax({
+                    url: path,
+                    dataType: "json",
+                    beforeSend: function (xhr) {
+                        $input = target.val();
+                        $(".form-input").val($input);
+                        const loadingBar = $('.search-loading-bar') 
+                        loadingBar.css({
+                            width:'100%',
+                            display: 'block'
+                        });
+                    },
+                    success: function( datas ) {
+                        // console.log(datas);
+                        const $resultPanel = $(".modal-body")[0];
+                        let str = `<ul class="modal-results">`;
+                        var keywords = $(".form-input").val().trim().toLowerCase().split(/[\s\-]+/);
+                        $resultPanel.innerHTML = "";
+                        let hasResult = false
+                        let text = `<div class="no-result">找不到与关键词相关的内容....</div>`;
+
+                        if ($(".form-input").val().trim().length <= 0) {
+                            // 没有结果
+                            $resultPanel.innerHTML = text;
+                            return;
+                        }
+                        datas.forEach(function (data) {
+                            var isMatch = true;
+                            if (!data.title || data.title.trim() === '') {
+                                data.title = "Untitled";
+                            }
+                            var data_title = data.title.trim().toLowerCase();
+                            var data_content = data.content.trim().replace(/<[^>]+>/g, "").toLowerCase();
+                            var data_url = data.url;
+                            var index_title = -1;
+                            var index_content = -1;
+                            var first_occur = -1;
+                            // only match artiles with not empty contents
+                            if (data_content !== '') {
+                                keywords.forEach(function (keyword, i) {
+                                    index_title = data_title.indexOf(keyword);
+                                    index_content = data_content.indexOf(keyword);
+
+                                    if (index_title < 0 && index_content < 0) {
+                                        isMatch = false;
+                                    } else {
+                                        hasResult = true
+                                        if (index_content < 0) {
+                                            index_content = 0;
+                                        }
+                                        if (i == 0) {
+                                            first_occur = index_content;
+                                        }
+                                    }
+                                });
+                            } else {
+                                isMatch = false;
+                            }
+                            // show search results
+                            if (isMatch) {
+                                str += `<li class='result-item'><a href='${data_url}' class='result-item-detail'> <span class="title">${data_title}</span>`;
+                                var content = data.content.trim().replace(/<[^>]+>/g, "");
+                                if (first_occur >= 0) {
+                                    // cut out 200 characters
+                                    var start = first_occur - 40;
+                                    var end = first_occur + 160;
+
+                                    if (start < 0) {
+                                        start = 0;
+                                    }
+
+                                    if (start == 0) {
+                                        end = 200;
+                                    }
+
+                                    if (end > content.length) {
+                                        end = content.length;
+                                    }
+
+                                    var match_content = content.substring(start, end);
+
+                                    // highlight all keywords
+                                    keywords.forEach(function (keyword) {
+                                        var regS = new RegExp(keyword, "gi");
+                                        match_content = match_content.replace(regS, `<em class="search-keyword">${keyword}</em>`);
+                                    });
+
+                                    str += `<span class="content"> ${match_content} ...</span></a>`;
+                                }
+                                str += "</li>";
+                            }
+                        });
+                        str += "</ul>";
+                        if(hasResult) {
+                            $resultPanel.innerHTML = str;
+                        } else {
+                            $resultPanel.innerHTML = text;
+                        }
+
+                    },
+                    complete: function() {
+                        setTimeout(() => {
+                                const loadingBar = $('.search-loading-bar') 
+                                loadingBar.css({
+                                    width:'0%',
+                                    display: 'none'
+                                });
+                        }, 300)
+                    }
+                });
+            })
+
+        });
+    }
+
+    $(document).ready(function() {
+        $('.modal-close').click(function () { 
+            $("#u-search").fadeOut();
+            $("body > .wrapper").removeClass("modal-active")
+        })
+
+        $('.modal-overlay').click(function() {
+            $("#u-search").fadeOut();
+            $("body > .wrapper").removeClass("modal-active")
+        })
+        search(null, ".form-search", false)
+        search("#u-search-modal-form .form-input", ".u-search-modal-form", true)
+    })
+</script>
+
+<meta name="generator" content="Hexo 4.2.1"></head>
+<body>
+<!-- Chic/layout.ejs -->
+ <div id="u-search">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="container">
+                    <form id="u-search-modal-form" class="u-search-modal-form">
+                        <button type="submit" class="form-submit-btn">
+                            <img src="/image/search.png" class="search-btn-img" />
+                        </button>
+                        <input placeholder="搜索文章。。。" class="form-input" id="modal-form-input">
+                    </form>
+                    <a class="modal-close">x</a>
+                </div>
+                <div class="search-loading">
+                    <div class="search-loading-bar"></div>
+                </div>
+            </div>
+            <div class="modal-body">
+                <!-- ul 格式如下 -->
+                <!-- <ul class="modal-results">
+                    <li class="result-item">
+                        <a class="result-item-detail">
+                            <span class="title">页面配置</span>
+                            <span class="content">
+                                content
+                            </span>
+                        </a>
+                    </li>
+                </ul> -->
+            </div>
+        </div>
+        <div class="modal-overlay"></div>
+    </div>
+    <div class="wrapper">
+        <header>
+    <nav class="navbar">
+        <div class="container">
+            <div class="navbar-header header-logo"><a href="/">SeikoSrp&#39;s Blog</a></div>
+            <div class="menu navbar-right">
+                <!-- 这里表示的是pc端搜索框 -->
+                
+                
+    <div class="search ">
+        <div class="search-btn" onClick="searchToggle()">
+            <img src="/image/search.png" class="search-btn-img" />
+        </div>
+        <form class="form-search">
+            <input class="input" placeholder="搜索文章" autocomplete="off" id="pc-search-input"/>
+        </form>
+    </div>
+
+                
+                    <a class="menu-item" href="/archives">文章</a>
+                
+                    <a class="menu-item" href="/category">分类</a>
+                
+                    <a class="menu-item" href="/about">关于</a>
+                
+                <input id="switch_default" type="checkbox" class="switch_default">
+                <label for="switch_default" class="toggleBtn"></label>
+            </div>
+        </div>
+    </nav>
+
+    
+    <nav class="navbar-mobile" id="nav-mobile">
+        <div class="container">
+            <div class="navbar-header">
+                <div>
+                    <a href="/">SeikoSrp&#39;s Blog</a><a id="mobile-toggle-theme">·&nbsp;Light</a>
+                </div>
+                <div class="navbar-mobile-right">
+                    
+                    
+    <div class="search ">
+        <div class="search-btn" onClick="searchToggle()">
+            <img src="/image/search.png" class="search-btn-img" />
+        </div>
+        <form class="form-search">
+            <input class="input" placeholder="搜索文章" autocomplete="off" id="mobile-search-input"/>
+        </form>
+    </div>
+
+                    <div class="menu-toggle" onclick="mobileBtn()">&#9776; 目录</div>
+                </div>
+                
+            </div>
+            <div class="menu" id="mobile-menu">
+                
+                    <a class="menu-item" href="/archives">文章</a>
+                
+                    <a class="menu-item" href="/category">分类</a>
+                
+                    <a class="menu-item" href="/about">关于</a>
+                
+            </div>
+        </div>
+    </nav>
+
+</header>
+<script>
+    var mobileBtn = function f() {
+        var toggleMenu = document.getElementsByClassName("menu-toggle")[0];
+        var mobileMenu = document.getElementById("mobile-menu");
+        if(toggleMenu.classList.contains("active")){
+           toggleMenu.classList.remove("active")
+            mobileMenu.classList.remove("active")
+        }else{
+            toggleMenu.classList.add("active")
+            mobileMenu.classList.add("active")
+        }
+    }
+</script>
+        <div class="main">
+            <div class="container">
+    
+    
+        <div class="post-toc">
+    <div class="tocbot-list">
+    </div>
+    <div class="tocbot-list-menu">
+        <a class="tocbot-toc-expand" onclick="expand_toc()">全部展开</a>
+        <a onclick="go_top()">回到顶部</a>
+        <a onclick="go_bottom()">前往底部</a>
+    </div>
+</div>
+
+<script>
+    document.ready(
+        function () {
+            tocbot.init({
+                tocSelector: '.tocbot-list',
+                contentSelector: '.post-content',
+                headingSelector: 'h1, h2, h3, h4, h5',
+                collapseDepth: 1,
+                orderedList: false,
+                scrollSmooth: true,
+            })
+        }
+    )
+
+    function expand_toc() {
+        var b = document.querySelector(".tocbot-toc-expand");
+        tocbot.init({
+            tocSelector: '.tocbot-list',
+            contentSelector: '.post-content',
+            headingSelector: 'h1, h2, h3, h4, h5',
+            collapseDepth: 6,
+            orderedList: false,
+            scrollSmooth: true,
+        });
+        b.setAttribute("onclick", "collapse_toc()");
+        b.innerHTML = "全部折叠"
+    }
+
+    function collapse_toc() {
+        var b = document.querySelector(".tocbot-toc-expand");
+        tocbot.init({
+            tocSelector: '.tocbot-list',
+            contentSelector: '.post-content',
+            headingSelector: 'h1, h2, h3, h4, h5',
+            collapseDepth: 1,
+            orderedList: false,
+            scrollSmooth: true,
+        });
+        b.setAttribute("onclick", "expand_toc()");
+        b.innerHTML = "全部展开"
+    }
+
+    function go_top() {
+        window.scrollTo(0, 0);
+    }
+
+    function go_bottom() {
+        window.scrollTo(0, document.body.scrollHeight);
+    }
+
+</script>
+    
+
+    
+    <article class="post-wrap">
+        <header class="post-header">
+            <h1 class="post-title">迷一样的KB2871997</h1>
+            
+                <div class="post-meta">
+                    
+                        作者: <a itemprop="author" rel="author" href="/">SeikoSrp</a>
+                    
+
+                    
+                        <span class="post-time">
+                        发布于: <a href="#">十二月 18, 2020&nbsp;&nbsp;18:47:41</a>
+                        </span>
+                    
+                    
+                        <span class="post-category">
+                    分类:
+                            
+                                <a href="/categories/RedTeam-%E5%9F%9F%E5%AE%89%E5%85%A8/">RedTeam&域安全</a>
+                            
+                        </span>
+                    
+                </div>
+            
+        </header>
+
+        <div class="post-content">
+            <p>Freebuf链接：<a href="https://www.freebuf.com/vuls/220740.html" target="_blank" rel="noopener">https://www.freebuf.com/vuls/220740.html</a></p>
+<p>在内网渗渗透时，当我们通过GPP漏洞等方式获取到凭据后，将会使用这组凭据进行横向移动，进行权限提升。</p>
+<p><img src="%E8%BF%B7%E4%B8%80%E6%A0%B7%E7%9A%84KB2871997.assets/1575809554771.png" alt="1575809554771"></p>
+<p> 不管通过那种方式获取到了明文密码或者HASH，横向移动是必不可少的一步，攻击者会使用常见的Psexec式(psexec psexec_psh)，Wmi式(wmicmd、wmiexec)、winrm式(evil-winrm)这几种方式来远程执行命令，除了这几款之外，目前还有一款综合式的远程执行命令的工具（crackmapexec），此款工具支持多种执行方式，并且支持批量。攻击者通过此类型的方式从内网中的一台主机横向移动以求获得更多的内网主机权限以达到提升内网权限或者是获取关键信息的目的。</p>
+<p>在横向移动中有一种经久不衰的攻击的攻击是手法是Pass The Hash，Pass The Hash出现极大提升了攻击效率，利用windows的自认证机制而不需要破解HASH登录到系统中。</p>
+<p>微软为了解决这个问题在2014年发布的更新KB2871997一度被传言能够防御Pass The Hash，下面我们就来看一下是否真的是这样。</p>
+<p><img src="%E8%BF%B7%E4%B8%80%E6%A0%B7%E7%9A%84KB2871997.assets/1575809565027.png" alt="1575809565027"></p>
+<p><img src="%E8%BF%B7%E4%B8%80%E6%A0%B7%E7%9A%84KB2871997.assets/1575809575527.png" alt="1575809575527"></p>
+<h2 id="KB2871997安装前后测试"><a href="#KB2871997安装前后测试" class="headerlink" title="KB2871997安装前后测试"></a>KB2871997安装前后测试</h2><p>首先看一下未安装补丁的情况，其中本地管理员组有三个帐户，主机名为TESTWIN7，所在域为TEST.LOCAL：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">administrator是RID为500的本地管理员账号</span><br><span class="line">testpth是RID非500的本地账号</span><br><span class="line">TEST\xxm为加入了本地Administrators组的域帐户</span><br></pre></td></tr></table></figure>
+
+<p><img src="%E8%BF%B7%E4%B8%80%E6%A0%B7%E7%9A%84KB2871997.assets/1575809616032.png" alt="1575809616032"></p>
+<p>首先使用本地帐户administrator：</p>
+<p><img src="%E8%BF%B7%E4%B8%80%E6%A0%B7%E7%9A%84KB2871997.assets/1575809622427.png" alt="1575809622427"></p>
+<p>使用本地管理组帐户testpth:</p>
+<p><img src="%E8%BF%B7%E4%B8%80%E6%A0%B7%E7%9A%84KB2871997.assets/1575809631670.png" alt="1575809631670"></p>
+<p>域用户xxm:</p>
+<p><img src="%E8%BF%B7%E4%B8%80%E6%A0%B7%E7%9A%84KB2871997.assets/1575809638802.png" alt="1575809638802"></p>
+<p>这里可以看到本地帐户administrator成功，本地管理员帐户testpth失败，域用户xxm成功，再来看一下安装补丁之后：</p>
+<p><img src="%E8%BF%B7%E4%B8%80%E6%A0%B7%E7%9A%84KB2871997.assets/1575809658548.png" alt="1575809658548"></p>
+<p>使用本地帐户administrator：</p>
+<p><img src="%E8%BF%B7%E4%B8%80%E6%A0%B7%E7%9A%84KB2871997.assets/1575809666877.png" alt="1575809666877"></p>
+<p>使用本地帐户testpth：</p>
+<p><img src="%E8%BF%B7%E4%B8%80%E6%A0%B7%E7%9A%84KB2871997.assets/1575809673351.png" alt="1575809673351"></p>
+<p>使用域帐户xxm：</p>
+<p><img src="%E8%BF%B7%E4%B8%80%E6%A0%B7%E7%9A%84KB2871997.assets/1575809678589.png" alt="1575809678589"></p>
+<p>安装KB2871997前后的对比发现并没有区别。而之前非administrator的本地管理员Pass The Hash失败被认为是KB2871997的作用，实际是由于远程访问和UAC的限制。</p>
+<h2 id="远程访问和UAC"><a href="#远程访问和UAC" class="headerlink" title="远程访问和UAC"></a>远程访问和UAC</h2><p>图中可以看到在windows中administrator的RID为500，并且是唯一的。同样为管理员组的本地帐户的testpth的RID的值为1000。</p>
+<p><img src="%E8%BF%B7%E4%B8%80%E6%A0%B7%E7%9A%84KB2871997.assets/1575809685471.png" alt="1575809685471"></p>
+<p>而域账号xxm使用的是域内的SID号。</p>
+<p><img src="%E8%BF%B7%E4%B8%80%E6%A0%B7%E7%9A%84KB2871997.assets/1575809694114.png" alt="1575809694114"></p>
+<p>根据微软官方关于远程访问和用户帐户控制的相关文档可以了解到，UAC为了更好的保护Administrators组的帐户，会在网络上进行限制。<a href="https://support.microsoft.com/en-us/help/951016/description-of-user-account-control-and-remote-restrictions-in-windows" target="_blank" rel="noopener">https://support.microsoft.com/en-us/help/951016/description-of-user-account-control-and-remote-restrictions-in-windows</a></p>
+<p>在使用本地用户进行远程登录时不会使用完全管理员权限（full administrator），但是在域用户被加入到本地管理员组之后，域用户可以使用完全管理员（full administrator）的Access Token运行，并且UAC不会生效。</p>
+<p><img src="%E8%BF%B7%E4%B8%80%E6%A0%B7%E7%9A%84KB2871997.assets/1575809701102.png" alt="1575809701102"></p>
+<p>由此可见在上面的实验中域用户xxm能够成功PTH，而本地用户testpth无法成功，是因为以testpth的身份发起的请求被UAC拒绝。而administrator用户成功的原因同样是因为UAC。</p>
+<h3 id="FilterAdministratorToken"><a href="#FilterAdministratorToken" class="headerlink" title="FilterAdministratorToken"></a>FilterAdministratorToken</h3><p>在UAC组策略设置和注册表项设置的官方文档（<a href="https://docs.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2008-R2-and-2008/dd835564(v=ws.10)#BKMK_BuiltInAdmin）中可以看到相关的描述，关于UAC的注册表中一个注册表键值为FilterAdministratorToken，且在Windows" target="_blank" rel="noopener">https://docs.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2008-R2-and-2008/dd835564(v=ws.10)#BKMK_BuiltInAdmin）中可以看到相关的描述，关于UAC的注册表中一个注册表键值为FilterAdministratorToken，且在Windows</a> Server 2008默认为Disable。</p>
+<p><img src="%E8%BF%B7%E4%B8%80%E6%A0%B7%E7%9A%84KB2871997.assets/1575809712292.png" alt="1575809712292"></p>
+<p>紧跟着文档中就添加了关于Admin Approval Mode的说明：</p>
+<p><img src="%E8%BF%B7%E4%B8%80%E6%A0%B7%E7%9A%84KB2871997.assets/1575809719735.png" alt="1575809719735"></p>
+<p>在UAC的控制策略中对于内置administrator帐户运行程序时会直接赋予完全管理权限（full administrative privilege）。这就是本地帐户administrator和域帐户xxm成功而本地管理员帐户testpth失败的原因。</p>
+<p>Windows Server 2012相关的官方文档没有找到，但是在Windows Server 2012 R2版本服务器中可以看到本地安全策略中的“用户帐户控制：以管理员批准模式运行所有的管理员”已经默认开启。</p>
+<p><img src="%E8%BF%B7%E4%B8%80%E6%A0%B7%E7%9A%84KB2871997.assets/1575809731260.png" alt="1575809731260"></p>
+<p>现在将testwin7主机的FilterAdministratorToken设置为1。</p>
+<p>目录：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System</span><br></pre></td></tr></table></figure>
+
+<p><img src="%E8%BF%B7%E4%B8%80%E6%A0%B7%E7%9A%84KB2871997.assets/1575809743050.png" alt="1575809743050"></p>
+<p>修改之后策略会立即生效，可以看到使用administrator的远程连接也被拒绝了</p>
+<p><img src="%E8%BF%B7%E4%B8%80%E6%A0%B7%E7%9A%84KB2871997.assets/1575809750215.png" alt="1575809750215"></p>
+<h3 id="LocalAccountTokenFilterPolicy"><a href="#LocalAccountTokenFilterPolicy" class="headerlink" title="LocalAccountTokenFilterPolicy"></a>LocalAccountTokenFilterPolicy</h3><p>上面我们知道了使用非administrator的本地管理员帐户testpth进行Pass The Hash为什么失败，那如何禁用UAC的限制？</p>
+<p>官方文档也是有提到的<a href="https://support.microsoft.com/en-us/help/951016/description-of-user-account-control-and-remote-restrictions-in-windows" target="_blank" rel="noopener">https://support.microsoft.com/en-us/help/951016/description-of-user-account-control-and-remote-restrictions-in-windows</a></p>
+<p>可以通过修改注册表中LocalAccountTokenFilterPolicy选项的键值来进行更改。注册表项为</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System</span><br></pre></td></tr></table></figure>
+
+<p>如果LocalAccountTokenFilterPolicy注册表项不存在可以直接新建一条，并将值设置为1</p>
+<p>LocalAccountTokenFilterPolicy的值默认为0（开启远程限制），为1时将关闭远程限制</p>
+<p><img src="%E8%BF%B7%E4%B8%80%E6%A0%B7%E7%9A%84KB2871997.assets/1575809762253.png" alt="1575809762253"></p>
+<p>再次使用本地管理员账号testpth可以成功远程连接。</p>
+<p><img src="%E8%BF%B7%E4%B8%80%E6%A0%B7%E7%9A%84KB2871997.assets/1575809772226.png" alt="1575809772226"></p>
+<p>在防御远程访问的时候，这个注册表需要更加注意，默认情况下这个注册表键值为0，也就是说远程限制是开启的，如果由于误操作将此键值设置为1那无疑是对攻击者敞开了大门。</p>
+<h2 id="KB2871997"><a href="#KB2871997" class="headerlink" title="KB2871997"></a>KB2871997</h2><p>事实证明KB2871997不能直接限制Pass The Hash，具体更改为以下几点。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">1、支持“Protected Users”组；</span><br><span class="line">2、Restricted Admin RDP模式的远程桌面客户端支持；</span><br><span class="line">3、注销后删除LSASS中的凭据；</span><br><span class="line">4、添加两个新的SID；</span><br><span class="line">5、LSASS中只允许wdigest存储明文密码。</span><br></pre></td></tr></table></figure>
+
+<h3 id="支持“Protected-Users”组"><a href="#支持“Protected-Users”组" class="headerlink" title="支持“Protected Users”组"></a>支持“Protected Users”组</h3><p>“Protected Users”组是Windows Server 2012 R2域中的安全组，“Protected Users”组的成员会被强制使用Kerberos身份验证，并且对Kerberos强制执行AES加密。</p>
+<p><img src="%E8%BF%B7%E4%B8%80%E6%A0%B7%E7%9A%84KB2871997.assets/1575809799893.png" alt="1575809799893"></p>
+<h3 id="Restricted-Admin-RDP模式的远程桌面客户端支持"><a href="#Restricted-Admin-RDP模式的远程桌面客户端支持" class="headerlink" title="Restricted Admin RDP模式的远程桌面客户端支持"></a>Restricted Admin RDP模式的远程桌面客户端支持</h3><p>Restricted Admin RDP模式是为了避免将Client端的凭据暴露给远程系统，同时也产生一种变种的Pass The Hash（Passing the Hash with Remote Desktop），这里不再说明。同时这个功能只支持windows server 2012和windows8.1。</p>
+<p><img src="%E8%BF%B7%E4%B8%80%E6%A0%B7%E7%9A%84KB2871997.assets/1575809806634.png" alt="1575809806634"></p>
+<h3 id="注销后删除凭证"><a href="#注销后删除凭证" class="headerlink" title="注销后删除凭证"></a>注销后删除凭证</h3><p>在这个更新之前，只要用户登录系统，Windows就会在lsass中缓存用户的凭据，包括用户的明文密码、LM/NTLM HASH、Kerberos的TGT票据/Session Key。</p>
+<h3 id="新的SID"><a href="#新的SID" class="headerlink" title="新的SID"></a>新的SID</h3><p>在更新中新添加了两个SID:</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">本地帐户LOCAL_ACCOUNT（S-1-5-113）所有本地帐户继承自此SID。</span><br><span class="line">本地帐户和管理组成员LOCAL_ACCOUNT_AND_MEMBER_OF_ADMINISTRATORS_GROUP  （S-1-5-114）所有管理员组的本地用户继承此ID。</span><br></pre></td></tr></table></figure>
+
+<p>​         <strong>注意</strong>：S-1-5-114这里在中文操作系统中提供的翻译是“NT AUTHORITY\本地帐户和管理员组成员” 但是实际上是“所有本地Administrators组中的本地帐户”，即域用户即使被加入到了本地Administrators组也不继承此SID。</p>
+<p><img src="%E8%BF%B7%E4%B8%80%E6%A0%B7%E7%9A%84KB2871997.assets/1575809826037.png" alt="1575809826037"></p>
+<p>这个SID对于限制横向渗透的远程连接并没有任何实质的作用，它的主要作用是更方便的防止通过网络使用本地帐户登录。对于防御人员来说我们可以通过将这两个SID对应的组加入组策略中的下列选项从而限制攻击者能够从外部访问本地系统/服务：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">拒绝从网络访问这台计算机</span><br><span class="line">拒绝通过远程桌面服务登录</span><br></pre></td></tr></table></figure>
+
+<p><img src="%E8%BF%B7%E4%B8%80%E6%A0%B7%E7%9A%84KB2871997.assets/1575809851966.png" alt="1575809851966"></p>
+<p>当我们直接将这两个组加入拒绝访问列表的方式来禁用使用本地帐户进行网络访问时，可以看到使用本地administrator帐户提示“登录失败：未授予用户再次计算机上的请求登录类型”。同时也实验了只加入“本地帐户（S-1-5-113）”这一个SID对应的组，发现administrator依然被拒绝！</p>
+<p><img src="%E8%BF%B7%E4%B8%80%E6%A0%B7%E7%9A%84KB2871997.assets/1575809887223.png" alt="1575809887223"></p>
+<p>此时加入本地管理员组的域用户并不受影响，证明了上面的说法，也就是说其实这个补丁新添加的两个组在whoami /all里的中文翻译还是有一定的误导性的：</p>
+<p><img src="%E8%BF%B7%E4%B8%80%E6%A0%B7%E7%9A%84KB2871997.assets/1575809894640.png" alt="1575809894640"></p>
+<p>域管理员帐户administrator一样也可以成功</p>
+<p><img src="%E8%BF%B7%E4%B8%80%E6%A0%B7%E7%9A%84KB2871997.assets/1575809901586.png" alt="1575809901586"></p>
+<p>​         所以从实验结果来看这两个SID的作用就是将原本windows的本地组做了一个合并和处理，让用户在添加组策略时更方便一点，同时对于它们的关系来说S-1-5-114是S-1-5-113的子集，S-1-5-113包含所有本地用户，S-1-5-114包括的是Administrators组中的本地用户。</p>
+<p><img src="%E8%BF%B7%E4%B8%80%E6%A0%B7%E7%9A%84KB2871997.assets/1575809910076.png" alt="1575809910076"></p>
+<h3 id="LSASS中删除了明文凭证"><a href="#LSASS中删除了明文凭证" class="headerlink" title="LSASS中删除了明文凭证"></a>LSASS中删除了明文凭证</h3><p>前面说到LSASS会存储用户的明文密码，这个更新只允许WDigest在LSASS中存储明文密码。如果想防止WDigest的明文密码存储在LSASS中则可以通过修改下面注册表的键值来实现：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">HKEY_LOCAL_MACHINE\System\CurrentControlSet\Control\SecurityProviders\WDigest</span><br></pre></td></tr></table></figure>
+
+<p>如果UseLogonCredential值设置为0，则WDigest不会将凭据存储在内存中。</p>
+<p>如果UseLogonCredential值设置为1，WDigest将在内存中存储凭据。</p>
+<p><img src="%E8%BF%B7%E4%B8%80%E6%A0%B7%E7%9A%84KB2871997.assets/1575809939954.png" alt="1575809939954"></p>
+<p>修改注册表之后发现已经不能看到WDigest保存的明文密码（需重启或注销登录生效）。</p>
+<p><img src="%E8%BF%B7%E4%B8%80%E6%A0%B7%E7%9A%84KB2871997.assets/1575809951446.png" alt="1575809951446"></p>
+<h2 id="小结"><a href="#小结" class="headerlink" title="小结"></a>小结</h2><p>看到这里防止Pass The Hash类型的横向移动的方法也很明显了：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">1、将FilterAdministratorToken的值设置为1，限制本地administrator账户的远程登录；</span><br><span class="line">2、可以使用脚本或者人工定时查看LocalAccountTokenFilterPolicy是否曾经被攻击者修改过；</span><br><span class="line">3、在组策略中的“拒绝从网络访问这台计算机”将需要限制的组、用户加入到列表中。</span><br></pre></td></tr></table></figure>
+
+<p>而对于KB2871997的更新内容来说不管是“Protected Users”组和新的RDP模式以及新的SID号都没有起到实际的限制作用。</p>
+<p>新的两个SID组S-1-5-113和S-1-5-114也只是把本地用户划分了一下，同时这样做是没有太大意义的，在S-1-5-113能够包括所有本地用户的情况下再划分出来一个S-1-5-114组，现实中应该很少存在只是限制S-1-5-114（即管理员组的本地用户）而不限制所有本地用户的情况。同时如果是为了提升安全等级最好的方式是把Administrators组的域用户一起禁用，而不是只禁用Administrators的本地成员。</p>
+<p>唯一有点作用的就是在LSASS中删除了除WDigest之外的协议所保存的明文了但是他并不足以限制Pass The Hash这种类型的横向移动。</p>
+
+        </div>
+
+        
+            <section class="post-copyright">
+                
+                
+                
+                
+
+            </section>
+        
+        <section class="post-tags">
+            <div>
+                <span>Tag(s):</span>
+                <span class="tag">
+                    
+                </span>
+            </div>
+            <div>
+                <a href="javascript:window.history.back();">back</a>
+                <span>· </span>
+                <a href="/">home</a>
+            </div>
+        </section>
+        <section class="post-nav">
+            
+                <a class="prev" rel="prev" href="/2021/01-15-%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BB%84%E6%88%90%E5%8E%9F%E7%90%86_3.1_%E5%AD%98%E5%82%A8%E7%A8%8B%E5%BA%8F%E8%AE%A1%E7%AE%97%E6%9C%BA/">计算机组成原理_3.1_存储程序计算机</a>
+            
+            
+            <a class="next" rel="next" href="/2020/12-18-%E7%94%B1APT34%E5%B7%A5%E5%85%B7Glimpse%E5%BC%95%E7%94%B3%E5%87%BA%E7%9A%84DNS%E9%9A%A7%E9%81%93%E9%97%AE%E9%A2%98/">由APT34工具Glimpse引申出的DNS隧道问题</a>
+            
+        </section>
+	
+		<section id="comments" class="comments">
+		  <style>
+			.comments{margin:30px;padding:10px;background:#fff}
+			@media screen and (max-width:800px){.comments{margin:auto;padding:10px;background:#fff}}
+		  </style>
+		  <div class="valine_comment"></div>
+<!--载入js，在</body>之前插入即可-->
+<!--Leancloud 操作库:-->
+<script src="//cdn1.lncld.net/static/js/3.0.4/av-min.js"></script>
+<!--Valine 的核心代码库-->
+<script src="//unpkg.com/valine/dist/Valine.min.js"></script>
+<script>
+  new Valine({
+      el: '.valine_comment',
+      app_id: 'ehQ0k7G3fcpwmkyxhG8U6DzL-gzGzoHsz',
+      app_key: 'AwwXGgbdqswiimAY0qJYhtRa',
+      placeholder: '这里留言。。',
+      notify: 'true',
+      verify: 'true',
+    });
+</script>
+		</section>
+	
+
+    </article>
+</div>
+
+        </div>
+        <footer id="footer" class="footer">
+    <div class="copyright">
+        <span>© SeikoSrp | Powered by <a href="https://hexo.io" target="_blank">Hexo</a> & <a href="https://github.com/Siricee/hexo-theme-Chic" target="_blank">Chic</a></span>
+    </div>
+</footer>
+
+    </div>
+</body>
+</html>

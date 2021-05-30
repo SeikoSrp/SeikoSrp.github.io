@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+<meta http-equiv="X-UA-Compatible" content="ie=edge">
+
+    <meta name="author" content="SeikoSrp">
+
+
+
+
+
+
+<title>CSharp判断邮箱是否存在 | a blog</title>
+
+
+
+    <link rel="icon" href="/haidao.ico">
+
+
+
+
+    <!-- stylesheets list from _config.yml -->
+    
+    <link rel="stylesheet" href="/css/style.css">
+    
+
+
+
+    <!-- scripts list from _config.yml -->
+    
+    <script src="/js/script.js"></script>
+    
+    <script src="/js/tocbot.min.js"></script>
+    
+    <script src="/js/jquery.min.js"></script>
+    
+
+
+
+    
+    
+        
+    
+
+
+
+
+    <script>
+    function searchToggle() {
+        const width = $(document.body).width()
+        if(width > 479) {
+            return;
+        }
+        const search = $('.search');
+        const searchForm = $('.form-search');
+        const menuToggle = $('.menu-toggle');
+        const title = $('.navbar-header-title');
+
+        if(!search.hasClass("mobile-search")) {
+            search.addClass("mobile-search");
+            menuToggle.addClass("open-search")
+            title.addClass("mobile-title-hidden")
+        } else {
+            search.removeClass("mobile-search");
+            menuToggle.removeClass("open-search")
+            // title.css({visibility: 'visible'})
+            title.removeClass("mobile-title-hidden")
+        } 
+    }
+
+    function search(searchInputEl, formEl, flag) {
+        const path = "/" + "search.json"; // 可以在public 下查看这个search.json
+        $(formEl).submit(function(e){
+            e.preventDefault();
+            let target = null
+            if(searchInputEl == null) {
+                const screenWidth = $(document.body).width();
+                target = screenWidth > 479 ? $('#pc-search-input') : $('#mobile-search-input');
+                console.log(target);
+            } else {
+                target = $(searchInputEl)
+            }
+
+            if(!flag && target.val() === '') {
+                return ;
+            }
+
+            $("#u-search").fadeIn(500, function() {
+                $("body > .wrapper").addClass("modal-active");
+
+                $.ajax({
+                    url: path,
+                    dataType: "json",
+                    beforeSend: function (xhr) {
+                        $input = target.val();
+                        $(".form-input").val($input);
+                        const loadingBar = $('.search-loading-bar') 
+                        loadingBar.css({
+                            width:'100%',
+                            display: 'block'
+                        });
+                    },
+                    success: function( datas ) {
+                        // console.log(datas);
+                        const $resultPanel = $(".modal-body")[0];
+                        let str = `<ul class="modal-results">`;
+                        var keywords = $(".form-input").val().trim().toLowerCase().split(/[\s\-]+/);
+                        $resultPanel.innerHTML = "";
+                        let hasResult = false
+                        let text = `<div class="no-result">找不到与关键词相关的内容....</div>`;
+
+                        if ($(".form-input").val().trim().length <= 0) {
+                            // 没有结果
+                            $resultPanel.innerHTML = text;
+                            return;
+                        }
+                        datas.forEach(function (data) {
+                            var isMatch = true;
+                            if (!data.title || data.title.trim() === '') {
+                                data.title = "Untitled";
+                            }
+                            var data_title = data.title.trim().toLowerCase();
+                            var data_content = data.content.trim().replace(/<[^>]+>/g, "").toLowerCase();
+                            var data_url = data.url;
+                            var index_title = -1;
+                            var index_content = -1;
+                            var first_occur = -1;
+                            // only match artiles with not empty contents
+                            if (data_content !== '') {
+                                keywords.forEach(function (keyword, i) {
+                                    index_title = data_title.indexOf(keyword);
+                                    index_content = data_content.indexOf(keyword);
+
+                                    if (index_title < 0 && index_content < 0) {
+                                        isMatch = false;
+                                    } else {
+                                        hasResult = true
+                                        if (index_content < 0) {
+                                            index_content = 0;
+                                        }
+                                        if (i == 0) {
+                                            first_occur = index_content;
+                                        }
+                                    }
+                                });
+                            } else {
+                                isMatch = false;
+                            }
+                            // show search results
+                            if (isMatch) {
+                                str += `<li class='result-item'><a href='${data_url}' class='result-item-detail'> <span class="title">${data_title}</span>`;
+                                var content = data.content.trim().replace(/<[^>]+>/g, "");
+                                if (first_occur >= 0) {
+                                    // cut out 200 characters
+                                    var start = first_occur - 40;
+                                    var end = first_occur + 160;
+
+                                    if (start < 0) {
+                                        start = 0;
+                                    }
+
+                                    if (start == 0) {
+                                        end = 200;
+                                    }
+
+                                    if (end > content.length) {
+                                        end = content.length;
+                                    }
+
+                                    var match_content = content.substring(start, end);
+
+                                    // highlight all keywords
+                                    keywords.forEach(function (keyword) {
+                                        var regS = new RegExp(keyword, "gi");
+                                        match_content = match_content.replace(regS, `<em class="search-keyword">${keyword}</em>`);
+                                    });
+
+                                    str += `<span class="content"> ${match_content} ...</span></a>`;
+                                }
+                                str += "</li>";
+                            }
+                        });
+                        str += "</ul>";
+                        if(hasResult) {
+                            $resultPanel.innerHTML = str;
+                        } else {
+                            $resultPanel.innerHTML = text;
+                        }
+
+                    },
+                    complete: function() {
+                        setTimeout(() => {
+                                const loadingBar = $('.search-loading-bar') 
+                                loadingBar.css({
+                                    width:'0%',
+                                    display: 'none'
+                                });
+                        }, 300)
+                    }
+                });
+            })
+
+        });
+    }
+
+    $(document).ready(function() {
+        $('.modal-close').click(function () { 
+            $("#u-search").fadeOut();
+            $("body > .wrapper").removeClass("modal-active")
+        })
+
+        $('.modal-overlay').click(function() {
+            $("#u-search").fadeOut();
+            $("body > .wrapper").removeClass("modal-active")
+        })
+        search(null, ".form-search", false)
+        search("#u-search-modal-form .form-input", ".u-search-modal-form", true)
+    })
+</script>
+
+<meta name="generator" content="Hexo 4.2.1"></head>
+<body>
+<!-- Chic/layout.ejs -->
+ <div id="u-search">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="container">
+                    <form id="u-search-modal-form" class="u-search-modal-form">
+                        <button type="submit" class="form-submit-btn">
+                            <img src="/image/search.png" class="search-btn-img" />
+                        </button>
+                        <input placeholder="搜索文章。。。" class="form-input" id="modal-form-input">
+                    </form>
+                    <a class="modal-close">x</a>
+                </div>
+                <div class="search-loading">
+                    <div class="search-loading-bar"></div>
+                </div>
+            </div>
+            <div class="modal-body">
+                <!-- ul 格式如下 -->
+                <!-- <ul class="modal-results">
+                    <li class="result-item">
+                        <a class="result-item-detail">
+                            <span class="title">页面配置</span>
+                            <span class="content">
+                                content
+                            </span>
+                        </a>
+                    </li>
+                </ul> -->
+            </div>
+        </div>
+        <div class="modal-overlay"></div>
+    </div>
+    <div class="wrapper">
+        <header>
+    <nav class="navbar">
+        <div class="container">
+            <div class="navbar-header header-logo"><a href="/">SeikoSrp&#39;s Blog</a></div>
+            <div class="menu navbar-right">
+                <!-- 这里表示的是pc端搜索框 -->
+                
+                
+    <div class="search ">
+        <div class="search-btn" onClick="searchToggle()">
+            <img src="/image/search.png" class="search-btn-img" />
+        </div>
+        <form class="form-search">
+            <input class="input" placeholder="搜索文章" autocomplete="off" id="pc-search-input"/>
+        </form>
+    </div>
+
+                
+                    <a class="menu-item" href="/archives">文章</a>
+                
+                    <a class="menu-item" href="/category">分类</a>
+                
+                    <a class="menu-item" href="/about">关于</a>
+                
+                <input id="switch_default" type="checkbox" class="switch_default">
+                <label for="switch_default" class="toggleBtn"></label>
+            </div>
+        </div>
+    </nav>
+
+    
+    <nav class="navbar-mobile" id="nav-mobile">
+        <div class="container">
+            <div class="navbar-header">
+                <div>
+                    <a href="/">SeikoSrp&#39;s Blog</a><a id="mobile-toggle-theme">·&nbsp;Light</a>
+                </div>
+                <div class="navbar-mobile-right">
+                    
+                    
+    <div class="search ">
+        <div class="search-btn" onClick="searchToggle()">
+            <img src="/image/search.png" class="search-btn-img" />
+        </div>
+        <form class="form-search">
+            <input class="input" placeholder="搜索文章" autocomplete="off" id="mobile-search-input"/>
+        </form>
+    </div>
+
+                    <div class="menu-toggle" onclick="mobileBtn()">&#9776; 目录</div>
+                </div>
+                
+            </div>
+            <div class="menu" id="mobile-menu">
+                
+                    <a class="menu-item" href="/archives">文章</a>
+                
+                    <a class="menu-item" href="/category">分类</a>
+                
+                    <a class="menu-item" href="/about">关于</a>
+                
+            </div>
+        </div>
+    </nav>
+
+</header>
+<script>
+    var mobileBtn = function f() {
+        var toggleMenu = document.getElementsByClassName("menu-toggle")[0];
+        var mobileMenu = document.getElementById("mobile-menu");
+        if(toggleMenu.classList.contains("active")){
+           toggleMenu.classList.remove("active")
+            mobileMenu.classList.remove("active")
+        }else{
+            toggleMenu.classList.add("active")
+            mobileMenu.classList.add("active")
+        }
+    }
+</script>
+        <div class="main">
+            <div class="container">
+    
+    
+        <div class="post-toc">
+    <div class="tocbot-list">
+    </div>
+    <div class="tocbot-list-menu">
+        <a class="tocbot-toc-expand" onclick="expand_toc()">全部展开</a>
+        <a onclick="go_top()">回到顶部</a>
+        <a onclick="go_bottom()">前往底部</a>
+    </div>
+</div>
+
+<script>
+    document.ready(
+        function () {
+            tocbot.init({
+                tocSelector: '.tocbot-list',
+                contentSelector: '.post-content',
+                headingSelector: 'h1, h2, h3, h4, h5',
+                collapseDepth: 1,
+                orderedList: false,
+                scrollSmooth: true,
+            })
+        }
+    )
+
+    function expand_toc() {
+        var b = document.querySelector(".tocbot-toc-expand");
+        tocbot.init({
+            tocSelector: '.tocbot-list',
+            contentSelector: '.post-content',
+            headingSelector: 'h1, h2, h3, h4, h5',
+            collapseDepth: 6,
+            orderedList: false,
+            scrollSmooth: true,
+        });
+        b.setAttribute("onclick", "collapse_toc()");
+        b.innerHTML = "全部折叠"
+    }
+
+    function collapse_toc() {
+        var b = document.querySelector(".tocbot-toc-expand");
+        tocbot.init({
+            tocSelector: '.tocbot-list',
+            contentSelector: '.post-content',
+            headingSelector: 'h1, h2, h3, h4, h5',
+            collapseDepth: 1,
+            orderedList: false,
+            scrollSmooth: true,
+        });
+        b.setAttribute("onclick", "expand_toc()");
+        b.innerHTML = "全部展开"
+    }
+
+    function go_top() {
+        window.scrollTo(0, 0);
+    }
+
+    function go_bottom() {
+        window.scrollTo(0, document.body.scrollHeight);
+    }
+
+</script>
+    
+
+    
+    <article class="post-wrap">
+        <header class="post-header">
+            <h1 class="post-title">CSharp判断邮箱是否存在</h1>
+            
+                <div class="post-meta">
+                    
+                        作者: <a itemprop="author" rel="author" href="/">SeikoSrp</a>
+                    
+
+                    
+                        <span class="post-time">
+                        发布于: <a href="#">十二月 18, 2020&nbsp;&nbsp;18:47:41</a>
+                        </span>
+                    
+                    
+                </div>
+            
+        </header>
+
+        <div class="post-content">
+            <h1 id="收集邮箱地址"><a href="#收集邮箱地址" class="headerlink" title="收集邮箱地址"></a>收集邮箱地址</h1><p>这里推荐一个网站收集的地址，收集的数量很多，但是是要收费的：</p>
+<p><a href="https://hunter.io" target="_blank" rel="noopener">https://hunter.io</a></p>
+<p><img src="CSharp%E5%88%A4%E6%96%AD%E9%82%AE%E7%AE%B1%E6%98%AF%E5%90%A6%E5%AD%98%E5%9C%A8.assets/image-20201207122528622.png" alt="image-20201207122528622"></p>
+<p>还有一些猜测邮箱的方式：</p>
+<p><a href="https://www.52by.com/article/20980" target="_blank" rel="noopener">https://www.52by.com/article/20980</a></p>
+<h1 id="C-验证邮箱"><a href="#C-验证邮箱" class="headerlink" title="C#验证邮箱"></a>C#验证邮箱</h1><h2 id="原理"><a href="#原理" class="headerlink" title="原理"></a>原理</h2><p>这里主要通过<code>RCPT TO</code>消息之后的返回值来判断，如果存在则返回250，不存在则返回550</p>
+<p><a href="http://www.ruanyifeng.com/blog/2017/06/smtp-protocol.html" target="_blank" rel="noopener">http://www.ruanyifeng.com/blog/2017/06/smtp-protocol.html</a></p>
+<p><a href="https://docs.microsoft.com/en-us/exchange/mail-flow/test-smtp-with-telnet?view=exchserver-2019" target="_blank" rel="noopener">https://docs.microsoft.com/en-us/exchange/mail-flow/test-smtp-with-telnet?view=exchserver-2019</a></p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line">ubuntu@VM-0-9-ubuntu:~$ telnet </span><br><span class="line">telnet&gt; OPEN mx.test.com 25</span><br><span class="line">Trying x.x.x.x...</span><br><span class="line">Connected to mx.test.com.</span><br><span class="line">Escape character is <span class="string">'^]'</span>.</span><br><span class="line">220 mx5.test.com ESMTP</span><br><span class="line">EHLO contoso.com</span><br><span class="line">250-mx5.test.com</span><br><span class="line">250-8BITMIME</span><br><span class="line">250 SIZE 20971520</span><br><span class="line">MAIL FROM: &lt;chris@contoso.com&gt;</span><br><span class="line">250 sender &lt;chris@contoso.com&gt; ok</span><br><span class="line">RCPT TO: &lt;<span class="built_in">test</span>@test.com&gt;</span><br><span class="line">550 <span class="comment">#5.1.0 Address rejected.</span></span><br><span class="line"></span><br><span class="line"><span class="comment">#成功则返回：</span></span><br><span class="line">RCPT TO: &lt;<span class="built_in">test</span>@test.com&gt;</span><br><span class="line">250 recipient &lt;<span class="built_in">test</span>@test.com&gt; ok</span><br></pre></td></tr></table></figure>
+
+<h2 id="实现代码"><a href="#实现代码" class="headerlink" title="实现代码"></a>实现代码</h2><p>上面的这是在telnet下面的一个完整的验证过程，下面是C#的实现：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br></pre></td><td class="code"><pre><span class="line">using System;</span><br><span class="line">using System.Net;</span><br><span class="line">using System.Net.Sockets;</span><br><span class="line">using System.Text;</span><br><span class="line">using System.Text.RegularExpressions;</span><br><span class="line"></span><br><span class="line">namespace ConsoleApp1</span><br><span class="line">&#123;</span><br><span class="line">    class Program</span><br><span class="line">    &#123;</span><br><span class="line">        public static string DomainToIp(string domain)</span><br><span class="line">        &#123;</span><br><span class="line">            domain &#x3D; domain.Replace(&quot;http:&#x2F;&#x2F;&quot;, &quot;&quot;).Replace(&quot;https:&#x2F;&#x2F;&quot;, &quot;&quot;);</span><br><span class="line">            IPHostEntry hostEntry &#x3D; Dns.GetHostEntry(domain);</span><br><span class="line">            IPEndPoint ipEndPoint &#x3D; new IPEndPoint(hostEntry.AddressList[0], 0);</span><br><span class="line">            &#x2F;&#x2F;Console.WriteLine(ipEndPoint.Address.ToString());</span><br><span class="line">            return ipEndPoint.Address.ToString();</span><br><span class="line"></span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        private bool CheckEmail(string EmailAddr, string SmtpServer)</span><br><span class="line">        &#123;</span><br><span class="line">            try</span><br><span class="line">            &#123;</span><br><span class="line">                int port &#x3D; 25;</span><br><span class="line">                &#x2F;&#x2F;&#x2F;创建终结点EndPoint</span><br><span class="line">                IPAddress ip &#x3D; IPAddress.Parse(DomainToIp(SmtpServer));</span><br><span class="line">                &#x2F;&#x2F;IPAddress ipp &#x3D; new IPAddress(&quot;127.0.0.1&quot;);</span><br><span class="line">                IPEndPoint ipe &#x3D; new IPEndPoint(ip, port);&#x2F;&#x2F;把ip和端口转化为IPEndpoint实例</span><br><span class="line"></span><br><span class="line">                &#x2F;&#x2F;创建socket并连接到服务器</span><br><span class="line">                Socket socket &#x3D; new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);&#x2F;&#x2F;创建Socket</span><br><span class="line">                socket.Connect(ipe);</span><br><span class="line"></span><br><span class="line">                string[] sendStr &#x3D; new string[3];</span><br><span class="line">                sendStr[0] &#x3D; &quot;EHLO contoso.com\r\n&quot;;</span><br><span class="line">                sendStr[1] &#x3D; &quot;MAIL FROM: &lt;chris@contoso.com&gt;\r\n&quot;;</span><br><span class="line">                sendStr[2] &#x3D; &quot;RCPT TO:&lt;&quot; + EmailAddr + &quot;&gt;\r\n&quot;;</span><br><span class="line"></span><br><span class="line">                &#x2F;&#x2F;--------------------------------------------------------------------------------------------------</span><br><span class="line">                string recvStr &#x3D; &quot;&quot;;</span><br><span class="line">                byte[] recvBytes &#x3D; new byte[1024];</span><br><span class="line">                recvStr +&#x3D; Encoding.ASCII.GetString(recvBytes, 0, socket.Receive(recvBytes, recvBytes.Length, 0));</span><br><span class="line">                &#x2F;&#x2F;Console.WriteLine(&quot;First: &quot;+ recvStr);</span><br><span class="line">                if (Regex.Matches(recvStr, @&quot;^220&quot;).Count &#x3D;&#x3D; 1)</span><br><span class="line">                &#123;</span><br><span class="line">                    recvStr &#x3D; &quot;&quot;;</span><br><span class="line">                    &#x2F;&#x2F;byte[] recvBytes1 &#x3D; new byte[1024];</span><br><span class="line">                    socket.Send(Encoding.ASCII.GetBytes(sendStr[0]), Encoding.ASCII.GetBytes(sendStr[0]).Length, 0);&#x2F;&#x2F;EHLO contoso.com</span><br><span class="line">                    &#x2F;&#x2F;Console.WriteLine(&quot;EHLO : &quot; + sendStr[0]);</span><br><span class="line">                    recvStr +&#x3D; Encoding.ASCII.GetString(recvBytes, 0, socket.Receive(recvBytes, recvBytes.Length, 0));</span><br><span class="line">                    &#x2F;&#x2F;Console.WriteLine(&quot;EHLO : &quot; + recvStr + &quot;\r\n&quot;);</span><br><span class="line">                &#125;</span><br><span class="line"></span><br><span class="line">                &#x2F;&#x2F;--------------------------------------------------------------------------------------------------</span><br><span class="line">                if(Regex.Matches(recvStr, @&quot;^250&quot;).Count &#x3D;&#x3D; 1)</span><br><span class="line">                &#123;</span><br><span class="line">                    &#x2F;&#x2F;MAIL FROM</span><br><span class="line">                    socket.Send(Encoding.ASCII.GetBytes(sendStr[1]), Encoding.ASCII.GetBytes(sendStr[1]).Length, 0);</span><br><span class="line">                    &#x2F;&#x2F;Console.WriteLine(&quot;MAIL FROM : &quot; + sendStr[1]);</span><br><span class="line">                &#125;</span><br><span class="line">                recvStr &#x3D; &quot;&quot;;</span><br><span class="line">                recvStr +&#x3D; Encoding.ASCII.GetString(recvBytes, 0, socket.Receive(recvBytes, recvBytes.Length, 0));</span><br><span class="line">                &#x2F;&#x2F;Console.WriteLine(&quot;MAIL FROM : &quot; + recvStr + &quot;\r\n&quot;);</span><br><span class="line">                &#x2F;&#x2F;--------------------------------------------------------------------------------------------------</span><br><span class="line"></span><br><span class="line">                if (Regex.Matches(recvStr, @&quot;^250&quot;).Count &#x3D;&#x3D; 1)</span><br><span class="line">                &#123;</span><br><span class="line">                    &#x2F;&#x2F;RCPT TO</span><br><span class="line">                    socket.Send(Encoding.ASCII.GetBytes(sendStr[2]), Encoding.ASCII.GetBytes(sendStr[2]).Length, 0);</span><br><span class="line">                    &#x2F;&#x2F;Console.WriteLine(sendStr[2]+&quot;\r\n&quot;);</span><br><span class="line">                &#125;</span><br><span class="line">                recvStr &#x3D; &quot;&quot;;</span><br><span class="line">                recvStr +&#x3D; Encoding.ASCII.GetString(recvBytes, 0, socket.Receive(recvBytes, recvBytes.Length, 0));</span><br><span class="line">                &#x2F;&#x2F;Console.WriteLine(recvStr + &quot;\r\n&quot;);</span><br><span class="line">                socket.Close();</span><br><span class="line">                if (Regex.Matches(recvStr, @&quot;^250&quot;).Count &#x3D;&#x3D; 1) &#123; return true; &#125; else &#123; return false; &#125;</span><br><span class="line">                </span><br><span class="line">            &#125;</span><br><span class="line">            catch (SocketException e)</span><br><span class="line">            &#123;</span><br><span class="line">                Console.WriteLine(&quot;SocketException:&#123;0&#125;&quot;, e);</span><br><span class="line">            &#125;</span><br><span class="line">            Console.WriteLine(&quot;Press Enter to Exit&quot;);</span><br><span class="line">            return false;</span><br><span class="line"></span><br><span class="line">        &#125;</span><br><span class="line">        static void Main(string[] args)</span><br><span class="line">        &#123;</span><br><span class="line">            string mailaddr &#x3D; &quot;seido@test.com&quot;;</span><br><span class="line">            Program program &#x3D;  new Program();</span><br><span class="line">            bool result &#x3D; program.CheckEmail(mailaddr, &quot;mx2.test.com&quot;);</span><br><span class="line">            if(result)</span><br><span class="line">            &#123;</span><br><span class="line">                Console.WriteLine(&quot;邮箱存在&quot;);</span><br><span class="line">            &#125;</span><br><span class="line">            Console.ReadLine();</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h1 id="查询域名的DNS记录"><a href="#查询域名的DNS记录" class="headerlink" title="查询域名的DNS记录"></a>查询域名的DNS记录</h1><p>上面的代码需要指定邮件服务器的地址，所以需要解析邮箱的域名，找到邮箱的邮件服务器地址</p>
+<p>分为A记录，邮箱记录等等，所以拿到一个域名需要查询MX记录才能确定把邮件发到那个服务器上</p>
+<p><a href="https://zh.wikipedia.org/zh/MX%E8%AE%B0%E5%BD%95" target="_blank" rel="noopener">https://zh.wikipedia.org/zh/MX%E8%AE%B0%E5%BD%95</a></p>
+<p>另外.NET中没有看到提供能够查询一个域名的MX记录的方法，所以这里是直接使用了网上的一个代码：</p>
+<p><a href="https://github.com/xiangyuecn/DNS-csharp" target="_blank" rel="noopener">https://github.com/xiangyuecn/DNS-csharp</a></p>
+<p>这里实现了查询所有类型的DNS记录：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br><span class="line">129</span><br><span class="line">130</span><br><span class="line">131</span><br><span class="line">132</span><br><span class="line">133</span><br><span class="line">134</span><br><span class="line">135</span><br><span class="line">136</span><br><span class="line">137</span><br><span class="line">138</span><br><span class="line">139</span><br><span class="line">140</span><br><span class="line">141</span><br><span class="line">142</span><br><span class="line">143</span><br><span class="line">144</span><br><span class="line">145</span><br><span class="line">146</span><br><span class="line">147</span><br><span class="line">148</span><br><span class="line">149</span><br><span class="line">150</span><br><span class="line">151</span><br><span class="line">152</span><br><span class="line">153</span><br><span class="line">154</span><br><span class="line">155</span><br><span class="line">156</span><br><span class="line">157</span><br><span class="line">158</span><br><span class="line">159</span><br><span class="line">160</span><br><span class="line">161</span><br><span class="line">162</span><br><span class="line">163</span><br><span class="line">164</span><br><span class="line">165</span><br><span class="line">166</span><br><span class="line">167</span><br><span class="line">168</span><br><span class="line">169</span><br><span class="line">170</span><br><span class="line">171</span><br><span class="line">172</span><br><span class="line">173</span><br><span class="line">174</span><br><span class="line">175</span><br><span class="line">176</span><br><span class="line">177</span><br><span class="line">178</span><br><span class="line">179</span><br><span class="line">180</span><br><span class="line">181</span><br><span class="line">182</span><br><span class="line">183</span><br><span class="line">184</span><br><span class="line">185</span><br><span class="line">186</span><br><span class="line">187</span><br><span class="line">188</span><br><span class="line">189</span><br><span class="line">190</span><br><span class="line">191</span><br><span class="line">192</span><br><span class="line">193</span><br><span class="line">194</span><br><span class="line">195</span><br><span class="line">196</span><br><span class="line">197</span><br><span class="line">198</span><br><span class="line">199</span><br><span class="line">200</span><br><span class="line">201</span><br><span class="line">202</span><br><span class="line">203</span><br><span class="line">204</span><br><span class="line">205</span><br><span class="line">206</span><br><span class="line">207</span><br><span class="line">208</span><br><span class="line">209</span><br><span class="line">210</span><br><span class="line">211</span><br><span class="line">212</span><br><span class="line">213</span><br><span class="line">214</span><br><span class="line">215</span><br><span class="line">216</span><br><span class="line">217</span><br><span class="line">218</span><br><span class="line">219</span><br><span class="line">220</span><br><span class="line">221</span><br><span class="line">222</span><br><span class="line">223</span><br><span class="line">224</span><br><span class="line">225</span><br><span class="line">226</span><br><span class="line">227</span><br><span class="line">228</span><br><span class="line">229</span><br><span class="line">230</span><br><span class="line">231</span><br><span class="line">232</span><br><span class="line">233</span><br><span class="line">234</span><br><span class="line">235</span><br><span class="line">236</span><br><span class="line">237</span><br><span class="line">238</span><br><span class="line">239</span><br><span class="line">240</span><br><span class="line">241</span><br><span class="line">242</span><br><span class="line">243</span><br><span class="line">244</span><br><span class="line">245</span><br><span class="line">246</span><br><span class="line">247</span><br><span class="line">248</span><br><span class="line">249</span><br><span class="line">250</span><br><span class="line">251</span><br><span class="line">252</span><br><span class="line">253</span><br><span class="line">254</span><br><span class="line">255</span><br><span class="line">256</span><br><span class="line">257</span><br><span class="line">258</span><br><span class="line">259</span><br><span class="line">260</span><br><span class="line">261</span><br><span class="line">262</span><br><span class="line">263</span><br><span class="line">264</span><br><span class="line">265</span><br><span class="line">266</span><br><span class="line">267</span><br><span class="line">268</span><br><span class="line">269</span><br><span class="line">270</span><br><span class="line">271</span><br><span class="line">272</span><br><span class="line">273</span><br><span class="line">274</span><br><span class="line">275</span><br><span class="line">276</span><br><span class="line">277</span><br><span class="line">278</span><br><span class="line">279</span><br><span class="line">280</span><br><span class="line">281</span><br><span class="line">282</span><br><span class="line">283</span><br><span class="line">284</span><br><span class="line">285</span><br><span class="line">286</span><br><span class="line">287</span><br><span class="line">288</span><br><span class="line">289</span><br><span class="line">290</span><br><span class="line">291</span><br><span class="line">292</span><br><span class="line">293</span><br><span class="line">294</span><br><span class="line">295</span><br><span class="line">296</span><br><span class="line">297</span><br><span class="line">298</span><br><span class="line">299</span><br><span class="line">300</span><br><span class="line">301</span><br><span class="line">302</span><br><span class="line">303</span><br><span class="line">304</span><br><span class="line">305</span><br><span class="line">306</span><br><span class="line">307</span><br><span class="line">308</span><br><span class="line">309</span><br><span class="line">310</span><br><span class="line">311</span><br><span class="line">312</span><br><span class="line">313</span><br><span class="line">314</span><br><span class="line">315</span><br><span class="line">316</span><br><span class="line">317</span><br><span class="line">318</span><br><span class="line">319</span><br><span class="line">320</span><br><span class="line">321</span><br><span class="line">322</span><br><span class="line">323</span><br><span class="line">324</span><br><span class="line">325</span><br><span class="line">326</span><br><span class="line">327</span><br><span class="line">328</span><br><span class="line">329</span><br><span class="line">330</span><br><span class="line">331</span><br><span class="line">332</span><br><span class="line">333</span><br><span class="line">334</span><br><span class="line">335</span><br><span class="line">336</span><br><span class="line">337</span><br><span class="line">338</span><br><span class="line">339</span><br><span class="line">340</span><br><span class="line">341</span><br><span class="line">342</span><br><span class="line">343</span><br><span class="line">344</span><br><span class="line">345</span><br><span class="line">346</span><br><span class="line">347</span><br><span class="line">348</span><br><span class="line">349</span><br><span class="line">350</span><br><span class="line">351</span><br><span class="line">352</span><br><span class="line">353</span><br><span class="line">354</span><br><span class="line">355</span><br><span class="line">356</span><br><span class="line">357</span><br><span class="line">358</span><br><span class="line">359</span><br><span class="line">360</span><br><span class="line">361</span><br><span class="line">362</span><br><span class="line">363</span><br><span class="line">364</span><br><span class="line">365</span><br><span class="line">366</span><br><span class="line">367</span><br><span class="line">368</span><br><span class="line">369</span><br><span class="line">370</span><br><span class="line">371</span><br><span class="line">372</span><br><span class="line">373</span><br><span class="line">374</span><br><span class="line">375</span><br><span class="line">376</span><br><span class="line">377</span><br><span class="line">378</span><br><span class="line">379</span><br><span class="line">380</span><br><span class="line">381</span><br><span class="line">382</span><br><span class="line">383</span><br><span class="line">384</span><br><span class="line">385</span><br><span class="line">386</span><br><span class="line">387</span><br><span class="line">388</span><br><span class="line">389</span><br><span class="line">390</span><br><span class="line">391</span><br><span class="line">392</span><br><span class="line">393</span><br><span class="line">394</span><br><span class="line">395</span><br><span class="line">396</span><br><span class="line">397</span><br><span class="line">398</span><br><span class="line">399</span><br><span class="line">400</span><br><span class="line">401</span><br><span class="line">402</span><br><span class="line">403</span><br><span class="line">404</span><br><span class="line">405</span><br><span class="line">406</span><br><span class="line">407</span><br><span class="line">408</span><br><span class="line">409</span><br><span class="line">410</span><br><span class="line">411</span><br><span class="line">412</span><br><span class="line">413</span><br><span class="line">414</span><br><span class="line">415</span><br><span class="line">416</span><br><span class="line">417</span><br></pre></td><td class="code"><pre><span class="line">using System;</span><br><span class="line">using System.Collections;</span><br><span class="line">using System.Collections.Generic;</span><br><span class="line">using System.Linq;</span><br><span class="line">using System.Net;</span><br><span class="line">using System.Runtime.InteropServices;</span><br><span class="line">using System.Text;</span><br><span class="line">using System.Text.RegularExpressions;</span><br><span class="line"></span><br><span class="line">namespace ConsoleApp1</span><br><span class="line">&#123;</span><br><span class="line">	public class DNS_A : DNSBase</span><br><span class="line">	&#123;</span><br><span class="line">		[StructLayout(LayoutKind.Sequential)]</span><br><span class="line">		private class A : Record</span><br><span class="line">		&#123;</span><br><span class="line">			&#x2F;&#x2F;https:&#x2F;&#x2F;docs.microsoft.com&#x2F;zh-cn&#x2F;windows&#x2F;desktop&#x2F;api&#x2F;windns&#x2F;ns-windns-__unnamed_struct_2</span><br><span class="line">			public uint IpAddress;</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		protected override Type RecordType &#123; get &#123; return typeof(A); &#125; &#125;</span><br><span class="line">		protected override string GetVal(object obj)</span><br><span class="line">		&#123;</span><br><span class="line">			return new IPAddress(((A)obj).IpAddress).ToString();</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	public class DNS_MX : DNSBase</span><br><span class="line">	&#123;</span><br><span class="line">		[StructLayout(LayoutKind.Sequential)]</span><br><span class="line">		private class MX : Record</span><br><span class="line">		&#123;</span><br><span class="line">			public IntPtr pNameExchange;</span><br><span class="line">			public short wPreference;</span><br><span class="line">			public short Pad;</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		protected override Type RecordType &#123; get &#123; return typeof(MX); &#125; &#125;</span><br><span class="line">		protected override string GetVal(object obj)</span><br><span class="line">		&#123;</span><br><span class="line">			return Marshal.PtrToStringUni(((MX)obj).pNameExchange);</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	public class DNS_CNAME : DNSBase</span><br><span class="line">	&#123;</span><br><span class="line">		[StructLayout(LayoutKind.Sequential)]</span><br><span class="line">		private class CNAME : Record</span><br><span class="line">		&#123;</span><br><span class="line">			public IntPtr pNameHost;</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		protected override Type RecordType &#123; get &#123; return typeof(CNAME); &#125; &#125;</span><br><span class="line">		protected override string GetVal(object obj)</span><br><span class="line">		&#123;</span><br><span class="line">			return Marshal.PtrToStringUni(((CNAME)obj).pNameHost);</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	public class DNS_NS : DNSBase</span><br><span class="line">	&#123;</span><br><span class="line">		[StructLayout(LayoutKind.Sequential)]</span><br><span class="line">		private class NS : Record</span><br><span class="line">		&#123;</span><br><span class="line">			public IntPtr pNameHost;</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		protected override Type RecordType &#123; get &#123; return typeof(NS); &#125; &#125;</span><br><span class="line">		protected override string GetVal(object obj)</span><br><span class="line">		&#123;</span><br><span class="line">			return Marshal.PtrToStringUni(((NS)obj).pNameHost);</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	public class DNS_PTR : DNSBase</span><br><span class="line">	&#123;</span><br><span class="line">		[StructLayout(LayoutKind.Sequential)]</span><br><span class="line">		private class PTR : Record</span><br><span class="line">		&#123;</span><br><span class="line">			public IntPtr pNameHost;</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		protected override Type RecordType &#123; get &#123; return typeof(PTR); &#125; &#125;</span><br><span class="line">		protected override string GetVal(object obj)</span><br><span class="line">		&#123;</span><br><span class="line">			return Marshal.PtrToStringUni(((PTR)obj).pNameHost);</span><br><span class="line">		&#125;</span><br><span class="line">		static private Regex exp &#x3D; new Regex(@&quot;^(\d+)\.(\d+)\.(\d+)\.(\d+)$&quot;);</span><br><span class="line">		protected override Result&lt;string&gt; TransformDomain(string domain)</span><br><span class="line">		&#123;</span><br><span class="line">			var m &#x3D; exp.Match(domain);</span><br><span class="line">			if (m.Success)</span><br><span class="line">			&#123;</span><br><span class="line">				domain &#x3D; m.Groups[4].Value</span><br><span class="line">					+ &quot;.&quot; + m.Groups[3].Value</span><br><span class="line">					+ &quot;.&quot; + m.Groups[2].Value</span><br><span class="line">					+ &quot;.&quot; + m.Groups[1].Value</span><br><span class="line">					+ &quot;.in-addr.arpa&quot;;</span><br><span class="line">			&#125;</span><br><span class="line"></span><br><span class="line">			return base.TransformDomain(domain);</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	public class DNS_TXT : DNSBase</span><br><span class="line">	&#123;</span><br><span class="line">		[StructLayout(LayoutKind.Sequential)]</span><br><span class="line">		private class TXT : Record</span><br><span class="line">		&#123;</span><br><span class="line">			public uint dwStringCount;</span><br><span class="line">			public IntPtr pStringArray;</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		protected override Type RecordType &#123; get &#123; return typeof(TXT); &#125; &#125;</span><br><span class="line">		protected override string GetVal(object obj)</span><br><span class="line">		&#123;</span><br><span class="line">			return Marshal.PtrToStringUni(((TXT)obj).pStringArray);</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">	[StructLayout(LayoutKind.Sequential)]</span><br><span class="line">	public abstract class DNSBase</span><br><span class="line">	&#123;</span><br><span class="line">		abstract protected Type RecordType &#123; get; &#125;</span><br><span class="line">		abstract protected string GetVal(object obj);</span><br><span class="line">		&#x2F;&#x2F;&#x2F; &lt;summary&gt;</span><br><span class="line">		&#x2F;&#x2F;&#x2F; 如果此查询需要对域名进行特殊处理，就处理一下</span><br><span class="line">		&#x2F;&#x2F;&#x2F; &lt;&#x2F;summary&gt;</span><br><span class="line">		protected virtual Result&lt;string&gt; TransformDomain(string domain)</span><br><span class="line">		&#123;</span><br><span class="line">			var rtv &#x3D; new Result&lt;string&gt;();</span><br><span class="line">			rtv.Value &#x3D; domain;</span><br><span class="line">			return rtv;</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		static private Dictionary&lt;string, int&gt; Types &#x3D; new Dictionary&lt;string, int&gt;();</span><br><span class="line">		&#x2F;&#x2F;&#x2F; &lt;summary&gt;</span><br><span class="line">		&#x2F;&#x2F;&#x2F; 注册一个类型，比如A,0x1，类型参考https:&#x2F;&#x2F;docs.microsoft.com&#x2F;zh-cn&#x2F;windows&#x2F;desktop&#x2F;DNS&#x2F;dns-constants中的DNS Record Types</span><br><span class="line">		&#x2F;&#x2F;&#x2F; &lt;&#x2F;summary&gt;</span><br><span class="line">		static public void RegisterType(string type, int value)</span><br><span class="line">		&#123;</span><br><span class="line">			Types[type] &#x3D; value;</span><br><span class="line">		&#125;</span><br><span class="line">		static DNSBase()</span><br><span class="line">		&#123;</span><br><span class="line">			RegisterType(&quot;A&quot;, 0x0001);</span><br><span class="line">			RegisterType(&quot;MX&quot;, 0x000f);</span><br><span class="line">			RegisterType(&quot;CNAME&quot;, 0x0005);</span><br><span class="line">			RegisterType(&quot;NS&quot;, 0x0002);</span><br><span class="line">			RegisterType(&quot;PTR&quot;, 0x000c);</span><br><span class="line">			RegisterType(&quot;TXT&quot;, 0x0010);</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">		&#x2F;&#x2F;&#x2F; &lt;summary&gt;</span><br><span class="line">		&#x2F;&#x2F;&#x2F; 查询一条记录，如果没有记录或查询失败会返回原因</span><br><span class="line">		&#x2F;&#x2F;&#x2F; &lt;&#x2F;summary&gt;</span><br><span class="line">		public Result&lt;string&gt; QueryOne(string domain, DNSQueryOptions options &#x3D; DNSQueryOptions.STANDARD)</span><br><span class="line">		&#123;</span><br><span class="line">			var rtv &#x3D; new Result&lt;string&gt;();</span><br><span class="line">			var res &#x3D; QueryAll(domain, options);</span><br><span class="line">			if (res.IsError)</span><br><span class="line">			&#123;</span><br><span class="line">				res.errorTo(rtv);</span><br><span class="line">				return rtv;</span><br><span class="line">			&#125;</span><br><span class="line">			var val &#x3D; res.Value;</span><br><span class="line">			if (val.Count &#x3D;&#x3D; 0)</span><br><span class="line">			&#123;</span><br><span class="line">				rtv.error(&quot;未查询到&quot; + RecordType.Name + &quot;记录&quot;);</span><br><span class="line">				return rtv;</span><br><span class="line">			&#125;</span><br><span class="line"></span><br><span class="line">			rtv.Value &#x3D; val[0];</span><br><span class="line">			return rtv;</span><br><span class="line">		&#125;</span><br><span class="line">		&#x2F;&#x2F;&#x2F; &lt;summary&gt;</span><br><span class="line">		&#x2F;&#x2F;&#x2F; 查询此类型的记录列表，如果查询失败会返回原因</span><br><span class="line">		&#x2F;&#x2F;&#x2F; &lt;&#x2F;summary&gt;</span><br><span class="line">		public Result&lt;List&lt;string&gt;&gt; QueryAll(string domain, DNSQueryOptions options &#x3D; DNSQueryOptions.STANDARD)</span><br><span class="line">		&#123;</span><br><span class="line">			var rtv &#x3D; new Result&lt;List&lt;string&gt;&gt;();</span><br><span class="line">			List&lt;string&gt; list &#x3D; new List&lt;string&gt;();</span><br><span class="line">			rtv.Value &#x3D; list;</span><br><span class="line"></span><br><span class="line">			if (String.IsNullOrEmpty(domain))</span><br><span class="line">			&#123;</span><br><span class="line">				rtv.error(&quot;查询&quot; + RecordType.Name + &quot;记录域名不能为空&quot;);</span><br><span class="line">				return rtv;</span><br><span class="line">			&#125;</span><br><span class="line">			try</span><br><span class="line">			&#123;</span><br><span class="line">				var tdRes &#x3D; TransformDomain(domain);</span><br><span class="line">				if (tdRes.IsError)</span><br><span class="line">				&#123;</span><br><span class="line">					tdRes.errorTo(rtv);</span><br><span class="line">					return rtv;</span><br><span class="line">				&#125;</span><br><span class="line">				domain &#x3D; tdRes.Value;</span><br><span class="line"></span><br><span class="line">				IntPtr ptr1 &#x3D; IntPtr.Zero;</span><br><span class="line">				IntPtr ptr2 &#x3D; IntPtr.Zero;</span><br><span class="line">				Record rec;</span><br><span class="line"></span><br><span class="line">				var type &#x3D; Types[RecordType.Name];</span><br><span class="line">				int num &#x3D; DnsQuery(ref domain, type, options, 0, ref ptr1, 0);</span><br><span class="line">				if (num !&#x3D; 0)</span><br><span class="line">				&#123;</span><br><span class="line">					rtv.error(&quot;查询出错[&quot; + num + &quot;]&quot;);</span><br><span class="line">					return rtv;</span><br><span class="line">				&#125;</span><br><span class="line">				for (ptr2 &#x3D; ptr1; !ptr2.Equals(IntPtr.Zero); ptr2 &#x3D; rec.pNext)</span><br><span class="line">				&#123;</span><br><span class="line">					rec &#x3D; (Record)Marshal.PtrToStructure(ptr2, RecordType);</span><br><span class="line">					if (rec.wType &#x3D;&#x3D; type)</span><br><span class="line">					&#123;</span><br><span class="line">						list.Add(GetVal(rec));</span><br><span class="line">					&#125;</span><br><span class="line">				&#125;</span><br><span class="line">				DnsRecordListFree(ptr1, 0);</span><br><span class="line">				return rtv;</span><br><span class="line">			&#125;</span><br><span class="line">			catch (Exception e)</span><br><span class="line">			&#123;</span><br><span class="line">				rtv.fail(&quot;查询&quot; + RecordType.Name + &quot;记录出错：&quot; + e.Message, e.ToString());</span><br><span class="line">				return rtv;</span><br><span class="line">			&#125;</span><br><span class="line">		&#125;</span><br><span class="line">		[DllImport(&quot;dnsapi&quot;, EntryPoint &#x3D; &quot;DnsQuery_W&quot;, CharSet &#x3D; CharSet.Unicode, SetLastError &#x3D; true, ExactSpelling &#x3D; true)]</span><br><span class="line">		private static extern int DnsQuery([MarshalAs(UnmanagedType.VBByRefStr)] ref string pszName, int wType, DNSQueryOptions options, int aipServers, ref IntPtr ppQueryResults, int pReserved);</span><br><span class="line"></span><br><span class="line">		[DllImport(&quot;dnsapi&quot;, CharSet &#x3D; CharSet.Auto, SetLastError &#x3D; true)]</span><br><span class="line">		private static extern void DnsRecordListFree(IntPtr pRecordList, int FreeType);</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">		[StructLayout(LayoutKind.Sequential)]</span><br><span class="line">		protected abstract class Record</span><br><span class="line">		&#123;</span><br><span class="line">			&#x2F;&#x2F;https:&#x2F;&#x2F;docs.microsoft.com&#x2F;zh-cn&#x2F;windows&#x2F;desktop&#x2F;api&#x2F;windns&#x2F;ns-windns-_dnsrecorda 固定数据</span><br><span class="line">			public IntPtr pNext;</span><br><span class="line">			public IntPtr pName;</span><br><span class="line">			public short wType;</span><br><span class="line">			public short wDataLength;</span><br><span class="line">			public int flags;</span><br><span class="line">			public int dwTtl;</span><br><span class="line">			public int dwReserved;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">	&#x2F;&#x2F;https:&#x2F;&#x2F;docs.microsoft.com&#x2F;zh-cn&#x2F;windows&#x2F;desktop&#x2F;DNS&#x2F;dns-constants</span><br><span class="line">	public enum DNSQueryOptions</span><br><span class="line">	&#123;</span><br><span class="line">		STANDARD &#x3D; 0x00000000,</span><br><span class="line">		ACCEPT_TRUNCATED_RESPONSE &#x3D; 0x00000001,</span><br><span class="line">		USE_TCP_ONLY &#x3D; 0x00000002,</span><br><span class="line">		NO_RECURSION &#x3D; 0x00000004,</span><br><span class="line">		BYPASS_CACHE &#x3D; 0x00000008,</span><br><span class="line">		NO_WIRE_QUERY &#x3D; 0x00000010,</span><br><span class="line">		NO_LOCAL_NAME &#x3D; 0x00000020,</span><br><span class="line">		NO_HOSTS_FILE &#x3D; 0x00000040,</span><br><span class="line">		NO_NETBT &#x3D; 0x00000080,</span><br><span class="line">		WIRE_ONLY &#x3D; 0x00000100,</span><br><span class="line">		RETURN_MESSAGE &#x3D; 0x00000200,</span><br><span class="line">		MULTICAST_ONLY &#x3D; 0x00000400,</span><br><span class="line">		NO_MULTICAST &#x3D; 0x00000800,</span><br><span class="line">		TREAT_AS_FQDN &#x3D; 0x00001000,</span><br><span class="line">		ADDRCONFIG &#x3D; 0x00002000,</span><br><span class="line">		DUAL_ADDR &#x3D; 0x00004000,</span><br><span class="line">		MULTICAST_WAIT &#x3D; 0x00020000,</span><br><span class="line">		MULTICAST_VERIFY &#x3D; 0x00040000,</span><br><span class="line">		DONT_RESET_TTL_VALUES &#x3D; 0x00100000,</span><br><span class="line">		DISABLE_IDN_ENCODING &#x3D; 0x00200000,</span><br><span class="line">		APPEND_MULTILABEL &#x3D; 0x00800000</span><br><span class="line">		&#x2F;&#x2F;RESERVED &#x3D; 0xf0000000</span><br><span class="line">	&#125;</span><br><span class="line">	public static class Extensions</span><br><span class="line">	&#123;</span><br><span class="line">		&#x2F;&#x2F;&#x2F; &lt;summary&gt;</span><br><span class="line">		&#x2F;&#x2F;&#x2F; 用join字符串拼接数组内元素,list[0]+join+list[1]...</span><br><span class="line">		&#x2F;&#x2F;&#x2F; getFn:返回格式化后的字符串，比如&quot;aa&quot;，返回null不拼接此字符串</span><br><span class="line">		&#x2F;&#x2F;&#x2F; &lt;&#x2F;summary&gt;</span><br><span class="line">		static public string join(this IEnumerable list, string join, Func&lt;object, string&gt; getFn &#x3D; null)</span><br><span class="line">		&#123;</span><br><span class="line">			StringBuilder str &#x3D; new StringBuilder();</span><br><span class="line">			bool start &#x3D; false;</span><br><span class="line">			foreach (object o in list)</span><br><span class="line">			&#123;</span><br><span class="line">				if (getFn !&#x3D; null)</span><br><span class="line">				&#123;</span><br><span class="line">					string val &#x3D; getFn(o);</span><br><span class="line">					if (val !&#x3D; null)</span><br><span class="line">					&#123;</span><br><span class="line">						if (start)</span><br><span class="line">						&#123;</span><br><span class="line">							str.Append(join);</span><br><span class="line">						&#125;</span><br><span class="line">						str.Append(val);</span><br><span class="line">					&#125;</span><br><span class="line">					else</span><br><span class="line">					&#123;</span><br><span class="line">						continue;</span><br><span class="line">					&#125;</span><br><span class="line">				&#125;</span><br><span class="line">				else</span><br><span class="line">				&#123;</span><br><span class="line">					if (start)</span><br><span class="line">					&#123;</span><br><span class="line">						str.Append(join);</span><br><span class="line">					&#125;</span><br><span class="line">					str.Append(o);</span><br><span class="line">				&#125;</span><br><span class="line">				start &#x3D; true;</span><br><span class="line">			&#125;</span><br><span class="line">			return str.ToString();</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	public class Result : IResult&lt;object&gt;</span><br><span class="line">	&#123;</span><br><span class="line"></span><br><span class="line">	&#125;</span><br><span class="line">	public class Result&lt;T&gt; : IResult&lt;T&gt;</span><br><span class="line">	&#123;</span><br><span class="line"></span><br><span class="line">	&#125;</span><br><span class="line">	public abstract class IResult&lt;T&gt;</span><br><span class="line">	&#123;</span><br><span class="line">		public Dictionary&lt;string, object&gt; Json &#123; get &#123; return json; &#125; &#125;</span><br><span class="line">		protected Dictionary&lt;string, object&gt; json;</span><br><span class="line">		public IResult()</span><br><span class="line">		&#123;</span><br><span class="line">			json &#x3D; new Dictionary&lt;string, object&gt;();</span><br><span class="line"></span><br><span class="line">			ErrorMessage &#x3D; &quot;&quot;;</span><br><span class="line">			ServerErrorMessage &#x3D; &quot;&quot;;</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		protected bool isErr &#x3D; false;</span><br><span class="line">		protected bool isSevErr &#x3D; false;</span><br><span class="line">		public string ErrorMessage &#123; get; set; &#125;</span><br><span class="line">		public string ServerErrorMessage &#123; get; set; &#125;</span><br><span class="line">		public T Value</span><br><span class="line">		&#123;</span><br><span class="line">			get</span><br><span class="line">			&#123;</span><br><span class="line">				object val;</span><br><span class="line">				json.TryGetValue(&quot;v&quot;, out val);</span><br><span class="line">				return val &#x3D;&#x3D; null ? default(T) : (T)val;</span><br><span class="line">			&#125;</span><br><span class="line">			set</span><br><span class="line">			&#123;</span><br><span class="line">				json[&quot;v&quot;] &#x3D; value;</span><br><span class="line">			&#125;</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		public IResult&lt;T&gt; buildResult()</span><br><span class="line">		&#123;</span><br><span class="line">			json[&quot;c&quot;] &#x3D; isErr ? 1 : 0;</span><br><span class="line">			json[&quot;m&quot;] &#x3D; ErrorMessage;</span><br><span class="line">			if (isSevErr)</span><br><span class="line">			&#123;</span><br><span class="line">				json[&quot;m_sev&quot;] &#x3D; ServerErrorMessage;</span><br><span class="line">			&#125;</span><br><span class="line"></span><br><span class="line">			return this;</span><br><span class="line">		&#125;</span><br><span class="line">		&#x2F;&#x2F;&#x2F; &lt;summary&gt;</span><br><span class="line">		&#x2F;&#x2F;&#x2F; 运行过程中是否出现错误，如果出错后续业务不应该被执行</span><br><span class="line">		&#x2F;&#x2F;&#x2F; &lt;&#x2F;summary&gt;</span><br><span class="line">		public bool IsError</span><br><span class="line">		&#123;</span><br><span class="line">			get &#123; return isErr; &#125;</span><br><span class="line">		&#125;</span><br><span class="line">		&#x2F;&#x2F;&#x2F; &lt;summary&gt;</span><br><span class="line">		&#x2F;&#x2F;&#x2F; 运行异常，比如无法处理的捕获异常</span><br><span class="line">		&#x2F;&#x2F;&#x2F; &lt;&#x2F;summary&gt;</span><br><span class="line">		&#x2F;&#x2F;&#x2F; &lt;param name&#x3D;&quot;message&quot;&gt;用户提示&lt;&#x2F;param&gt;</span><br><span class="line">		&#x2F;&#x2F;&#x2F; &lt;param name&#x3D;&quot;serverMessage&quot;&gt;服务器错误详细信息&lt;&#x2F;param&gt;</span><br><span class="line">		public void fail(string message, string serverMessage)</span><br><span class="line">		&#123;</span><br><span class="line">			isSevErr &#x3D; true;</span><br><span class="line">			ServerErrorMessage &#x3D; serverMessage;</span><br><span class="line">			error(message);</span><br><span class="line">		&#125;</span><br><span class="line">		&#x2F;&#x2F;&#x2F; &lt;summary&gt;</span><br><span class="line">		&#x2F;&#x2F;&#x2F; 出现错误，给用户友好提示</span><br><span class="line">		&#x2F;&#x2F;&#x2F; &lt;&#x2F;summary&gt;</span><br><span class="line">		&#x2F;&#x2F;&#x2F; &lt;param name&#x3D;&quot;message&quot;&gt;用户提示&lt;&#x2F;param&gt;</span><br><span class="line">		public void error(string message)</span><br><span class="line">		&#123;</span><br><span class="line">			isErr &#x3D; true;</span><br><span class="line">			ErrorMessage &#x3D; message;</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		&#x2F;&#x2F;&#x2F; &lt;summary&gt;</span><br><span class="line">		&#x2F;&#x2F;&#x2F; 把错误信息设置到另外一个对象，包括服务器错误，如果result已经有错将不会复制，新的错误会添加到现有错误前面</span><br><span class="line">		&#x2F;&#x2F;&#x2F; &lt;&#x2F;summary&gt;</span><br><span class="line">		public void errorTo&lt;X&gt;(IResult&lt;X&gt; result, string newErr &#x3D; &quot;&quot;, string newSrvErr &#x3D; &quot;&quot;)</span><br><span class="line">		&#123;</span><br><span class="line">			if (result.isErr || !isErr)</span><br><span class="line">			&#123;</span><br><span class="line">				return;</span><br><span class="line">			&#125;</span><br><span class="line">			var err &#x3D; String.IsNullOrEmpty(newErr) ? &quot;&quot; : newErr + &quot;\nby\n&quot;;</span><br><span class="line">			err +&#x3D; ErrorMessage;</span><br><span class="line">			var srvErr &#x3D; String.IsNullOrEmpty(newErr) ? &quot;&quot; : newSrvErr + &quot;\nby\n&quot;;</span><br><span class="line"></span><br><span class="line">			if (isSevErr || srvErr !&#x3D; &quot;&quot;)</span><br><span class="line">			&#123;</span><br><span class="line">				srvErr +&#x3D; ServerErrorMessage;</span><br><span class="line"></span><br><span class="line">				result.fail(err, srvErr);</span><br><span class="line">			&#125;</span><br><span class="line">			else</span><br><span class="line">			&#123;</span><br><span class="line">				result.error(err);</span><br><span class="line">			&#125;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+        </div>
+
+        
+            <section class="post-copyright">
+                
+                
+                
+                
+
+            </section>
+        
+        <section class="post-tags">
+            <div>
+                <span>Tag(s):</span>
+                <span class="tag">
+                    
+                </span>
+            </div>
+            <div>
+                <a href="javascript:window.history.back();">back</a>
+                <span>· </span>
+                <a href="/">home</a>
+            </div>
+        </section>
+        <section class="post-nav">
+            
+                <a class="prev" rel="prev" href="/2020/12-18-C_Anti-VM%E7%9A%84%E5%B0%8F%E6%B5%8B%E8%AF%95/">C_Anti-VM的小测试</a>
+            
+            
+            <a class="next" rel="next" href="/2020/12-18-CSharp_%E8%8E%B7%E5%8F%96%E5%9F%9F%E5%86%85%E6%89%93%E5%8D%B0%E6%9C%BAIP%E5%9C%B0%E5%9D%80/">CSharp_获取域内打印机IP地址</a>
+            
+        </section>
+	
+		<section id="comments" class="comments">
+		  <style>
+			.comments{margin:30px;padding:10px;background:#fff}
+			@media screen and (max-width:800px){.comments{margin:auto;padding:10px;background:#fff}}
+		  </style>
+		  <div class="valine_comment"></div>
+<!--载入js，在</body>之前插入即可-->
+<!--Leancloud 操作库:-->
+<script src="//cdn1.lncld.net/static/js/3.0.4/av-min.js"></script>
+<!--Valine 的核心代码库-->
+<script src="//unpkg.com/valine/dist/Valine.min.js"></script>
+<script>
+  new Valine({
+      el: '.valine_comment',
+      app_id: 'ehQ0k7G3fcpwmkyxhG8U6DzL-gzGzoHsz',
+      app_key: 'AwwXGgbdqswiimAY0qJYhtRa',
+      placeholder: '这里留言。。',
+      notify: 'true',
+      verify: 'true',
+    });
+</script>
+		</section>
+	
+
+    </article>
+</div>
+
+        </div>
+        <footer id="footer" class="footer">
+    <div class="copyright">
+        <span>© SeikoSrp | Powered by <a href="https://hexo.io" target="_blank">Hexo</a> & <a href="https://github.com/Siricee/hexo-theme-Chic" target="_blank">Chic</a></span>
+    </div>
+</footer>
+
+    </div>
+</body>
+</html>

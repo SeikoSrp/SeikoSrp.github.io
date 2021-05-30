@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+<meta http-equiv="X-UA-Compatible" content="ie=edge">
+
+    <meta name="author" content="SeikoSrp">
+
+
+
+
+
+
+<title>windows_via_4.5_令牌和权限提升 | a blog</title>
+
+
+
+    <link rel="icon" href="/haidao.ico">
+
+
+
+
+    <!-- stylesheets list from _config.yml -->
+    
+    <link rel="stylesheet" href="/css/style.css">
+    
+
+
+
+    <!-- scripts list from _config.yml -->
+    
+    <script src="/js/script.js"></script>
+    
+    <script src="/js/tocbot.min.js"></script>
+    
+    <script src="/js/jquery.min.js"></script>
+    
+
+
+
+    
+    
+        
+    
+
+
+
+
+    <script>
+    function searchToggle() {
+        const width = $(document.body).width()
+        if(width > 479) {
+            return;
+        }
+        const search = $('.search');
+        const searchForm = $('.form-search');
+        const menuToggle = $('.menu-toggle');
+        const title = $('.navbar-header-title');
+
+        if(!search.hasClass("mobile-search")) {
+            search.addClass("mobile-search");
+            menuToggle.addClass("open-search")
+            title.addClass("mobile-title-hidden")
+        } else {
+            search.removeClass("mobile-search");
+            menuToggle.removeClass("open-search")
+            // title.css({visibility: 'visible'})
+            title.removeClass("mobile-title-hidden")
+        } 
+    }
+
+    function search(searchInputEl, formEl, flag) {
+        const path = "/" + "search.json"; // 可以在public 下查看这个search.json
+        $(formEl).submit(function(e){
+            e.preventDefault();
+            let target = null
+            if(searchInputEl == null) {
+                const screenWidth = $(document.body).width();
+                target = screenWidth > 479 ? $('#pc-search-input') : $('#mobile-search-input');
+                console.log(target);
+            } else {
+                target = $(searchInputEl)
+            }
+
+            if(!flag && target.val() === '') {
+                return ;
+            }
+
+            $("#u-search").fadeIn(500, function() {
+                $("body > .wrapper").addClass("modal-active");
+
+                $.ajax({
+                    url: path,
+                    dataType: "json",
+                    beforeSend: function (xhr) {
+                        $input = target.val();
+                        $(".form-input").val($input);
+                        const loadingBar = $('.search-loading-bar') 
+                        loadingBar.css({
+                            width:'100%',
+                            display: 'block'
+                        });
+                    },
+                    success: function( datas ) {
+                        // console.log(datas);
+                        const $resultPanel = $(".modal-body")[0];
+                        let str = `<ul class="modal-results">`;
+                        var keywords = $(".form-input").val().trim().toLowerCase().split(/[\s\-]+/);
+                        $resultPanel.innerHTML = "";
+                        let hasResult = false
+                        let text = `<div class="no-result">找不到与关键词相关的内容....</div>`;
+
+                        if ($(".form-input").val().trim().length <= 0) {
+                            // 没有结果
+                            $resultPanel.innerHTML = text;
+                            return;
+                        }
+                        datas.forEach(function (data) {
+                            var isMatch = true;
+                            if (!data.title || data.title.trim() === '') {
+                                data.title = "Untitled";
+                            }
+                            var data_title = data.title.trim().toLowerCase();
+                            var data_content = data.content.trim().replace(/<[^>]+>/g, "").toLowerCase();
+                            var data_url = data.url;
+                            var index_title = -1;
+                            var index_content = -1;
+                            var first_occur = -1;
+                            // only match artiles with not empty contents
+                            if (data_content !== '') {
+                                keywords.forEach(function (keyword, i) {
+                                    index_title = data_title.indexOf(keyword);
+                                    index_content = data_content.indexOf(keyword);
+
+                                    if (index_title < 0 && index_content < 0) {
+                                        isMatch = false;
+                                    } else {
+                                        hasResult = true
+                                        if (index_content < 0) {
+                                            index_content = 0;
+                                        }
+                                        if (i == 0) {
+                                            first_occur = index_content;
+                                        }
+                                    }
+                                });
+                            } else {
+                                isMatch = false;
+                            }
+                            // show search results
+                            if (isMatch) {
+                                str += `<li class='result-item'><a href='${data_url}' class='result-item-detail'> <span class="title">${data_title}</span>`;
+                                var content = data.content.trim().replace(/<[^>]+>/g, "");
+                                if (first_occur >= 0) {
+                                    // cut out 200 characters
+                                    var start = first_occur - 40;
+                                    var end = first_occur + 160;
+
+                                    if (start < 0) {
+                                        start = 0;
+                                    }
+
+                                    if (start == 0) {
+                                        end = 200;
+                                    }
+
+                                    if (end > content.length) {
+                                        end = content.length;
+                                    }
+
+                                    var match_content = content.substring(start, end);
+
+                                    // highlight all keywords
+                                    keywords.forEach(function (keyword) {
+                                        var regS = new RegExp(keyword, "gi");
+                                        match_content = match_content.replace(regS, `<em class="search-keyword">${keyword}</em>`);
+                                    });
+
+                                    str += `<span class="content"> ${match_content} ...</span></a>`;
+                                }
+                                str += "</li>";
+                            }
+                        });
+                        str += "</ul>";
+                        if(hasResult) {
+                            $resultPanel.innerHTML = str;
+                        } else {
+                            $resultPanel.innerHTML = text;
+                        }
+
+                    },
+                    complete: function() {
+                        setTimeout(() => {
+                                const loadingBar = $('.search-loading-bar') 
+                                loadingBar.css({
+                                    width:'0%',
+                                    display: 'none'
+                                });
+                        }, 300)
+                    }
+                });
+            })
+
+        });
+    }
+
+    $(document).ready(function() {
+        $('.modal-close').click(function () { 
+            $("#u-search").fadeOut();
+            $("body > .wrapper").removeClass("modal-active")
+        })
+
+        $('.modal-overlay').click(function() {
+            $("#u-search").fadeOut();
+            $("body > .wrapper").removeClass("modal-active")
+        })
+        search(null, ".form-search", false)
+        search("#u-search-modal-form .form-input", ".u-search-modal-form", true)
+    })
+</script>
+
+<meta name="generator" content="Hexo 4.2.1"></head>
+<body>
+<!-- Chic/layout.ejs -->
+ <div id="u-search">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="container">
+                    <form id="u-search-modal-form" class="u-search-modal-form">
+                        <button type="submit" class="form-submit-btn">
+                            <img src="/image/search.png" class="search-btn-img" />
+                        </button>
+                        <input placeholder="搜索文章。。。" class="form-input" id="modal-form-input">
+                    </form>
+                    <a class="modal-close">x</a>
+                </div>
+                <div class="search-loading">
+                    <div class="search-loading-bar"></div>
+                </div>
+            </div>
+            <div class="modal-body">
+                <!-- ul 格式如下 -->
+                <!-- <ul class="modal-results">
+                    <li class="result-item">
+                        <a class="result-item-detail">
+                            <span class="title">页面配置</span>
+                            <span class="content">
+                                content
+                            </span>
+                        </a>
+                    </li>
+                </ul> -->
+            </div>
+        </div>
+        <div class="modal-overlay"></div>
+    </div>
+    <div class="wrapper">
+        <header>
+    <nav class="navbar">
+        <div class="container">
+            <div class="navbar-header header-logo"><a href="/">SeikoSrp&#39;s Blog</a></div>
+            <div class="menu navbar-right">
+                <!-- 这里表示的是pc端搜索框 -->
+                
+                
+    <div class="search ">
+        <div class="search-btn" onClick="searchToggle()">
+            <img src="/image/search.png" class="search-btn-img" />
+        </div>
+        <form class="form-search">
+            <input class="input" placeholder="搜索文章" autocomplete="off" id="pc-search-input"/>
+        </form>
+    </div>
+
+                
+                    <a class="menu-item" href="/archives">文章</a>
+                
+                    <a class="menu-item" href="/category">分类</a>
+                
+                    <a class="menu-item" href="/about">关于</a>
+                
+                <input id="switch_default" type="checkbox" class="switch_default">
+                <label for="switch_default" class="toggleBtn"></label>
+            </div>
+        </div>
+    </nav>
+
+    
+    <nav class="navbar-mobile" id="nav-mobile">
+        <div class="container">
+            <div class="navbar-header">
+                <div>
+                    <a href="/">SeikoSrp&#39;s Blog</a><a id="mobile-toggle-theme">·&nbsp;Light</a>
+                </div>
+                <div class="navbar-mobile-right">
+                    
+                    
+    <div class="search ">
+        <div class="search-btn" onClick="searchToggle()">
+            <img src="/image/search.png" class="search-btn-img" />
+        </div>
+        <form class="form-search">
+            <input class="input" placeholder="搜索文章" autocomplete="off" id="mobile-search-input"/>
+        </form>
+    </div>
+
+                    <div class="menu-toggle" onclick="mobileBtn()">&#9776; 目录</div>
+                </div>
+                
+            </div>
+            <div class="menu" id="mobile-menu">
+                
+                    <a class="menu-item" href="/archives">文章</a>
+                
+                    <a class="menu-item" href="/category">分类</a>
+                
+                    <a class="menu-item" href="/about">关于</a>
+                
+            </div>
+        </div>
+    </nav>
+
+</header>
+<script>
+    var mobileBtn = function f() {
+        var toggleMenu = document.getElementsByClassName("menu-toggle")[0];
+        var mobileMenu = document.getElementById("mobile-menu");
+        if(toggleMenu.classList.contains("active")){
+           toggleMenu.classList.remove("active")
+            mobileMenu.classList.remove("active")
+        }else{
+            toggleMenu.classList.add("active")
+            mobileMenu.classList.add("active")
+        }
+    }
+</script>
+        <div class="main">
+            <div class="container">
+    
+    
+        <div class="post-toc">
+    <div class="tocbot-list">
+    </div>
+    <div class="tocbot-list-menu">
+        <a class="tocbot-toc-expand" onclick="expand_toc()">全部展开</a>
+        <a onclick="go_top()">回到顶部</a>
+        <a onclick="go_bottom()">前往底部</a>
+    </div>
+</div>
+
+<script>
+    document.ready(
+        function () {
+            tocbot.init({
+                tocSelector: '.tocbot-list',
+                contentSelector: '.post-content',
+                headingSelector: 'h1, h2, h3, h4, h5',
+                collapseDepth: 1,
+                orderedList: false,
+                scrollSmooth: true,
+            })
+        }
+    )
+
+    function expand_toc() {
+        var b = document.querySelector(".tocbot-toc-expand");
+        tocbot.init({
+            tocSelector: '.tocbot-list',
+            contentSelector: '.post-content',
+            headingSelector: 'h1, h2, h3, h4, h5',
+            collapseDepth: 6,
+            orderedList: false,
+            scrollSmooth: true,
+        });
+        b.setAttribute("onclick", "collapse_toc()");
+        b.innerHTML = "全部折叠"
+    }
+
+    function collapse_toc() {
+        var b = document.querySelector(".tocbot-toc-expand");
+        tocbot.init({
+            tocSelector: '.tocbot-list',
+            contentSelector: '.post-content',
+            headingSelector: 'h1, h2, h3, h4, h5',
+            collapseDepth: 1,
+            orderedList: false,
+            scrollSmooth: true,
+        });
+        b.setAttribute("onclick", "expand_toc()");
+        b.innerHTML = "全部展开"
+    }
+
+    function go_top() {
+        window.scrollTo(0, 0);
+    }
+
+    function go_bottom() {
+        window.scrollTo(0, document.body.scrollHeight);
+    }
+
+</script>
+    
+
+    
+    <article class="post-wrap">
+        <header class="post-header">
+            <h1 class="post-title">windows_via_4.5_令牌和权限提升</h1>
+            
+                <div class="post-meta">
+                    
+                        作者: <a itemprop="author" rel="author" href="/">SeikoSrp</a>
+                    
+
+                    
+                        <span class="post-time">
+                        发布于: <a href="#">十二月 18, 2020&nbsp;&nbsp;18:47:41</a>
+                        </span>
+                    
+                    
+                        <span class="post-category">
+                    分类:
+                            
+                                <a href="/categories/%E8%AE%A1%E7%AE%97%E6%9C%BA%E5%9F%BA%E7%A1%80/">计算机基础</a>
+                            
+                        </span>
+                    
+                </div>
+            
+        </header>
+
+        <div class="post-content">
+            <p>本文主要是《windows核心编程》的4.5节的内容总结，也是最先放在博客上的《windows核心编程》的学习笔记，因为对权限这一块感兴趣所以先看了这一小节。</p>
+<h2 id="windows的令牌（token）"><a href="#windows的令牌（token）" class="headerlink" title="windows的令牌（token）"></a>windows的令牌（token）</h2><p>令牌也就是用户在访问系统资源时需要使用的一个凭证，当代码试图访问一个受保护的安全资源时，操作系统就会使用这个安全令牌，这里要重点知道的是操作系统会创建什么样的令牌：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">普通账户登录：</span><br><span class="line">一个与账户对应的安全令牌(security token)</span><br><span class="line"></span><br><span class="line">管理员账户登录：</span><br><span class="line">一个与账户对应的安全令牌(security token)</span><br><span class="line">一个经过筛选的令牌(filtered token)	这个filtered token只有标准用户(standard user)的权限</span><br></pre></td></tr></table></figure>
+
+<h2 id="让程序自动提升权限"><a href="#让程序自动提升权限" class="headerlink" title="让程序自动提升权限"></a>让程序自动提升权限</h2><p>就是在文件运行之前就设置文件运行的权限，细节可以参考：<a href="https://docs.microsoft.com/en-us/cpp/build/reference/manifest-create-side-by-side-assembly-manifest?view=vs-2019" target="_blank" rel="noopener">https://docs.microsoft.com/en-us/cpp/build/reference/manifest-create-side-by-side-assembly-manifest?view=vs-2019</a></p>
+<p><img src="windows_via_4.5_%E4%BB%A4%E7%89%8C%E5%92%8C%E6%9D%83%E9%99%90%E6%8F%90%E5%8D%87.assets/image-20200813205250227.png" alt="image-20200813205250227"></p>
+<p>VS里面可以配置</p>
+<h2 id="手动提升进程的权限"><a href="#手动提升进程的权限" class="headerlink" title="手动提升进程的权限"></a>手动提升进程的权限</h2><h3 id="ShellExecuteEx"><a href="#ShellExecuteEx" class="headerlink" title="ShellExecuteEx"></a>ShellExecuteEx</h3><p>这里的权限实际上不是账户的权限，而是进程所拥有的token的权限，这里没有使用原书中的代码，其实一样的，看了下面这段代码会更好的理解：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;iostream&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;windows.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;shellapi.h&gt;</span></span></span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">()</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="comment">//首先构造一个SHELLEXECUTEINFO结构</span></span><br><span class="line">    SHELLEXECUTEINFO ShExecInfo = &#123; <span class="number">0</span> &#125;;</span><br><span class="line">    ShExecInfo.cbSize = <span class="keyword">sizeof</span>(SHELLEXECUTEINFO);</span><br><span class="line">    ShExecInfo.fMask = SEE_MASK_NOCLOSEPROCESS;</span><br><span class="line">    ShExecInfo.hwnd = <span class="literal">NULL</span>;</span><br><span class="line">    ShExecInfo.lpVerb = TEXT(<span class="string">"runas"</span>);<span class="comment">//加了runas会使用管理员权限</span></span><br><span class="line">    ShExecInfo.lpFile = TEXT(<span class="string">"C:\\Windows\\System32\\cmd.exe"</span>);<span class="comment">//要执行的文件</span></span><br><span class="line">    ShExecInfo.lpParameters = TEXT(<span class="string">""</span>);</span><br><span class="line">    ShExecInfo.lpDirectory = <span class="literal">NULL</span>;</span><br><span class="line">    ShExecInfo.nShow = SW_SHOW;</span><br><span class="line">    ShExecInfo.hInstApp = <span class="literal">NULL</span>;</span><br><span class="line">    </span><br><span class="line">    <span class="comment">//执行ShellExecuteEx</span></span><br><span class="line">    ShellExecuteEx(&amp;ShExecInfo);</span><br><span class="line"></span><br><span class="line">    WaitForSingleObject(ShExecInfo.hProcess, INFINITE);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="代码解释"><a href="#代码解释" class="headerlink" title="代码解释"></a>代码解释</h3><p>这段代码的作用就是使用API ShellExecuteEx执行cmd.exe重点在于当结构SHELLEXECUTEINFO中的<strong>lpVerb</strong>被设置runas的时候，<strong>lpFile</strong>所指向的文件就会以提升之后的权限运行。</p>
+<p>这里看下使用runas和不适用runas的对比：</p>
+<p><img src="windows_via_4.5_%E4%BB%A4%E7%89%8C%E5%92%8C%E6%9D%83%E9%99%90%E6%8F%90%E5%8D%87.assets/image-20200731210103241.png" alt="image-20200731210103241"></p>
+<p><img src="windows_via_4.5_%E4%BB%A4%E7%89%8C%E5%92%8C%E6%9D%83%E9%99%90%E6%8F%90%E5%8D%87.assets/image-20200731210023694.png" alt="image-20200731210023694"></p>
+<p>可以添加了runas之后会使用管理员权限运行</p>
+<h3 id="CreateProcess与ShellExecuteEx的区别"><a href="#CreateProcess与ShellExecuteEx的区别" class="headerlink" title="CreateProcess与ShellExecuteEx的区别"></a>CreateProcess与ShellExecuteEx的区别</h3><p>CreateProcess的权限完全由父进程继承，CreateProcess也可以选择不继承，不在这里说明了，做一个对比（关闭UAC的情况下）：</p>
+<p><img src="windows_via_4.5_%E4%BB%A4%E7%89%8C%E5%92%8C%E6%9D%83%E9%99%90%E6%8F%90%E5%8D%87.assets/image-20200813202810666.png" alt="image-20200813202810666"></p>
+<p><img src="windows_via_4.5_%E4%BB%A4%E7%89%8C%E5%92%8C%E6%9D%83%E9%99%90%E6%8F%90%E5%8D%87.assets/image-20200813202837583.png" alt="image-20200813202837583"></p>
+<p>而在使用ShellExecuteEx时可以有标准的提升到管理员的权限</p>
+<p><img src="windows_via_4.5_%E4%BB%A4%E7%89%8C%E5%92%8C%E6%9D%83%E9%99%90%E6%8F%90%E5%8D%87.assets/image-20200813203033424.png" alt="image-20200813203033424"></p>
+<h2 id="如何判断当前进程的权限"><a href="#如何判断当前进程的权限" class="headerlink" title="如何判断当前进程的权限"></a>如何判断当前进程的权限</h2><p>看示例源码之前先了解几个API</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line">OpenProcessToken()</span><br><span class="line">获取当前进程的Token句柄</span><br><span class="line"></span><br><span class="line">GetTokenInformation()</span><br><span class="line">根据Token句柄获取Token中的指定的信息</span><br><span class="line"></span><br><span class="line">CreateWellKnownSid()</span><br><span class="line">创建SID</span><br><span class="line"></span><br><span class="line">CheckTokenMembership()</span><br><span class="line">检查一个Token中是否存在某个SID值</span><br><span class="line"></span><br><span class="line">IsUserAnAdmin()</span><br><span class="line">判断当前用户是否为管理员权限</span><br></pre></td></tr></table></figure>
+
+<p>书中提供了源码：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;iostream&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;windows.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;Shlobj.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;winnt.h&gt;</span></span></span><br><span class="line"></span><br><span class="line"><span class="function">BOOL <span class="title">GetProcessElevation</span><span class="params">(TOKEN_ELEVATION_TYPE* pELevationType,BOOL* pIsAdmin)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    HANDLE hToken = <span class="literal">NULL</span>;</span><br><span class="line">    DWORD dwSize;</span><br><span class="line"></span><br><span class="line">    <span class="comment">//1 将当前进程的令牌句柄赋值给hToken</span></span><br><span class="line">    <span class="keyword">if</span> (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &amp;hToken))</span><br><span class="line">        <span class="keyword">return</span> FALSE;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">    BOOL bResult = FALSE;</span><br><span class="line">    <span class="built_in">printf</span>(<span class="string">"pELevationType : %x\n"</span>, *pELevationType);</span><br><span class="line">    <span class="comment">//2 GetTokenInformation被执行后会将pELevationType修改为当前进程使用的令牌</span></span><br><span class="line">    <span class="keyword">if</span> (GetTokenInformation(</span><br><span class="line">        hToken, </span><br><span class="line">        TokenElevationType, </span><br><span class="line">        pELevationType, <span class="comment">//上一个参数指定的TOKEN_ELEVATION_TYPE类型的值存入当前变量</span></span><br><span class="line">        <span class="keyword">sizeof</span>(TOKEN_ELEVATION_TYPE), </span><br><span class="line">        &amp;dwSize) )</span><br><span class="line">    &#123;</span><br><span class="line">        <span class="built_in">printf</span>(<span class="string">"TokenElevationType : %d\n"</span>, TokenElevationType);</span><br><span class="line">        <span class="built_in">printf</span>(<span class="string">"pELevationType : %x\n"</span>, *pELevationType);</span><br><span class="line">        <span class="built_in">printf</span>(<span class="string">"dwSize : %x\n"</span>, dwSize);</span><br><span class="line">        BYTE adminSID[SECURITY_MAX_SID_SIZE];</span><br><span class="line">        dwSize = <span class="keyword">sizeof</span>(adminSID);</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">        <span class="comment">//3 创建一个用于预定义别名的SID</span></span><br><span class="line">        CreateWellKnownSid(</span><br><span class="line">            WinBuiltinAdministratorsSid, <span class="comment">//WELL_KNOWN_SID_TYPE枚举的成员，WinBuiltinAdministratorsSid的意思是与管理员组匹配的SID</span></span><br><span class="line">            <span class="literal">NULL</span>, </span><br><span class="line">            &amp;adminSID, </span><br><span class="line">            &amp;dwSize</span><br><span class="line">        );</span><br><span class="line"></span><br><span class="line">        <span class="comment">//4 判断是否为筛选过的token，如果是，则执行，如果不是，则直接判断（这一步只判断令牌类型，不判断是否为管理员）</span></span><br><span class="line">        <span class="keyword">if</span> (*pELevationType == TokenElevationTypeLimited) &#123;</span><br><span class="line">            HANDLE hUnfilteredToken = <span class="literal">NULL</span>;</span><br><span class="line"></span><br><span class="line">            GetTokenInformation(</span><br><span class="line">                hToken, </span><br><span class="line">                TokenLinkedToken, </span><br><span class="line">                (VOID*)&amp;hUnfilteredToken, </span><br><span class="line">                <span class="keyword">sizeof</span>(HANDLE), </span><br><span class="line">                &amp;dwSize);</span><br><span class="line"></span><br><span class="line">            <span class="comment">//5 确定token中是否存在某一个SID?</span></span><br><span class="line">            <span class="keyword">if</span> (CheckTokenMembership(</span><br><span class="line">                hUnfilteredToken, </span><br><span class="line">                &amp;adminSID, </span><br><span class="line">                pIsAdmin</span><br><span class="line">            )) &#123;</span><br><span class="line">                bResult = TRUE;</span><br><span class="line">            &#125;</span><br><span class="line">            CloseHandle(hUnfilteredToken);</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">else</span> &#123;</span><br><span class="line">            *pIsAdmin = IsUserAnAdmin();<span class="comment">//直接测试当前用户是否为管理员组的成员</span></span><br><span class="line">            bResult = TRUE;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    CloseHandle(hToken);</span><br><span class="line">    <span class="keyword">return</span>(bResult);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">()</span></span></span><br><span class="line"><span class="function"></span>&#123;   <span class="comment">//</span></span><br><span class="line">    TOKEN_ELEVATION_TYPE tokenStruct = TokenElevationTypeDefault;</span><br><span class="line">    BOOL admin = FALSE;</span><br><span class="line">    <span class="keyword">if</span> (GetProcessElevation(&amp;tokenStruct, &amp;admin))</span><br><span class="line">    &#123;</span><br><span class="line">        <span class="built_in">printf</span>(<span class="string">"true\n"</span>);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">else</span></span><br><span class="line">    &#123;</span><br><span class="line">        <span class="built_in">printf</span>(<span class="string">"false\n"</span>);</span><br><span class="line">    &#125;</span><br><span class="line">	</span><br><span class="line">    <span class="comment">//是否可以直接使用IsUserAdmin?</span></span><br><span class="line">    BOOL IsAdmin = IsUserAnAdmin();</span><br><span class="line">    <span class="keyword">if</span> (IsAdmin)</span><br><span class="line">    &#123;</span><br><span class="line">        <span class="built_in">printf</span>(<span class="string">"true\n"</span>);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">else</span></span><br><span class="line">    &#123;</span><br><span class="line">        <span class="built_in">printf</span>(<span class="string">"false\n"</span>);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>函数流程：</p>
+<p><img src="windows_via_4.5_%E4%BB%A4%E7%89%8C%E5%92%8C%E6%9D%83%E9%99%90%E6%8F%90%E5%8D%87.assets/Token.png" alt="Token"></p>
+<p>看懂了这个图再看一下下面的执行结果：这里在main函数中直接使用了IsUserAnAdmin方法测试，结果是上面的返回的是True，IsUserAnAdmin返回的是FALSE，也就是说IsUserAnAdmin只判断了当前执行的令牌权限，而上面源码中的GetProcessElevation函数是判断了用户的权限。</p>
+<p><img src="windows_via_4.5_%E4%BB%A4%E7%89%8C%E5%92%8C%E6%9D%83%E9%99%90%E6%8F%90%E5%8D%87.assets/image-20200813145555072.png" alt="image-20200813145555072"></p>
+
+        </div>
+
+        
+            <section class="post-copyright">
+                
+                
+                
+                
+
+            </section>
+        
+        <section class="post-tags">
+            <div>
+                <span>Tag(s):</span>
+                <span class="tag">
+                    
+                </span>
+            </div>
+            <div>
+                <a href="javascript:window.history.back();">back</a>
+                <span>· </span>
+                <a href="/">home</a>
+            </div>
+        </section>
+        <section class="post-nav">
+            
+                <a class="prev" rel="prev" href="/2020/12-18-windows_via_6_7%E7%AB%A0%E8%8A%82%E8%BF%9B%E7%A8%8B%E5%92%8C%E7%BA%BF%E7%A8%8B/">windows_via_6_7章节进程和线程</a>
+            
+            
+            <a class="next" rel="next" href="/2020/12-18-WatchAD%E5%88%86%E6%9E%90%E4%B8%8E%E6%B5%8B%E8%AF%95/">WatchAD分析与测试</a>
+            
+        </section>
+	
+		<section id="comments" class="comments">
+		  <style>
+			.comments{margin:30px;padding:10px;background:#fff}
+			@media screen and (max-width:800px){.comments{margin:auto;padding:10px;background:#fff}}
+		  </style>
+		  <div class="valine_comment"></div>
+<!--载入js，在</body>之前插入即可-->
+<!--Leancloud 操作库:-->
+<script src="//cdn1.lncld.net/static/js/3.0.4/av-min.js"></script>
+<!--Valine 的核心代码库-->
+<script src="//unpkg.com/valine/dist/Valine.min.js"></script>
+<script>
+  new Valine({
+      el: '.valine_comment',
+      app_id: 'ehQ0k7G3fcpwmkyxhG8U6DzL-gzGzoHsz',
+      app_key: 'AwwXGgbdqswiimAY0qJYhtRa',
+      placeholder: '这里留言。。',
+      notify: 'true',
+      verify: 'true',
+    });
+</script>
+		</section>
+	
+
+    </article>
+</div>
+
+        </div>
+        <footer id="footer" class="footer">
+    <div class="copyright">
+        <span>© SeikoSrp | Powered by <a href="https://hexo.io" target="_blank">Hexo</a> & <a href="https://github.com/Siricee/hexo-theme-Chic" target="_blank">Chic</a></span>
+    </div>
+</footer>
+
+    </div>
+</body>
+</html>

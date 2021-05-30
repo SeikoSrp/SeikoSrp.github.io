@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+<meta http-equiv="X-UA-Compatible" content="ie=edge">
+
+    <meta name="author" content="SeikoSrp">
+
+
+
+
+
+
+<title>Kerberos协议探索系列三委派篇 | a blog</title>
+
+
+
+    <link rel="icon" href="/haidao.ico">
+
+
+
+
+    <!-- stylesheets list from _config.yml -->
+    
+    <link rel="stylesheet" href="/css/style.css">
+    
+
+
+
+    <!-- scripts list from _config.yml -->
+    
+    <script src="/js/script.js"></script>
+    
+    <script src="/js/tocbot.min.js"></script>
+    
+    <script src="/js/jquery.min.js"></script>
+    
+
+
+
+    
+    
+        
+    
+
+
+
+
+    <script>
+    function searchToggle() {
+        const width = $(document.body).width()
+        if(width > 479) {
+            return;
+        }
+        const search = $('.search');
+        const searchForm = $('.form-search');
+        const menuToggle = $('.menu-toggle');
+        const title = $('.navbar-header-title');
+
+        if(!search.hasClass("mobile-search")) {
+            search.addClass("mobile-search");
+            menuToggle.addClass("open-search")
+            title.addClass("mobile-title-hidden")
+        } else {
+            search.removeClass("mobile-search");
+            menuToggle.removeClass("open-search")
+            // title.css({visibility: 'visible'})
+            title.removeClass("mobile-title-hidden")
+        } 
+    }
+
+    function search(searchInputEl, formEl, flag) {
+        const path = "/" + "search.json"; // 可以在public 下查看这个search.json
+        $(formEl).submit(function(e){
+            e.preventDefault();
+            let target = null
+            if(searchInputEl == null) {
+                const screenWidth = $(document.body).width();
+                target = screenWidth > 479 ? $('#pc-search-input') : $('#mobile-search-input');
+                console.log(target);
+            } else {
+                target = $(searchInputEl)
+            }
+
+            if(!flag && target.val() === '') {
+                return ;
+            }
+
+            $("#u-search").fadeIn(500, function() {
+                $("body > .wrapper").addClass("modal-active");
+
+                $.ajax({
+                    url: path,
+                    dataType: "json",
+                    beforeSend: function (xhr) {
+                        $input = target.val();
+                        $(".form-input").val($input);
+                        const loadingBar = $('.search-loading-bar') 
+                        loadingBar.css({
+                            width:'100%',
+                            display: 'block'
+                        });
+                    },
+                    success: function( datas ) {
+                        // console.log(datas);
+                        const $resultPanel = $(".modal-body")[0];
+                        let str = `<ul class="modal-results">`;
+                        var keywords = $(".form-input").val().trim().toLowerCase().split(/[\s\-]+/);
+                        $resultPanel.innerHTML = "";
+                        let hasResult = false
+                        let text = `<div class="no-result">找不到与关键词相关的内容....</div>`;
+
+                        if ($(".form-input").val().trim().length <= 0) {
+                            // 没有结果
+                            $resultPanel.innerHTML = text;
+                            return;
+                        }
+                        datas.forEach(function (data) {
+                            var isMatch = true;
+                            if (!data.title || data.title.trim() === '') {
+                                data.title = "Untitled";
+                            }
+                            var data_title = data.title.trim().toLowerCase();
+                            var data_content = data.content.trim().replace(/<[^>]+>/g, "").toLowerCase();
+                            var data_url = data.url;
+                            var index_title = -1;
+                            var index_content = -1;
+                            var first_occur = -1;
+                            // only match artiles with not empty contents
+                            if (data_content !== '') {
+                                keywords.forEach(function (keyword, i) {
+                                    index_title = data_title.indexOf(keyword);
+                                    index_content = data_content.indexOf(keyword);
+
+                                    if (index_title < 0 && index_content < 0) {
+                                        isMatch = false;
+                                    } else {
+                                        hasResult = true
+                                        if (index_content < 0) {
+                                            index_content = 0;
+                                        }
+                                        if (i == 0) {
+                                            first_occur = index_content;
+                                        }
+                                    }
+                                });
+                            } else {
+                                isMatch = false;
+                            }
+                            // show search results
+                            if (isMatch) {
+                                str += `<li class='result-item'><a href='${data_url}' class='result-item-detail'> <span class="title">${data_title}</span>`;
+                                var content = data.content.trim().replace(/<[^>]+>/g, "");
+                                if (first_occur >= 0) {
+                                    // cut out 200 characters
+                                    var start = first_occur - 40;
+                                    var end = first_occur + 160;
+
+                                    if (start < 0) {
+                                        start = 0;
+                                    }
+
+                                    if (start == 0) {
+                                        end = 200;
+                                    }
+
+                                    if (end > content.length) {
+                                        end = content.length;
+                                    }
+
+                                    var match_content = content.substring(start, end);
+
+                                    // highlight all keywords
+                                    keywords.forEach(function (keyword) {
+                                        var regS = new RegExp(keyword, "gi");
+                                        match_content = match_content.replace(regS, `<em class="search-keyword">${keyword}</em>`);
+                                    });
+
+                                    str += `<span class="content"> ${match_content} ...</span></a>`;
+                                }
+                                str += "</li>";
+                            }
+                        });
+                        str += "</ul>";
+                        if(hasResult) {
+                            $resultPanel.innerHTML = str;
+                        } else {
+                            $resultPanel.innerHTML = text;
+                        }
+
+                    },
+                    complete: function() {
+                        setTimeout(() => {
+                                const loadingBar = $('.search-loading-bar') 
+                                loadingBar.css({
+                                    width:'0%',
+                                    display: 'none'
+                                });
+                        }, 300)
+                    }
+                });
+            })
+
+        });
+    }
+
+    $(document).ready(function() {
+        $('.modal-close').click(function () { 
+            $("#u-search").fadeOut();
+            $("body > .wrapper").removeClass("modal-active")
+        })
+
+        $('.modal-overlay').click(function() {
+            $("#u-search").fadeOut();
+            $("body > .wrapper").removeClass("modal-active")
+        })
+        search(null, ".form-search", false)
+        search("#u-search-modal-form .form-input", ".u-search-modal-form", true)
+    })
+</script>
+
+<meta name="generator" content="Hexo 4.2.1"></head>
+<body>
+<!-- Chic/layout.ejs -->
+ <div id="u-search">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="container">
+                    <form id="u-search-modal-form" class="u-search-modal-form">
+                        <button type="submit" class="form-submit-btn">
+                            <img src="/image/search.png" class="search-btn-img" />
+                        </button>
+                        <input placeholder="搜索文章。。。" class="form-input" id="modal-form-input">
+                    </form>
+                    <a class="modal-close">x</a>
+                </div>
+                <div class="search-loading">
+                    <div class="search-loading-bar"></div>
+                </div>
+            </div>
+            <div class="modal-body">
+                <!-- ul 格式如下 -->
+                <!-- <ul class="modal-results">
+                    <li class="result-item">
+                        <a class="result-item-detail">
+                            <span class="title">页面配置</span>
+                            <span class="content">
+                                content
+                            </span>
+                        </a>
+                    </li>
+                </ul> -->
+            </div>
+        </div>
+        <div class="modal-overlay"></div>
+    </div>
+    <div class="wrapper">
+        <header>
+    <nav class="navbar">
+        <div class="container">
+            <div class="navbar-header header-logo"><a href="/">SeikoSrp&#39;s Blog</a></div>
+            <div class="menu navbar-right">
+                <!-- 这里表示的是pc端搜索框 -->
+                
+                
+    <div class="search ">
+        <div class="search-btn" onClick="searchToggle()">
+            <img src="/image/search.png" class="search-btn-img" />
+        </div>
+        <form class="form-search">
+            <input class="input" placeholder="搜索文章" autocomplete="off" id="pc-search-input"/>
+        </form>
+    </div>
+
+                
+                    <a class="menu-item" href="/archives">文章</a>
+                
+                    <a class="menu-item" href="/category">分类</a>
+                
+                    <a class="menu-item" href="/about">关于</a>
+                
+                <input id="switch_default" type="checkbox" class="switch_default">
+                <label for="switch_default" class="toggleBtn"></label>
+            </div>
+        </div>
+    </nav>
+
+    
+    <nav class="navbar-mobile" id="nav-mobile">
+        <div class="container">
+            <div class="navbar-header">
+                <div>
+                    <a href="/">SeikoSrp&#39;s Blog</a><a id="mobile-toggle-theme">·&nbsp;Light</a>
+                </div>
+                <div class="navbar-mobile-right">
+                    
+                    
+    <div class="search ">
+        <div class="search-btn" onClick="searchToggle()">
+            <img src="/image/search.png" class="search-btn-img" />
+        </div>
+        <form class="form-search">
+            <input class="input" placeholder="搜索文章" autocomplete="off" id="mobile-search-input"/>
+        </form>
+    </div>
+
+                    <div class="menu-toggle" onclick="mobileBtn()">&#9776; 目录</div>
+                </div>
+                
+            </div>
+            <div class="menu" id="mobile-menu">
+                
+                    <a class="menu-item" href="/archives">文章</a>
+                
+                    <a class="menu-item" href="/category">分类</a>
+                
+                    <a class="menu-item" href="/about">关于</a>
+                
+            </div>
+        </div>
+    </nav>
+
+</header>
+<script>
+    var mobileBtn = function f() {
+        var toggleMenu = document.getElementsByClassName("menu-toggle")[0];
+        var mobileMenu = document.getElementById("mobile-menu");
+        if(toggleMenu.classList.contains("active")){
+           toggleMenu.classList.remove("active")
+            mobileMenu.classList.remove("active")
+        }else{
+            toggleMenu.classList.add("active")
+            mobileMenu.classList.add("active")
+        }
+    }
+</script>
+        <div class="main">
+            <div class="container">
+    
+    
+        <div class="post-toc">
+    <div class="tocbot-list">
+    </div>
+    <div class="tocbot-list-menu">
+        <a class="tocbot-toc-expand" onclick="expand_toc()">全部展开</a>
+        <a onclick="go_top()">回到顶部</a>
+        <a onclick="go_bottom()">前往底部</a>
+    </div>
+</div>
+
+<script>
+    document.ready(
+        function () {
+            tocbot.init({
+                tocSelector: '.tocbot-list',
+                contentSelector: '.post-content',
+                headingSelector: 'h1, h2, h3, h4, h5',
+                collapseDepth: 1,
+                orderedList: false,
+                scrollSmooth: true,
+            })
+        }
+    )
+
+    function expand_toc() {
+        var b = document.querySelector(".tocbot-toc-expand");
+        tocbot.init({
+            tocSelector: '.tocbot-list',
+            contentSelector: '.post-content',
+            headingSelector: 'h1, h2, h3, h4, h5',
+            collapseDepth: 6,
+            orderedList: false,
+            scrollSmooth: true,
+        });
+        b.setAttribute("onclick", "collapse_toc()");
+        b.innerHTML = "全部折叠"
+    }
+
+    function collapse_toc() {
+        var b = document.querySelector(".tocbot-toc-expand");
+        tocbot.init({
+            tocSelector: '.tocbot-list',
+            contentSelector: '.post-content',
+            headingSelector: 'h1, h2, h3, h4, h5',
+            collapseDepth: 1,
+            orderedList: false,
+            scrollSmooth: true,
+        });
+        b.setAttribute("onclick", "expand_toc()");
+        b.innerHTML = "全部展开"
+    }
+
+    function go_top() {
+        window.scrollTo(0, 0);
+    }
+
+    function go_bottom() {
+        window.scrollTo(0, document.body.scrollHeight);
+    }
+
+</script>
+    
+
+    
+    <article class="post-wrap">
+        <header class="post-header">
+            <h1 class="post-title">Kerberos协议探索系列三委派篇</h1>
+            
+                <div class="post-meta">
+                    
+                        作者: <a itemprop="author" rel="author" href="/">SeikoSrp</a>
+                    
+
+                    
+                        <span class="post-time">
+                        发布于: <a href="#">十二月 18, 2020&nbsp;&nbsp;18:47:41</a>
+                        </span>
+                    
+                    
+                        <span class="post-category">
+                    分类:
+                            
+                                <a href="/categories/RedTeam-%E5%9F%9F%E5%AE%89%E5%85%A8/">RedTeam&域安全</a>
+                            
+                        </span>
+                    
+                </div>
+            
+        </header>
+
+        <div class="post-content">
+            <p>Freebuf链接：<a href="https://www.freebuf.com/articles/system/198381.html" target="_blank" rel="noopener">https://www.freebuf.com/articles/system/198381.html</a></p>
+<h1 id="0x00前言"><a href="#0x00前言" class="headerlink" title="0x00前言"></a>0x00前言</h1><p>在前两节中说到了关于Kerberos的扫描和Kerberoasting以及金票的利用，本文主要说明一下在kerberos体系中关于委派的利用方式，委派在域环境中其实是一个很常见的功能，对于委派的利用相较于先前说的几种攻击方式较为“被动”，但是一旦利用也会有很大的危害。</p>
+<h1 id="0x01什么是委派"><a href="#0x01什么是委派" class="headerlink" title="0x01什么是委派"></a>0x01什么是委派</h1><p>在域中如果出现A使用Kerberos身份验证访问域中的服务B，而B再利用A的身份去请求域中的服务C，这个过程就可以理解为委派。</p>
+<p>例：</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B8%89%E5%A7%94%E6%B4%BE%E7%AF%87.assets/1575808728012.png" alt="1575808728012"></p>
+<p>​         User访问主机s2上的HTTP服务，而HTTP服务需要请求其他主机的SQLServer数据库，但是S2并不知道User是否有权限访问SQLServer，这时HTTP服务会利用User的身份去访问SQLServer，如果User有权限访问SQLServer服务才能访问成功。</p>
+<p>​         而委派主要分为非约束委派（Unconstrained delegation）和约束委派（Constrained delegation）两个方式，下面分别介绍两种方式如何实现。</p>
+<h2 id="1-非约束委派"><a href="#1-非约束委派" class="headerlink" title="1 非约束委派"></a>1 非约束委派</h2><p>非约束委派在Kerberos中实现时，User会将从KDC处得到的TGT发送给访问的service1（可以是任意服务），service1拿到TGT之后可以通过TGT访问域内任意其他服务，所以被称为非约束委派。</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B8%89%E5%A7%94%E6%B4%BE%E7%AF%87.assets/1575808740173.png" alt="1575808740173"></p>
+<p><strong>流程：</strong></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line">1.用户通过发送KRB_AS_REQ消息请求可转发 TGT（forwardable TGT，为了方便我们称为TGT1）。</span><br><span class="line">2.KDC在KRB_AS_REP消息中返回TGT1。</span><br><span class="line">3.用户再通过TGT1向KDC请求转发TGT（forwarded TGT，我们称为TGT2）。</span><br><span class="line">4.在KRB_TGS_REP消息中返回转发TGT2。</span><br><span class="line">5.用户使用TGT1向KDC申请访问Service1的ST（Service Ticket）。</span><br><span class="line">6.TGS返回给用户一个ST。</span><br><span class="line">7.用户发送KRB_AP_REQ请求至Service1，这个请求中包含了TGT1和ST、TGT2、TGT2的SessionKey。</span><br><span class="line">8.Service1使用用户的TGT2通过KRB_TGS_REQ发送给KDC，以用户的名义请求能够访问Service2的票据。</span><br><span class="line">9.KDC在KRB_TGS_REP消息中返回Service2到Service1的票据。</span><br><span class="line">10.Service1以用户的名义像Service2发送KRB_AP_REQ请求。</span><br><span class="line">11.Service2响应步骤10中Service1的请求。</span><br><span class="line">12.Service1响应步骤7中用户的请求。</span><br><span class="line">13.在这个过程中的TGT转发机制，没有限制Service1对TGT2的使用，也就是说Service1可以通过TGT2来请求任意服务。</span><br><span class="line">14.KDC返回步骤13中请求的票据。</span><br><span class="line">15和16即为Service1通过模拟用户来访问其他Service。</span><br></pre></td></tr></table></figure>
+
+<p>可以看到在前5个步骤中User向KDC申请了两个TGT（步骤2和4），一个用于访问Service1一个用于访问Service2，并且会将这两个都发给Service1。并且Service1会将TGT2保存在内存中。</p>
+<p><strong>非约束委派的设置：</strong></p>
+<p>Windows域中可以直接在账户属性中设置：</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B8%89%E5%A7%94%E6%B4%BE%E7%AF%87.assets/1575808891534.png" alt="1575808891534"></p>
+<h2 id="2-约束委派"><a href="#2-约束委派" class="headerlink" title="2 约束委派"></a>2 约束委派</h2><p>由于非约束委派的不安全性，微软在windows2003中发布了约束委派的功能。约束委派在Kerberos中User不会直接发送TGT给服务，而是对发送给service1的认证信息做了限制，不允许service1代表User使用这个TGT去访问其他服务。这里包括一组名为S4U2Self（Service for User to Self）和S4U2Proxy（Service for User to Proxy）的Kerberos协议扩展。</p>
+<p>​         从下图可以看到整个过程其实可以分为两个部分，第一个是S4U2Self的过程（流程1-4），第二个是S4U2Proxy的过程（流程5-10）。</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B8%89%E5%A7%94%E6%B4%BE%E7%AF%87.assets/1575808898701.png" alt="1575808898701"></p>
+<p><strong>流程：</strong></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">1.用户向Service1发送请求。</span><br><span class="line">2.这时在官方文档中的介绍是在这一流程开始之前Service1已经通过KRB_AS_REQ得到了用户用来访问Service1的TGT，然后通过S4U2self扩展模拟用户向KDC请求ST。</span><br><span class="line">3.KDC这时返回给Service1一个用于用户验证Service1的ST（我们称为ST1），并且Service1用这个ST1完成和用户的验证过程。</span><br><span class="line">4.Service1在步骤3使用模拟用户申请的ST1完成与用户的验证，然后响应用户。</span><br><span class="line">注：这个过程中其实Service1是获得了用户的TGT和ST1的，但是S4U2Self扩展不允许Service1代表用户去请求其他的服务。</span><br><span class="line">5.用户再次向Service1发起请求，此时Service1需要以用户的身份访问Service2。这里官方文档提到了两个点：</span><br><span class="line">A.Service1已经验证通过，并且有一个有效的TGT。</span><br><span class="line">B.Service1有从用户到Service1的forwardable ST（可转发ST）。个人认为这里的forwardable ST其实也就是ST1。</span><br><span class="line">6.Service1代表用户向Service2请求一个用于认证Service2的ST（我们称为ST2）。用户在ST1中通过cname（client name）和crealm（client realm）字段标识。</span><br><span class="line">7.KDC在接收到步骤6中Service1的请求之后，会验证PAC（特权属性证书，在第一篇中有说明）的数字签名。如果验证成功或者这个请求没有PAC（不能验证失败），KDC将返回ST2给Service1，不过这个ST2中cname和crealm标识的是用户而不是Service1。</span><br><span class="line">8.Service1代表用户使用ST2请求Service2。Service2判断这个请求来自已经通过KDC验证的用户。</span><br><span class="line">9.Service2响应Service1的请求。</span><br><span class="line">10.Service1响应用户的请求。</span><br></pre></td></tr></table></figure>
+
+<p>在这个过程中，S4U2Self扩展的作用是让Service1代表用户向KDC验证用户的合法性，并且得到一个可转发的ST1。S4U2Proxy的作用可以说是让Service1代表用户身份通过ST1重新获取ST2，并且不允许Service1以用户的身份去访问其他服务。更多的细节可以参考官方的文档，和RFC4120的内容。同时注意forwardable字段，有forwardable标记为可转发的是能够通过S4U2Proxy扩展协议进行转发的，如果没有标记则不能进行转发。</p>
+<p><a href="https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-sfu/3bff5864-8135-400e-bdd9-33b552051d94" target="_blank" rel="noopener">https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-sfu/3bff5864-8135-400e-bdd9-33b552051d94</a></p>
+<p><strong>约束委派的配置：</strong></p>
+<p>可以在账户属性中将tsvc的委派方式更改为约束委派</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B8%89%E5%A7%94%E6%B4%BE%E7%AF%87.assets/1575809008741.png" alt="1575809008741"></p>
+<h1 id="0x02发现域中的委派主机或账户"><a href="#0x02发现域中的委派主机或账户" class="headerlink" title="0x02发现域中的委派主机或账户"></a>0x02发现域中的委派主机或账户</h1><p>在域中，可以通过PowerView脚本来搜索开启了委派的主机和用户。查询非约束委派主要是通过搜索userAccountControl属性包含ADS_UF_TRUSTED_FOR_DELEGATION的主机或账户。而约束委派则通过查询userAccountControl属性包含TRUSTED_TO_AUTH_FOR_DELEGATION的主机或用户。</p>
+<h2 id="1-非约束委派-1"><a href="#1-非约束委派-1" class="headerlink" title="1 非约束委派"></a>1 非约束委派</h2><p>通过Import-Module PowerView.ps1加载PowerView脚本之后使用下面的命令进行查询。</p>
+<p>查询域中配置非约束委派的账户：</p>
+<figure class="highlight powershell"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">Get-NetUser</span> <span class="literal">-Unconstrained</span> <span class="literal">-Domain</span> yunying.lab</span><br></pre></td></tr></table></figure>
+
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B8%89%E5%A7%94%E6%B4%BE%E7%AF%87.assets/1575809026517.png" alt="1575809026517"></p>
+<p>查询域中配置非约束委派的主机：</p>
+<figure class="highlight powershell"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">Get-NetComputer</span> <span class="literal">-Unconstrained</span> <span class="literal">-Domain</span> yunying.lab</span><br></pre></td></tr></table></figure>
+
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B8%89%E5%A7%94%E6%B4%BE%E7%AF%87.assets/1575809035908.png" alt="1575809035908"></p>
+<p>在另一个版本的PowerView中采用的是Get-DomainComputer</p>
+<figure class="highlight powershell"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">Get-DomainComputer</span> <span class="literal">-Unconstrained</span> <span class="literal">-Properties</span> distinguishedname,useraccountcontrol <span class="literal">-Verbose</span> | ft <span class="literal">-a</span></span><br></pre></td></tr></table></figure>
+
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B8%89%E5%A7%94%E6%B4%BE%E7%AF%87.assets/1575809048647.png" alt="1575809048647"></p>
+<h2 id="2-约束委派-1"><a href="#2-约束委派-1" class="headerlink" title="2 约束委派"></a>2 约束委派</h2><p>查询域中配置约束委派的账户：</p>
+<figure class="highlight powershell"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">Get-DomainUser</span> –TrustedToAuth <span class="literal">-Properties</span> distinguishedname,useraccountcontrol,msds<span class="literal">-allowedtodelegateto</span>| fl</span><br></pre></td></tr></table></figure>
+
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B8%89%E5%A7%94%E6%B4%BE%E7%AF%87.assets/1575809057419.png" alt="1575809057419"></p>
+<p>Get-DomainUser -TrustedToAuth -Domain yunying.lab查看设置了约束委派的用户</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B8%89%E5%A7%94%E6%B4%BE%E7%AF%87.assets/1575809093932.png" alt="1575809093932"></p>
+<p>查询域中配置约束委派的主机:</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Get-DomainComputer -TrustedToAuth -Domain yunying.lab</span><br></pre></td></tr></table></figure>
+
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B8%89%E5%A7%94%E6%B4%BE%E7%AF%87.assets/1575809105105.png" alt="1575809105105"></p>
+<h1 id="0x03非约束委派的利用"><a href="#0x03非约束委派的利用" class="headerlink" title="0x03非约束委派的利用"></a>0x03非约束委派的利用</h1><p>上文中说明了两种委派方式，下面结合实验说明针对两种委派的利用方式。</p>
+<h2 id="实验"><a href="#实验" class="headerlink" title="实验"></a>实验</h2><p>首先环境和前两篇文章相同。假设我们已经获取了一个已经配置了委派的账户权限或者是密码，现在我们通过这些条件来攻击其他账户。</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B8%89%E5%A7%94%E6%B4%BE%E7%AF%87.assets/1575809129124.png" alt="1575809129124"></p>
+<p><strong>实验环境：</strong></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">域：YUNYING.LAB</span><br><span class="line"></span><br><span class="line">域控：Windows Server 2008 R2 x64(DC)：用户Administrator</span><br><span class="line"></span><br><span class="line">域内主机：Windows Server 2008 R2 x64(s2)：用户tsvc</span><br></pre></td></tr></table></figure>
+
+<p><strong>所需工具：</strong></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Mimikatz</span><br></pre></td></tr></table></figure>
+
+<p><strong>实验流程：</strong></p>
+<p>在域中只有服务账户才能有委派功能，所以先把用户tsvc设置为服务账号。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">setspn -U -A variant&#x2F;golden tsvc</span><br><span class="line">setspn -l tsvc    &#x2F;&#x2F;查看配置</span><br></pre></td></tr></table></figure>
+
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B8%89%E5%A7%94%E6%B4%BE%E7%AF%87.assets/1575809158083.png" alt="1575809158083"></p>
+<p>然后在“AD用户和计算机”中将tsvc设置为非约束委派模式</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B8%89%E5%A7%94%E6%B4%BE%E7%AF%87.assets/1575809207912.png" alt="1575809207912"></p>
+<p>此时在域控上使用Administrator访问tsvc所在主机S2的SMB服务。</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B8%89%E5%A7%94%E6%B4%BE%E7%AF%87.assets/1575809214590.png" alt="1575809214590"></p>
+<p>我们在S2上通过mimikatz可以导出Administrator发送过来的TGT内容。这里需要使用管理员权限打开mimikatz，然后通过privilege::debug命令提升权限，如果没有提升权限会报kuhl_m_sekurlsa_acquireLSA错误。再使用sekurlsa::tickets /export命令导出内存中所有的票据。</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B8%89%E5%A7%94%E6%B4%BE%E7%AF%87.assets/1575809221653.png" alt="1575809221653"></p>
+<p>可以看到名称为[0;9bec9]<a href="mailto:-2-0-60a00000-Administrator@krbtgt-YUNYING.LAB.kirbi">-2-0-60a00000-Administrator@krbtgt-YUNYING.LAB.kirbi</a>的这一条即为Administrator发送的TGT。此时访问域控被拒绝：</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B8%89%E5%A7%94%E6%B4%BE%E7%AF%87.assets/1575809235084.png" alt="1575809235084"></p>
+<p>通过kerberos::ptt [0;9bec9]<a href="mailto:-2-0-60a00000-Administrator@krbtgt-YUNYING.LAB.kirbi">-2-0-60a00000-Administrator@krbtgt-YUNYING.LAB.kirbi</a>命令将TGT内容导入到当前会话中，其实这也是一次Pass The Ticket攻击（有兴趣的可以了解一下）。</p>
+<p>通过kerberos::list查看当前会话可以看到票据已经导入到当前会话。</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B8%89%E5%A7%94%E6%B4%BE%E7%AF%87.assets/1575809243927.png" alt="1575809243927"></p>
+<p>导入之后已经可以访问域控的共享目录。也就是说每当存在用户访问tsvc的服务时，tsvc的服务就会将访问者的TGT保存在内存中，可以通过这个TGT访问这个TGT所属用户的所有服务。非约束委派的原理相对简单，就是通过获取到的administrator的TGT进行下一步的访问。</p>
+<p>这里有一个点就是sekurlsa::tickets是查看内存中所有的票据，而kerberos::list只是查看当前会话中的kerberos票据。更多的mimikatz的使用可以参考<a href="https://github.com/gentilkiwi/mimikatz/wiki" target="_blank" rel="noopener">https://github.com/gentilkiwi/mimikatz/wiki</a></p>
+<p><strong>Print Spooler**</strong>服务<strong><strong>+</strong></strong>非约束委派提升至域控权限：**</p>
+<p>在2018年的DerbyCon中Will Schroeder（@ Harmj0y），Lee Christensen（@Tifkin_）和Matt Nelson（@ enigma0x3）提到了关于非约束委派的新方式，通过域控的Print Spooler服务和非约束委派账户提升至域控权限（<a href="https://adsecurity.org/?p=4056），主要的原理就是通过Print" target="_blank" rel="noopener">https://adsecurity.org/?p=4056），主要的原理就是通过Print</a> Spooler服务使用特定POC让域控对设置了非约束委派的主机发起请求，获取域控的TGT，从而提升权限。</p>
+<h1 id="0x04约束委派的利用"><a href="#0x04约束委派的利用" class="headerlink" title="0x04约束委派的利用"></a>0x04约束委派的利用</h1><p>约束委派由于只指定了特定的服务，所以利用起来相对非约束委派更加复杂，本实验的条件是配置了约束委派的账号，并且已知当前配置了约束委派的当前账户的密码（tsvc的密码）。</p>
+<h2 id="1-实验"><a href="#1-实验" class="headerlink" title="1 实验"></a>1 实验</h2><p>这里环境和上文中不变，依然使用普通域账号tsvc和域Administrator账户。不过增加了一个新的工具kekeo，他和mimikatz是同一个作者。</p>
+<p>1）、确认账号tsvc设置了约束委派。</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B8%89%E5%A7%94%E6%B4%BE%E7%AF%87.assets/1575809263853.png" alt="1575809263853"></p>
+<p>通过工具PowerView的查询可以看到域内配置了约束委派的列表：</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B8%89%E5%A7%94%E6%B4%BE%E7%AF%87.assets/1575809269412.png" alt="1575809269412"></p>
+<p>2）、使用kekeo对域控发起申请TGT的请求。</p>
+<p>通过已知的账户名和明文密码对KDC发起请求，得到TGT。</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B8%89%E5%A7%94%E6%B4%BE%E7%AF%87.assets/1575809286756.png" alt="1575809286756"></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">tgt::ask &#x2F;user:tsvc &#x2F;domain:yunying.lab &#x2F;password:admin1234! &#x2F;ticket:tsvc.kirbi</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">&#x2F;user:当前用户名</span><br><span class="line">&#x2F;domain:所在域名</span><br><span class="line">&#x2F;password:当前用户名的密码</span><br><span class="line">&#x2F;ticket:生成票据名称，上图里生成的没有按参数设定的来命名，不重要，也可以直接跳过这个参数</span><br></pre></td></tr></table></figure>
+
+<p>3）、使用kekeo申请TGS票据</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">tgs::s4u &#x2F;tgt:TGT_filename &#x2F;user:administrator@yunying.lab &#x2F;service:cifs&#x2F;dc.yunying.lab</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">&#x2F;tgt:上一步通过kekeo生成的tgt票据</span><br><span class="line">&#x2F;user:想要伪造的用户名写全称（用户名@域名）</span><br><span class="line">&#x2F;service:想要伪造访问的服务名（服务名&#x2F;主机的FQDN名称）</span><br></pre></td></tr></table></figure>
+
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B8%89%E5%A7%94%E6%B4%BE%E7%AF%87.assets/1575809323256.png" alt="1575809323256"></p>
+<p>4）、从kekeo中使用exit命令退出，然后使用mimikatz将生成的TGS文件导入到Kerberos凭据列表中</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B8%89%E5%A7%94%E6%B4%BE%E7%AF%87.assets/1575809352572.png" alt="1575809352572"></p>
+<p>这时可以看到导入之后已经能够成功访问域控的共享文件（严格来说应该是非约束委派中设置的SPN的权限）。而且在这个过程中是不需要管理员权限的，只是用当前账户的权限就可以完成，因为不需要从内存中导出票据。</p>
+<h2 id="2-原理"><a href="#2-原理" class="headerlink" title="2 原理"></a>2 原理</h2><p>下面看一下在非约束委派中是如何实现通过非约束委派去获得所设置的SPN的权限的。实验过程其实主要是三个步骤：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">1、请求TGT</span><br><span class="line">2、请求TGS</span><br><span class="line">3、将TGS导入内存</span><br></pre></td></tr></table></figure>
+
+<p>主要看1、2两个步骤，第1步中使用Kekeo发起AS-REQ请求去请求TGT。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">tgt::ask &#x2F;user:tsvc &#x2F;domain:yunying.lab &#x2F;password:admin1234! &#x2F;ticket:tsvc.kirbi</span><br></pre></td></tr></table></figure>
+
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B8%89%E5%A7%94%E6%B4%BE%E7%AF%87.assets/1575809381211.png" alt="1575809381211"></p>
+<p>这时tsvc获取到了一个TGT，并且kekeo工具将其保存为一个kirbi格式的文件。</p>
+<p>第2步，再使用这个TGT申请两个ST文件，上文中说到过在约束委派实现的过程中分为两个部分，分别是S4U2Self扩展和S4U2Proxy扩展。S4U2Self中Service1会代替用户向KDC申请一张用于访问自身的TGS，这个TGS也就是生成的两个TGS中的一个（<a href="mailto:TGS_administrator@yunying.lab">TGS_administrator@yunying.lab</a>@YUNYING.LAB_tsvc@YUNYING.LAB.kirbi）还有一个TGS是用于访问非受限委派中设置的SPN的TGS（<a href="mailto:TGS_administrator@yunying.lab">TGS_administrator@yunying.lab</a>@YUNYING.LAB_cifs~dc.yunying.lab@YUNYING.LAB.kirbi）。</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B8%89%E5%A7%94%E6%B4%BE%E7%AF%87.assets/1575809394418.png" alt="1575809394418"></p>
+<p>我们抓包也可以看到这里是发起了两次TGS_REQ请求，在第一个TGS_REQ请求的包里面可以看到KRB5-PADATA-S4U2SSELF的标识。并且cname和sname都是tsvc，也是侧面说明这个TGS其实就是拿来验证自身的。</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B8%89%E5%A7%94%E6%B4%BE%E7%AF%87.assets/1575809412197.png" alt="1575809412197"></p>
+<p>再看第二个TGS_REQ请求，sname的值为cifs/dc.yunying.lab，也就是截图中非约束委派中“可由此账户提供委派凭据的服务”一栏中添加的SPN。而这个其实就是S4U2Proxy扩展中所申请的TGS票据。</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B8%89%E5%A7%94%E6%B4%BE%E7%AF%87.assets/1575809420426.png" alt="1575809420426"></p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B8%89%E5%A7%94%E6%B4%BE%E7%AF%87.assets/1575809429771.png" alt="1575809429771"></p>
+<p>关于约束委派的这种攻击方式就是通过在Service1（tsvc）中将自己伪造成用户，然后获取允许约束委派的SPN的TGS的一个过程。</p>
+<h1 id="0x05委派攻击的防御"><a href="#0x05委派攻击的防御" class="headerlink" title="0x05委派攻击的防御"></a>0x05委派攻击的防御</h1><p>​         通过上文中说到设置了非约束委派的账户权限如果被窃取那么攻击者可能获取非常多其他账户的TGT，所以最好是不要在域中使用非约束委派这种功能。</p>
+<p>​         域中不需要使用委派的账户特别是administrator账户，设置为“敏感用户不能被委派”。</p>
+<p><img src="Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B8%89%E5%A7%94%E6%B4%BE%E7%AF%87.assets/1575809444534.png" alt="1575809444534"></p>
+<p>如果是win2012的系统也可以通过设置受保护的用户组来缓解委派所带来的危害。</p>
+<h1 id="0x06总结"><a href="#0x06总结" class="headerlink" title="0x06总结"></a>0x06总结</h1><p>在两种方式的委派中，非约束委派的实验获取的权限更大，能够通过TGT直接获取目标主机的所有服务权限，而约束委派实验主要是通过TGS来获取约束委派列表中设置的SPN的TGS来获得相应的SPN的权限。</p>
+<p>同时在今年有国外的安全人员提出来基于NTLMRelay和约束委派结合进行权限提升的攻击方式，详情可参考下面链接，此处不再赘述：</p>
+<p><a href="https://dirkjanm.io/worst-of-both-worlds-ntlm-relaying-and-kerberos-delegation/" target="_blank" rel="noopener">https://dirkjanm.io/worst-of-both-worlds-ntlm-relaying-and-kerberos-delegation/</a></p>
+<p>这几篇文章也是通过实验来说明分析每一种Kerberos攻击方式的原理和如何实现，个人认为在Kerberos的攻击还是需要结合其他攻击方式才能发挥更大的作用，关于更多Kerberos的不同意见及看法欢迎留言交流，本文暂时到此完结，希望对你有所帮助。</p>
+<h1 id="实验工具"><a href="#实验工具" class="headerlink" title="实验工具"></a>实验工具</h1><p><a href="https://github.com/gentilkiwi/mimikatz/releases/tag/2.1.1-20181209" target="_blank" rel="noopener">https://github.com/gentilkiwi/mimikatz/releases/tag/2.1.1-20181209</a></p>
+<p><a href="https://github.com/gentilkiwi/kekeo/releases/" target="_blank" rel="noopener">https://github.com/gentilkiwi/kekeo/releases/</a></p>
+<h1 id="参考链接"><a href="#参考链接" class="headerlink" title="参考链接"></a>参考链接</h1><p>参考链接：</p>
+<p><a href="https://adsecurity.org/?p=1667" target="_blank" rel="noopener">https://adsecurity.org/?p=1667</a></p>
+<p><a href="https://xz.aliyun.com/t/2931#toc-6" target="_blank" rel="noopener">https://xz.aliyun.com/t/2931#toc-6</a></p>
+<p><a href="http://www.harmj0y.net/blog/activedirectory/s4u2pwnage/" target="_blank" rel="noopener">http://www.harmj0y.net/blog/activedirectory/s4u2pwnage/</a></p>
+<p><a href="https://docs.microsoft.com/zh-cn/windows-server/security/credentials-protection-and-management/protected-users-security-group#BKMK_HowItWorks" target="_blank" rel="noopener">https://docs.microsoft.com/zh-cn/windows-server/security/credentials-protection-and-management/protected-users-security-group#BKMK_HowItWorks</a></p>
+<p><a href="https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-sfu/1fb9caca-449f-4183-8f7a-1a5fc7e7290a" target="_blank" rel="noopener">https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-sfu/1fb9caca-449f-4183-8f7a-1a5fc7e7290a</a></p>
+<p><a href="https://labs.mwrinfosecurity.com/blog/trust-years-to-earn-seconds-to-break/" target="_blank" rel="noopener">https://labs.mwrinfosecurity.com/blog/trust-years-to-earn-seconds-to-break/</a></p>
+
+        </div>
+
+        
+            <section class="post-copyright">
+                
+                
+                
+                
+
+            </section>
+        
+        <section class="post-tags">
+            <div>
+                <span>Tag(s):</span>
+                <span class="tag">
+                    
+                </span>
+            </div>
+            <div>
+                <a href="javascript:window.history.back();">back</a>
+                <span>· </span>
+                <a href="/">home</a>
+            </div>
+        </section>
+        <section class="post-nav">
+            
+                <a class="prev" rel="prev" href="/2020/12-18-Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%BA%8C%E7%A5%A8%E6%8D%AE%E7%AF%87/">Kerberos协议探索系列二票据篇</a>
+            
+            
+            <a class="next" rel="next" href="/2020/12-18-Kerberos%E5%8D%8F%E8%AE%AE%E6%8E%A2%E7%B4%A2%E7%B3%BB%E5%88%97%E4%B8%80%E6%89%AB%E6%8F%8F%E4%B8%8E%E7%88%86%E7%A0%B4%E7%AF%87/">Kerberos协议探索系列一扫描与爆破篇</a>
+            
+        </section>
+	
+		<section id="comments" class="comments">
+		  <style>
+			.comments{margin:30px;padding:10px;background:#fff}
+			@media screen and (max-width:800px){.comments{margin:auto;padding:10px;background:#fff}}
+		  </style>
+		  <div class="valine_comment"></div>
+<!--载入js，在</body>之前插入即可-->
+<!--Leancloud 操作库:-->
+<script src="//cdn1.lncld.net/static/js/3.0.4/av-min.js"></script>
+<!--Valine 的核心代码库-->
+<script src="//unpkg.com/valine/dist/Valine.min.js"></script>
+<script>
+  new Valine({
+      el: '.valine_comment',
+      app_id: 'ehQ0k7G3fcpwmkyxhG8U6DzL-gzGzoHsz',
+      app_key: 'AwwXGgbdqswiimAY0qJYhtRa',
+      placeholder: '这里留言。。',
+      notify: 'true',
+      verify: 'true',
+    });
+</script>
+		</section>
+	
+
+    </article>
+</div>
+
+        </div>
+        <footer id="footer" class="footer">
+    <div class="copyright">
+        <span>© SeikoSrp | Powered by <a href="https://hexo.io" target="_blank">Hexo</a> & <a href="https://github.com/Siricee/hexo-theme-Chic" target="_blank">Chic</a></span>
+    </div>
+</footer>
+
+    </div>
+</body>
+</html>

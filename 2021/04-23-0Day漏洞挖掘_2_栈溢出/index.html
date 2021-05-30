@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+<meta http-equiv="X-UA-Compatible" content="ie=edge">
+
+    <meta name="author" content="SeikoSrp">
+
+
+
+
+
+
+<title>0Day漏洞挖掘_2_栈溢出 | a blog</title>
+
+
+
+    <link rel="icon" href="/haidao.ico">
+
+
+
+
+    <!-- stylesheets list from _config.yml -->
+    
+    <link rel="stylesheet" href="/css/style.css">
+    
+
+
+
+    <!-- scripts list from _config.yml -->
+    
+    <script src="/js/script.js"></script>
+    
+    <script src="/js/tocbot.min.js"></script>
+    
+    <script src="/js/jquery.min.js"></script>
+    
+
+
+
+    
+    
+        
+    
+
+
+
+
+    <script>
+    function searchToggle() {
+        const width = $(document.body).width()
+        if(width > 479) {
+            return;
+        }
+        const search = $('.search');
+        const searchForm = $('.form-search');
+        const menuToggle = $('.menu-toggle');
+        const title = $('.navbar-header-title');
+
+        if(!search.hasClass("mobile-search")) {
+            search.addClass("mobile-search");
+            menuToggle.addClass("open-search")
+            title.addClass("mobile-title-hidden")
+        } else {
+            search.removeClass("mobile-search");
+            menuToggle.removeClass("open-search")
+            // title.css({visibility: 'visible'})
+            title.removeClass("mobile-title-hidden")
+        } 
+    }
+
+    function search(searchInputEl, formEl, flag) {
+        const path = "/" + "search.json"; // 可以在public 下查看这个search.json
+        $(formEl).submit(function(e){
+            e.preventDefault();
+            let target = null
+            if(searchInputEl == null) {
+                const screenWidth = $(document.body).width();
+                target = screenWidth > 479 ? $('#pc-search-input') : $('#mobile-search-input');
+                console.log(target);
+            } else {
+                target = $(searchInputEl)
+            }
+
+            if(!flag && target.val() === '') {
+                return ;
+            }
+
+            $("#u-search").fadeIn(500, function() {
+                $("body > .wrapper").addClass("modal-active");
+
+                $.ajax({
+                    url: path,
+                    dataType: "json",
+                    beforeSend: function (xhr) {
+                        $input = target.val();
+                        $(".form-input").val($input);
+                        const loadingBar = $('.search-loading-bar') 
+                        loadingBar.css({
+                            width:'100%',
+                            display: 'block'
+                        });
+                    },
+                    success: function( datas ) {
+                        // console.log(datas);
+                        const $resultPanel = $(".modal-body")[0];
+                        let str = `<ul class="modal-results">`;
+                        var keywords = $(".form-input").val().trim().toLowerCase().split(/[\s\-]+/);
+                        $resultPanel.innerHTML = "";
+                        let hasResult = false
+                        let text = `<div class="no-result">找不到与关键词相关的内容....</div>`;
+
+                        if ($(".form-input").val().trim().length <= 0) {
+                            // 没有结果
+                            $resultPanel.innerHTML = text;
+                            return;
+                        }
+                        datas.forEach(function (data) {
+                            var isMatch = true;
+                            if (!data.title || data.title.trim() === '') {
+                                data.title = "Untitled";
+                            }
+                            var data_title = data.title.trim().toLowerCase();
+                            var data_content = data.content.trim().replace(/<[^>]+>/g, "").toLowerCase();
+                            var data_url = data.url;
+                            var index_title = -1;
+                            var index_content = -1;
+                            var first_occur = -1;
+                            // only match artiles with not empty contents
+                            if (data_content !== '') {
+                                keywords.forEach(function (keyword, i) {
+                                    index_title = data_title.indexOf(keyword);
+                                    index_content = data_content.indexOf(keyword);
+
+                                    if (index_title < 0 && index_content < 0) {
+                                        isMatch = false;
+                                    } else {
+                                        hasResult = true
+                                        if (index_content < 0) {
+                                            index_content = 0;
+                                        }
+                                        if (i == 0) {
+                                            first_occur = index_content;
+                                        }
+                                    }
+                                });
+                            } else {
+                                isMatch = false;
+                            }
+                            // show search results
+                            if (isMatch) {
+                                str += `<li class='result-item'><a href='${data_url}' class='result-item-detail'> <span class="title">${data_title}</span>`;
+                                var content = data.content.trim().replace(/<[^>]+>/g, "");
+                                if (first_occur >= 0) {
+                                    // cut out 200 characters
+                                    var start = first_occur - 40;
+                                    var end = first_occur + 160;
+
+                                    if (start < 0) {
+                                        start = 0;
+                                    }
+
+                                    if (start == 0) {
+                                        end = 200;
+                                    }
+
+                                    if (end > content.length) {
+                                        end = content.length;
+                                    }
+
+                                    var match_content = content.substring(start, end);
+
+                                    // highlight all keywords
+                                    keywords.forEach(function (keyword) {
+                                        var regS = new RegExp(keyword, "gi");
+                                        match_content = match_content.replace(regS, `<em class="search-keyword">${keyword}</em>`);
+                                    });
+
+                                    str += `<span class="content"> ${match_content} ...</span></a>`;
+                                }
+                                str += "</li>";
+                            }
+                        });
+                        str += "</ul>";
+                        if(hasResult) {
+                            $resultPanel.innerHTML = str;
+                        } else {
+                            $resultPanel.innerHTML = text;
+                        }
+
+                    },
+                    complete: function() {
+                        setTimeout(() => {
+                                const loadingBar = $('.search-loading-bar') 
+                                loadingBar.css({
+                                    width:'0%',
+                                    display: 'none'
+                                });
+                        }, 300)
+                    }
+                });
+            })
+
+        });
+    }
+
+    $(document).ready(function() {
+        $('.modal-close').click(function () { 
+            $("#u-search").fadeOut();
+            $("body > .wrapper").removeClass("modal-active")
+        })
+
+        $('.modal-overlay').click(function() {
+            $("#u-search").fadeOut();
+            $("body > .wrapper").removeClass("modal-active")
+        })
+        search(null, ".form-search", false)
+        search("#u-search-modal-form .form-input", ".u-search-modal-form", true)
+    })
+</script>
+
+<meta name="generator" content="Hexo 4.2.1"></head>
+<body>
+<!-- Chic/layout.ejs -->
+ <div id="u-search">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="container">
+                    <form id="u-search-modal-form" class="u-search-modal-form">
+                        <button type="submit" class="form-submit-btn">
+                            <img src="/image/search.png" class="search-btn-img" />
+                        </button>
+                        <input placeholder="搜索文章。。。" class="form-input" id="modal-form-input">
+                    </form>
+                    <a class="modal-close">x</a>
+                </div>
+                <div class="search-loading">
+                    <div class="search-loading-bar"></div>
+                </div>
+            </div>
+            <div class="modal-body">
+                <!-- ul 格式如下 -->
+                <!-- <ul class="modal-results">
+                    <li class="result-item">
+                        <a class="result-item-detail">
+                            <span class="title">页面配置</span>
+                            <span class="content">
+                                content
+                            </span>
+                        </a>
+                    </li>
+                </ul> -->
+            </div>
+        </div>
+        <div class="modal-overlay"></div>
+    </div>
+    <div class="wrapper">
+        <header>
+    <nav class="navbar">
+        <div class="container">
+            <div class="navbar-header header-logo"><a href="/">SeikoSrp&#39;s Blog</a></div>
+            <div class="menu navbar-right">
+                <!-- 这里表示的是pc端搜索框 -->
+                
+                
+    <div class="search ">
+        <div class="search-btn" onClick="searchToggle()">
+            <img src="/image/search.png" class="search-btn-img" />
+        </div>
+        <form class="form-search">
+            <input class="input" placeholder="搜索文章" autocomplete="off" id="pc-search-input"/>
+        </form>
+    </div>
+
+                
+                    <a class="menu-item" href="/archives">文章</a>
+                
+                    <a class="menu-item" href="/category">分类</a>
+                
+                    <a class="menu-item" href="/about">关于</a>
+                
+                <input id="switch_default" type="checkbox" class="switch_default">
+                <label for="switch_default" class="toggleBtn"></label>
+            </div>
+        </div>
+    </nav>
+
+    
+    <nav class="navbar-mobile" id="nav-mobile">
+        <div class="container">
+            <div class="navbar-header">
+                <div>
+                    <a href="/">SeikoSrp&#39;s Blog</a><a id="mobile-toggle-theme">·&nbsp;Light</a>
+                </div>
+                <div class="navbar-mobile-right">
+                    
+                    
+    <div class="search ">
+        <div class="search-btn" onClick="searchToggle()">
+            <img src="/image/search.png" class="search-btn-img" />
+        </div>
+        <form class="form-search">
+            <input class="input" placeholder="搜索文章" autocomplete="off" id="mobile-search-input"/>
+        </form>
+    </div>
+
+                    <div class="menu-toggle" onclick="mobileBtn()">&#9776; 目录</div>
+                </div>
+                
+            </div>
+            <div class="menu" id="mobile-menu">
+                
+                    <a class="menu-item" href="/archives">文章</a>
+                
+                    <a class="menu-item" href="/category">分类</a>
+                
+                    <a class="menu-item" href="/about">关于</a>
+                
+            </div>
+        </div>
+    </nav>
+
+</header>
+<script>
+    var mobileBtn = function f() {
+        var toggleMenu = document.getElementsByClassName("menu-toggle")[0];
+        var mobileMenu = document.getElementById("mobile-menu");
+        if(toggleMenu.classList.contains("active")){
+           toggleMenu.classList.remove("active")
+            mobileMenu.classList.remove("active")
+        }else{
+            toggleMenu.classList.add("active")
+            mobileMenu.classList.add("active")
+        }
+    }
+</script>
+        <div class="main">
+            <div class="container">
+    
+    
+        <div class="post-toc">
+    <div class="tocbot-list">
+    </div>
+    <div class="tocbot-list-menu">
+        <a class="tocbot-toc-expand" onclick="expand_toc()">全部展开</a>
+        <a onclick="go_top()">回到顶部</a>
+        <a onclick="go_bottom()">前往底部</a>
+    </div>
+</div>
+
+<script>
+    document.ready(
+        function () {
+            tocbot.init({
+                tocSelector: '.tocbot-list',
+                contentSelector: '.post-content',
+                headingSelector: 'h1, h2, h3, h4, h5',
+                collapseDepth: 1,
+                orderedList: false,
+                scrollSmooth: true,
+            })
+        }
+    )
+
+    function expand_toc() {
+        var b = document.querySelector(".tocbot-toc-expand");
+        tocbot.init({
+            tocSelector: '.tocbot-list',
+            contentSelector: '.post-content',
+            headingSelector: 'h1, h2, h3, h4, h5',
+            collapseDepth: 6,
+            orderedList: false,
+            scrollSmooth: true,
+        });
+        b.setAttribute("onclick", "collapse_toc()");
+        b.innerHTML = "全部折叠"
+    }
+
+    function collapse_toc() {
+        var b = document.querySelector(".tocbot-toc-expand");
+        tocbot.init({
+            tocSelector: '.tocbot-list',
+            contentSelector: '.post-content',
+            headingSelector: 'h1, h2, h3, h4, h5',
+            collapseDepth: 1,
+            orderedList: false,
+            scrollSmooth: true,
+        });
+        b.setAttribute("onclick", "expand_toc()");
+        b.innerHTML = "全部展开"
+    }
+
+    function go_top() {
+        window.scrollTo(0, 0);
+    }
+
+    function go_bottom() {
+        window.scrollTo(0, document.body.scrollHeight);
+    }
+
+</script>
+    
+
+    
+    <article class="post-wrap">
+        <header class="post-header">
+            <h1 class="post-title">0Day漏洞挖掘_2_栈溢出</h1>
+            
+                <div class="post-meta">
+                    
+                        作者: <a itemprop="author" rel="author" href="/">SeikoSrp</a>
+                    
+
+                    
+                        <span class="post-time">
+                        发布于: <a href="#">四月 23, 2021&nbsp;&nbsp;21:58:38</a>
+                        </span>
+                    
+                    
+                        <span class="post-category">
+                    分类:
+                            
+                                <a href="/categories/%E4%BA%8C%E8%BF%9B%E5%88%B6%E7%9B%B8%E5%85%B3/">二进制相关</a>
+                            
+                        </span>
+                    
+                </div>
+            
+        </header>
+
+        <div class="post-content">
+            <h2 id="基础"><a href="#基础" class="headerlink" title="基础"></a>基础</h2><p>几个需要知道的寄存器：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">EIP	指令寄存器：其内存放着一个指针，该指针永远指向一条等待执行的指令地址</span><br><span class="line">ESP	栈指针寄存器：存放一个指针，永远指向系统栈最上面一个栈帧的栈顶</span><br><span class="line">EBP	基址指针寄存器：存放一个指针，永远指向系统栈最上面一个栈帧的栈底</span><br></pre></td></tr></table></figure>
+
+<p>一般情况下在调用函数时的流程：</p>
+<p><img src="0Day%E6%BC%8F%E6%B4%9E%E6%8C%96%E6%8E%98_2_%E6%A0%88%E6%BA%A2%E5%87%BA.assets/image-20210423220516753.png" alt="image-20210423220516753"></p>
+<p>这里Call函数地址之后有一点书中没有写就是，跳转到所调用函数入口地址处，实际上就是把调用的这个函数地址的值存入EIP，系统会执行EIP寄存器所指向的地址的指令</p>
+<h2 id="修改函数返回地址绕过验证"><a href="#修改函数返回地址绕过验证" class="headerlink" title="修改函数返回地址绕过验证"></a>修改函数返回地址绕过验证</h2><p>创建一个程序，然后绕过这个程序的密码校验：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 02_Crackme.cpp : Defines the entry point for the console application.</span></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">"stdio.h"</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">"string.h"</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">"stdlib.h"</span></span></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> PASSWORD <span class="meta-string">"1234567"</span></span></span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">verify_password</span> <span class="params">( <span class="keyword">char</span> *password)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">	<span class="keyword">int</span> authenticated;</span><br><span class="line">	<span class="keyword">char</span> <span class="built_in">buffer</span>[<span class="number">8</span>];</span><br><span class="line">	authenticated = <span class="built_in">strcmp</span>(password,PASSWORD);</span><br><span class="line">	<span class="built_in">strcpy</span>(<span class="built_in">buffer</span>,password);</span><br><span class="line">	<span class="keyword">return</span> authenticated;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">main</span><span class="params">()</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">	<span class="keyword">int</span> valid_flag = <span class="number">0</span>;</span><br><span class="line">	<span class="keyword">char</span> password[<span class="number">1024</span>];</span><br><span class="line">	FILE * fp;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span>(!(fp = fopen(<span class="string">"password.txt"</span>,<span class="string">"rw+"</span>)))</span><br><span class="line">	&#123;</span><br><span class="line">		<span class="built_in">printf</span>(<span class="string">"txt is null ~"</span>);</span><br><span class="line">		<span class="built_in">exit</span>(<span class="number">0</span>);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="built_in">fscanf</span>(fp,<span class="string">"%s"</span>,password);</span><br><span class="line">	valid_flag = verify_password(password);</span><br><span class="line">	<span class="keyword">if</span>(valid_flag)</span><br><span class="line">	&#123;</span><br><span class="line">		<span class="built_in">printf</span>(<span class="string">"incorrect password!\n\n"</span>);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">else</span></span><br><span class="line">	&#123;</span><br><span class="line">		<span class="built_in">printf</span>(<span class="string">"Yes ,you right !"</span>);</span><br><span class="line">	&#125;</span><br><span class="line">	fclose(fp);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这里通过fopen读取password.txt中的值，判断是否为正确密码</p>
+<p>这里直接拖入ollydbg，首先这个程序在main函数中调用了verify_password函数，我们考虑在函数创建调用verify_password然后return返回main函数的时候，将verify_password函数栈帧的EBP(指向的是原本main函数执行到的位置)替换成<code>printf(&quot;Yes ,you right !&quot;);</code>所在的地址，然后在返回的时候就会直接跳转到<code>printf(&quot;Yes ,you right !&quot;);</code>执行，下面是具体流程：</p>
+<p>1、先根据上一节的经验找main函数，直接下个断点：</p>
+<p><img src="0Day%E6%BC%8F%E6%B4%9E%E6%8C%96%E6%8E%98_2_%E6%A0%88%E6%BA%A2%E5%87%BA.assets/image-20210423222940701.png" alt="image-20210423222940701"></p>
+<p>然后执行到verify_password函数中，在RETN指令执行之前：</p>
+<p><img src="0Day%E6%BC%8F%E6%B4%9E%E6%8C%96%E6%8E%98_2_%E6%A0%88%E6%BA%A2%E5%87%BA.assets/image-20210221230541838.png" alt="image-20210221230541838"></p>
+<p>可以看到，此时在系统栈中：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">0012FB20是这个栈帧的EBP</span><br><span class="line">0012FB24是返回地址</span><br></pre></td></tr></table></figure>
+
+<p><img src="0Day%E6%BC%8F%E6%B4%9E%E6%8C%96%E6%8E%98_2_%E6%A0%88%E6%BA%A2%E5%87%BA.assets/image-20210221230806411.png" alt="image-20210221230806411"></p>
+<p>此时Yes这个分支的地址为:0040112C</p>
+<p>这样通过修改文件的最后四个字节，来覆盖正常情况下的返回地址即可达到目的</p>
+<p><img src="0Day%E6%BC%8F%E6%B4%9E%E6%8C%96%E6%8E%98_2_%E6%A0%88%E6%BA%A2%E5%87%BA.assets/image-20210221231420071.png" alt="image-20210221231420071"></p>
+<p>可以看到返回地址和EBP都被覆盖</p>
+<p><img src="0Day%E6%BC%8F%E6%B4%9E%E6%8C%96%E6%8E%98_2_%E6%A0%88%E6%BA%A2%E5%87%BA.assets/image-20210221231333556.png" alt="image-20210221231333556"></p>
+<h2 id="代码注入"><a href="#代码注入" class="headerlink" title="代码注入"></a>代码注入</h2><p>上面一段我们是通过修改栈帧的返回地址，从而绕过了密码验证，这节通过栈溢出让程序执行代码</p>
+<p>代码：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 02_Crackme.cpp : Defines the entry point for the console application.</span></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">"stdio.h"</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">"string.h"</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">"stdlib.h"</span></span></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> PASSWORD <span class="meta-string">"1234567"</span></span></span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">verify_password</span> <span class="params">( <span class="keyword">char</span> *password)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">	<span class="keyword">int</span> authenticated;</span><br><span class="line">	<span class="keyword">char</span> <span class="built_in">buffer</span>[<span class="number">44</span>];</span><br><span class="line">	authenticated = <span class="built_in">strcmp</span>(password,PASSWORD);</span><br><span class="line">	<span class="built_in">strcpy</span>(<span class="built_in">buffer</span>,password);</span><br><span class="line">	<span class="keyword">return</span> authenticated;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">main</span><span class="params">()</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">	<span class="keyword">int</span> valid_flag = <span class="number">0</span>;</span><br><span class="line">	<span class="keyword">char</span> password[<span class="number">1024</span>];</span><br><span class="line">	FILE * fp;</span><br><span class="line">    LoadLibrary(<span class="string">"user32.dll"</span>);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span>(!(fp = fopen(<span class="string">"password.txt"</span>,<span class="string">"rw+"</span>)))</span><br><span class="line">	&#123;</span><br><span class="line">		<span class="built_in">exit</span>(<span class="number">0</span>);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="built_in">fscanf</span>(fp,<span class="string">"%s"</span>,password);</span><br><span class="line">	valid_flag = verify_password(password);</span><br><span class="line">	<span class="keyword">if</span>(valid_flag)</span><br><span class="line">	&#123;</span><br><span class="line">		<span class="built_in">printf</span>(<span class="string">"incorrect password!\n\n"</span>);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">else</span></span><br><span class="line">	&#123;</span><br><span class="line">		<span class="built_in">printf</span>(<span class="string">"Yes ,you right !"</span>);</span><br><span class="line">	&#125;</span><br><span class="line">	fclose(fp);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="1、查看系统接口messageboxA在内存中的入口地址"><a href="#1、查看系统接口messageboxA在内存中的入口地址" class="headerlink" title="1、查看系统接口messageboxA在内存中的入口地址"></a>1、查看系统接口messageboxA在内存中的入口地址</h3><p>程序中加载了user32.dll，为了能够执行系统函数，使用dependency walker工具查看：</p>
+<p><img src="0Day%E6%BC%8F%E6%B4%9E%E6%8C%96%E6%8E%98_2_%E6%A0%88%E6%BA%A2%E5%87%BA.assets/image-20210424204359634.png" alt="image-20210424204359634"></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">User32.dll的基地址：</span><br><span class="line">0x77D10000</span><br><span class="line">MessageBoxA的偏移地址为:</span><br><span class="line">0x000407EA</span><br><span class="line"></span><br><span class="line">两者相加得出MessageBoxA在内存中的入口地址：</span><br><span class="line">0x77D507EA</span><br></pre></td></tr></table></figure>
+
+<h3 id="2、查看txt加载之后的起始位置和返回地址"><a href="#2、查看txt加载之后的起始位置和返回地址" class="headerlink" title="2、查看txt加载之后的起始位置和返回地址"></a>2、查看txt加载之后的起始位置和返回地址</h3><p>这里可以看到，txt被加载之后，起始的一串4321</p>
+<p><img src="0Day%E6%BC%8F%E6%B4%9E%E6%8C%96%E6%8E%98_2_%E6%A0%88%E6%BA%A2%E5%87%BA.assets/image-20210424204702638.png" alt="image-20210424204702638"></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">EBP:</span><br><span class="line">0x0012FB20</span><br><span class="line">返回地址为:</span><br><span class="line">0x0012FB24</span><br><span class="line">内容为：</span><br><span class="line">0x00401125</span><br></pre></td></tr></table></figure>
+
+<h3 id="3、构造执行的汇编代码"><a href="#3、构造执行的汇编代码" class="headerlink" title="3、构造执行的汇编代码"></a>3、构造执行的汇编代码</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line">XOR EBX,EBX		;相当于MOV EBX,0 据说效率更高</span><br><span class="line">PUSH EBX		</span><br><span class="line">PUSH 74736577	;tsew</span><br><span class="line">PUSH 6C696166	;liaf</span><br><span class="line"></span><br><span class="line">MOV EAX,ESP</span><br><span class="line">PUSH EBX</span><br><span class="line">PUSH EAX</span><br><span class="line">PUSH EAX</span><br><span class="line">PUSH EBX</span><br><span class="line">;这里连续的push是传入四个参数(0,failwest,failwest,0)</span><br><span class="line"></span><br><span class="line">;调用MessageBoxA</span><br><span class="line">MOV EAX,0x0x77D507EA</span><br><span class="line">CALL EAX</span><br></pre></td></tr></table></figure>
+
+<p>翻译成机器码就是：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">33DB</span><br><span class="line">53</span><br><span class="line">6877657374</span><br><span class="line">686661696C</span><br><span class="line">8BC4</span><br><span class="line">53</span><br><span class="line">50</span><br><span class="line">50</span><br><span class="line">53</span><br><span class="line">B8EA07D577</span><br><span class="line">FFD0</span><br></pre></td></tr></table></figure>
+
+<p>按顺序填入txt中，最后的53-56位填0012FAF0，因为是参数传入之后的起始位置</p>
+<p><img src="0Day%E6%BC%8F%E6%B4%9E%E6%8C%96%E6%8E%98_2_%E6%A0%88%E6%BA%A2%E5%87%BA.assets/image-20210424214050048.png" alt="image-20210424214050048"></p>
+<p>读取之后返回之前的栈空间：</p>
+<p><img src="0Day%E6%BC%8F%E6%B4%9E%E6%8C%96%E6%8E%98_2_%E6%A0%88%E6%BA%A2%E5%87%BA.assets/image-20210424221214797.png" alt="image-20210424221214797"></p>
+<p>执行之后可以看到弹窗：</p>
+<p><img src="0Day%E6%BC%8F%E6%B4%9E%E6%8C%96%E6%8E%98_2_%E6%A0%88%E6%BA%A2%E5%87%BA.assets/image-20210424213936920.png" alt="image-20210424213936920"></p>
+<h3 id="汇编语言如何调用函数参数"><a href="#汇编语言如何调用函数参数" class="headerlink" title="汇编语言如何调用函数参数"></a>汇编语言如何调用函数参数</h3><p>上面在使用CALL指令调用MessageBoxA之前，连续PUSH了四个参数入栈，实际上在汇编语言中，在调用函数时，要先把参数PUSH入栈，比如这里调用main函数的时候：</p>
+<p><img src="0Day%E6%BC%8F%E6%B4%9E%E6%8C%96%E6%8E%98_2_%E6%A0%88%E6%BA%A2%E5%87%BA.assets/image-20210424220237580.png" alt="image-20210424220237580"></p>
+<p>在调用verify_password函数时，PUSH的是EDX的值， 这里EDX寄存器中保存的是一个地址，因为使用了指针，EDX中的值就是password.txt文件中传入的值，被当做参数传入函数，并且后面写入栈帧：</p>
+<p><img src="0Day%E6%BC%8F%E6%B4%9E%E6%8C%96%E6%8E%98_2_%E6%A0%88%E6%BA%A2%E5%87%BA.assets/image-20210424220500445.png" alt="image-20210424220500445"></p>
+<h2 id="小结"><a href="#小结" class="headerlink" title="小结"></a>小结</h2><p>主要是说了栈溢出的利用方式，分析流程：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">修改返回地址：</span><br><span class="line">1、首先要找到返回地址（EBP的旁边）</span><br><span class="line">2、查读取的参数是否能覆盖返回地址，如果能覆盖，就有可能修改返回地址</span><br><span class="line"></span><br><span class="line">代码注入：</span><br><span class="line">1、首先要查看调用函数在内存中的入口地址</span><br><span class="line">2、构造代码</span><br><span class="line">3、查看参数进入之后的起始地址</span><br><span class="line">4、将返回地址位置覆盖为参数的起始地址</span><br></pre></td></tr></table></figure>
+
+
+        </div>
+
+        
+            <section class="post-copyright">
+                
+                
+                
+                
+
+            </section>
+        
+        <section class="post-tags">
+            <div>
+                <span>Tag(s):</span>
+                <span class="tag">
+                    
+                </span>
+            </div>
+            <div>
+                <a href="javascript:window.history.back();">back</a>
+                <span>· </span>
+                <a href="/">home</a>
+            </div>
+        </section>
+        <section class="post-nav">
+            
+                <a class="prev" rel="prev" href="/2021/04-27-0day%E6%BC%8F%E6%B4%9E%E6%8C%96%E6%8E%98_3.1_%E4%BD%BF%E7%94%A8jmp%E6%8C%87%E4%BB%A4%E6%89%A7%E8%A1%8Cshellcode/">0day漏洞挖掘_3.1_使用jmp指令执行shellcode</a>
+            
+            
+            <a class="next" rel="next" href="/2021/04-22-0Day%E6%BC%8F%E6%B4%9E%E6%8C%96%E6%8E%98_1.0_crackme/">0Day漏洞挖掘_1.0_crackme</a>
+            
+        </section>
+	
+		<section id="comments" class="comments">
+		  <style>
+			.comments{margin:30px;padding:10px;background:#fff}
+			@media screen and (max-width:800px){.comments{margin:auto;padding:10px;background:#fff}}
+		  </style>
+		  <div class="valine_comment"></div>
+<!--载入js，在</body>之前插入即可-->
+<!--Leancloud 操作库:-->
+<script src="//cdn1.lncld.net/static/js/3.0.4/av-min.js"></script>
+<!--Valine 的核心代码库-->
+<script src="//unpkg.com/valine/dist/Valine.min.js"></script>
+<script>
+  new Valine({
+      el: '.valine_comment',
+      app_id: 'ehQ0k7G3fcpwmkyxhG8U6DzL-gzGzoHsz',
+      app_key: 'AwwXGgbdqswiimAY0qJYhtRa',
+      placeholder: '这里留言。。',
+      notify: 'true',
+      verify: 'true',
+    });
+</script>
+		</section>
+	
+
+    </article>
+</div>
+
+        </div>
+        <footer id="footer" class="footer">
+    <div class="copyright">
+        <span>© SeikoSrp | Powered by <a href="https://hexo.io" target="_blank">Hexo</a> & <a href="https://github.com/Siricee/hexo-theme-Chic" target="_blank">Chic</a></span>
+    </div>
+</footer>
+
+    </div>
+</body>
+</html>

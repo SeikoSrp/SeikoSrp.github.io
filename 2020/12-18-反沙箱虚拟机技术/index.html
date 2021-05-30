@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+<meta http-equiv="X-UA-Compatible" content="ie=edge">
+
+    <meta name="author" content="SeikoSrp">
+
+
+
+
+
+
+<title>反沙箱虚拟机技术 | a blog</title>
+
+
+
+    <link rel="icon" href="/haidao.ico">
+
+
+
+
+    <!-- stylesheets list from _config.yml -->
+    
+    <link rel="stylesheet" href="/css/style.css">
+    
+
+
+
+    <!-- scripts list from _config.yml -->
+    
+    <script src="/js/script.js"></script>
+    
+    <script src="/js/tocbot.min.js"></script>
+    
+    <script src="/js/jquery.min.js"></script>
+    
+
+
+
+    
+    
+        
+    
+
+
+
+
+    <script>
+    function searchToggle() {
+        const width = $(document.body).width()
+        if(width > 479) {
+            return;
+        }
+        const search = $('.search');
+        const searchForm = $('.form-search');
+        const menuToggle = $('.menu-toggle');
+        const title = $('.navbar-header-title');
+
+        if(!search.hasClass("mobile-search")) {
+            search.addClass("mobile-search");
+            menuToggle.addClass("open-search")
+            title.addClass("mobile-title-hidden")
+        } else {
+            search.removeClass("mobile-search");
+            menuToggle.removeClass("open-search")
+            // title.css({visibility: 'visible'})
+            title.removeClass("mobile-title-hidden")
+        } 
+    }
+
+    function search(searchInputEl, formEl, flag) {
+        const path = "/" + "search.json"; // 可以在public 下查看这个search.json
+        $(formEl).submit(function(e){
+            e.preventDefault();
+            let target = null
+            if(searchInputEl == null) {
+                const screenWidth = $(document.body).width();
+                target = screenWidth > 479 ? $('#pc-search-input') : $('#mobile-search-input');
+                console.log(target);
+            } else {
+                target = $(searchInputEl)
+            }
+
+            if(!flag && target.val() === '') {
+                return ;
+            }
+
+            $("#u-search").fadeIn(500, function() {
+                $("body > .wrapper").addClass("modal-active");
+
+                $.ajax({
+                    url: path,
+                    dataType: "json",
+                    beforeSend: function (xhr) {
+                        $input = target.val();
+                        $(".form-input").val($input);
+                        const loadingBar = $('.search-loading-bar') 
+                        loadingBar.css({
+                            width:'100%',
+                            display: 'block'
+                        });
+                    },
+                    success: function( datas ) {
+                        // console.log(datas);
+                        const $resultPanel = $(".modal-body")[0];
+                        let str = `<ul class="modal-results">`;
+                        var keywords = $(".form-input").val().trim().toLowerCase().split(/[\s\-]+/);
+                        $resultPanel.innerHTML = "";
+                        let hasResult = false
+                        let text = `<div class="no-result">找不到与关键词相关的内容....</div>`;
+
+                        if ($(".form-input").val().trim().length <= 0) {
+                            // 没有结果
+                            $resultPanel.innerHTML = text;
+                            return;
+                        }
+                        datas.forEach(function (data) {
+                            var isMatch = true;
+                            if (!data.title || data.title.trim() === '') {
+                                data.title = "Untitled";
+                            }
+                            var data_title = data.title.trim().toLowerCase();
+                            var data_content = data.content.trim().replace(/<[^>]+>/g, "").toLowerCase();
+                            var data_url = data.url;
+                            var index_title = -1;
+                            var index_content = -1;
+                            var first_occur = -1;
+                            // only match artiles with not empty contents
+                            if (data_content !== '') {
+                                keywords.forEach(function (keyword, i) {
+                                    index_title = data_title.indexOf(keyword);
+                                    index_content = data_content.indexOf(keyword);
+
+                                    if (index_title < 0 && index_content < 0) {
+                                        isMatch = false;
+                                    } else {
+                                        hasResult = true
+                                        if (index_content < 0) {
+                                            index_content = 0;
+                                        }
+                                        if (i == 0) {
+                                            first_occur = index_content;
+                                        }
+                                    }
+                                });
+                            } else {
+                                isMatch = false;
+                            }
+                            // show search results
+                            if (isMatch) {
+                                str += `<li class='result-item'><a href='${data_url}' class='result-item-detail'> <span class="title">${data_title}</span>`;
+                                var content = data.content.trim().replace(/<[^>]+>/g, "");
+                                if (first_occur >= 0) {
+                                    // cut out 200 characters
+                                    var start = first_occur - 40;
+                                    var end = first_occur + 160;
+
+                                    if (start < 0) {
+                                        start = 0;
+                                    }
+
+                                    if (start == 0) {
+                                        end = 200;
+                                    }
+
+                                    if (end > content.length) {
+                                        end = content.length;
+                                    }
+
+                                    var match_content = content.substring(start, end);
+
+                                    // highlight all keywords
+                                    keywords.forEach(function (keyword) {
+                                        var regS = new RegExp(keyword, "gi");
+                                        match_content = match_content.replace(regS, `<em class="search-keyword">${keyword}</em>`);
+                                    });
+
+                                    str += `<span class="content"> ${match_content} ...</span></a>`;
+                                }
+                                str += "</li>";
+                            }
+                        });
+                        str += "</ul>";
+                        if(hasResult) {
+                            $resultPanel.innerHTML = str;
+                        } else {
+                            $resultPanel.innerHTML = text;
+                        }
+
+                    },
+                    complete: function() {
+                        setTimeout(() => {
+                                const loadingBar = $('.search-loading-bar') 
+                                loadingBar.css({
+                                    width:'0%',
+                                    display: 'none'
+                                });
+                        }, 300)
+                    }
+                });
+            })
+
+        });
+    }
+
+    $(document).ready(function() {
+        $('.modal-close').click(function () { 
+            $("#u-search").fadeOut();
+            $("body > .wrapper").removeClass("modal-active")
+        })
+
+        $('.modal-overlay').click(function() {
+            $("#u-search").fadeOut();
+            $("body > .wrapper").removeClass("modal-active")
+        })
+        search(null, ".form-search", false)
+        search("#u-search-modal-form .form-input", ".u-search-modal-form", true)
+    })
+</script>
+
+<meta name="generator" content="Hexo 4.2.1"></head>
+<body>
+<!-- Chic/layout.ejs -->
+ <div id="u-search">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="container">
+                    <form id="u-search-modal-form" class="u-search-modal-form">
+                        <button type="submit" class="form-submit-btn">
+                            <img src="/image/search.png" class="search-btn-img" />
+                        </button>
+                        <input placeholder="搜索文章。。。" class="form-input" id="modal-form-input">
+                    </form>
+                    <a class="modal-close">x</a>
+                </div>
+                <div class="search-loading">
+                    <div class="search-loading-bar"></div>
+                </div>
+            </div>
+            <div class="modal-body">
+                <!-- ul 格式如下 -->
+                <!-- <ul class="modal-results">
+                    <li class="result-item">
+                        <a class="result-item-detail">
+                            <span class="title">页面配置</span>
+                            <span class="content">
+                                content
+                            </span>
+                        </a>
+                    </li>
+                </ul> -->
+            </div>
+        </div>
+        <div class="modal-overlay"></div>
+    </div>
+    <div class="wrapper">
+        <header>
+    <nav class="navbar">
+        <div class="container">
+            <div class="navbar-header header-logo"><a href="/">SeikoSrp&#39;s Blog</a></div>
+            <div class="menu navbar-right">
+                <!-- 这里表示的是pc端搜索框 -->
+                
+                
+    <div class="search ">
+        <div class="search-btn" onClick="searchToggle()">
+            <img src="/image/search.png" class="search-btn-img" />
+        </div>
+        <form class="form-search">
+            <input class="input" placeholder="搜索文章" autocomplete="off" id="pc-search-input"/>
+        </form>
+    </div>
+
+                
+                    <a class="menu-item" href="/archives">文章</a>
+                
+                    <a class="menu-item" href="/category">分类</a>
+                
+                    <a class="menu-item" href="/about">关于</a>
+                
+                <input id="switch_default" type="checkbox" class="switch_default">
+                <label for="switch_default" class="toggleBtn"></label>
+            </div>
+        </div>
+    </nav>
+
+    
+    <nav class="navbar-mobile" id="nav-mobile">
+        <div class="container">
+            <div class="navbar-header">
+                <div>
+                    <a href="/">SeikoSrp&#39;s Blog</a><a id="mobile-toggle-theme">·&nbsp;Light</a>
+                </div>
+                <div class="navbar-mobile-right">
+                    
+                    
+    <div class="search ">
+        <div class="search-btn" onClick="searchToggle()">
+            <img src="/image/search.png" class="search-btn-img" />
+        </div>
+        <form class="form-search">
+            <input class="input" placeholder="搜索文章" autocomplete="off" id="mobile-search-input"/>
+        </form>
+    </div>
+
+                    <div class="menu-toggle" onclick="mobileBtn()">&#9776; 目录</div>
+                </div>
+                
+            </div>
+            <div class="menu" id="mobile-menu">
+                
+                    <a class="menu-item" href="/archives">文章</a>
+                
+                    <a class="menu-item" href="/category">分类</a>
+                
+                    <a class="menu-item" href="/about">关于</a>
+                
+            </div>
+        </div>
+    </nav>
+
+</header>
+<script>
+    var mobileBtn = function f() {
+        var toggleMenu = document.getElementsByClassName("menu-toggle")[0];
+        var mobileMenu = document.getElementById("mobile-menu");
+        if(toggleMenu.classList.contains("active")){
+           toggleMenu.classList.remove("active")
+            mobileMenu.classList.remove("active")
+        }else{
+            toggleMenu.classList.add("active")
+            mobileMenu.classList.add("active")
+        }
+    }
+</script>
+        <div class="main">
+            <div class="container">
+    
+    
+        <div class="post-toc">
+    <div class="tocbot-list">
+    </div>
+    <div class="tocbot-list-menu">
+        <a class="tocbot-toc-expand" onclick="expand_toc()">全部展开</a>
+        <a onclick="go_top()">回到顶部</a>
+        <a onclick="go_bottom()">前往底部</a>
+    </div>
+</div>
+
+<script>
+    document.ready(
+        function () {
+            tocbot.init({
+                tocSelector: '.tocbot-list',
+                contentSelector: '.post-content',
+                headingSelector: 'h1, h2, h3, h4, h5',
+                collapseDepth: 1,
+                orderedList: false,
+                scrollSmooth: true,
+            })
+        }
+    )
+
+    function expand_toc() {
+        var b = document.querySelector(".tocbot-toc-expand");
+        tocbot.init({
+            tocSelector: '.tocbot-list',
+            contentSelector: '.post-content',
+            headingSelector: 'h1, h2, h3, h4, h5',
+            collapseDepth: 6,
+            orderedList: false,
+            scrollSmooth: true,
+        });
+        b.setAttribute("onclick", "collapse_toc()");
+        b.innerHTML = "全部折叠"
+    }
+
+    function collapse_toc() {
+        var b = document.querySelector(".tocbot-toc-expand");
+        tocbot.init({
+            tocSelector: '.tocbot-list',
+            contentSelector: '.post-content',
+            headingSelector: 'h1, h2, h3, h4, h5',
+            collapseDepth: 1,
+            orderedList: false,
+            scrollSmooth: true,
+        });
+        b.setAttribute("onclick", "expand_toc()");
+        b.innerHTML = "全部展开"
+    }
+
+    function go_top() {
+        window.scrollTo(0, 0);
+    }
+
+    function go_bottom() {
+        window.scrollTo(0, document.body.scrollHeight);
+    }
+
+</script>
+    
+
+    
+    <article class="post-wrap">
+        <header class="post-header">
+            <h1 class="post-title">反沙箱虚拟机技术</h1>
+            
+                <div class="post-meta">
+                    
+                        作者: <a itemprop="author" rel="author" href="/">SeikoSrp</a>
+                    
+
+                    
+                        <span class="post-time">
+                        发布于: <a href="#">十二月 18, 2020&nbsp;&nbsp;18:47:41</a>
+                        </span>
+                    
+                    
+                        <span class="post-category">
+                    分类:
+                            
+                                <a href="/categories/%E4%BA%8C%E8%BF%9B%E5%88%B6%E7%9B%B8%E5%85%B3/">二进制相关</a>
+                            
+                        </span>
+                    
+                </div>
+            
+        </header>
+
+        <div class="post-content">
+            <h2 id="各种层面的虚拟化技术"><a href="#各种层面的虚拟化技术" class="headerlink" title="各种层面的虚拟化技术"></a>各种层面的虚拟化技术</h2><p><img src="%E5%8F%8D%E6%B2%99%E7%AE%B1%E8%99%9A%E6%8B%9F%E6%9C%BA%E6%8A%80%E6%9C%AF.assets/1576417502772.png" alt="1576417502772"></p>
+<h2 id="常见反沙箱技术"><a href="#常见反沙箱技术" class="headerlink" title="常见反沙箱技术"></a>常见反沙箱技术</h2><h3 id="直接检测沙箱的存在"><a href="#直接检测沙箱的存在" class="headerlink" title="直接检测沙箱的存在"></a>直接检测沙箱的存在</h3><h4 id="检测虚拟设备名"><a href="#检测虚拟设备名" class="headerlink" title="检测虚拟设备名"></a>检测虚拟设备名</h4><p>通过使用相关API来枚举设备细节，检测虚拟化软件的存在，例如<a href="https://docs.microsoft.com/en-us/windows/win32/api/setupapi/nf-setupapi-setupdigetclassdevsw" target="_blank" rel="noopener">SetupDiGetClassDevsA</a>:</p>
+<p><img src="%E5%8F%8D%E6%B2%99%E7%AE%B1%E8%99%9A%E6%8B%9F%E6%9C%BA%E6%8A%80%E6%9C%AF.assets/1576417948454.png" alt="1576417948454"></p>
+<p><a href="https://docs.microsoft.com/en-us/windows/win32/api/setupapi/nf-setupapi-setupdienumdeviceinfo" target="_blank" rel="noopener">SetupDiEnumDeviceInfo</a>:</p>
+<p><img src="%E5%8F%8D%E6%B2%99%E7%AE%B1%E8%99%9A%E6%8B%9F%E6%9C%BA%E6%8A%80%E6%9C%AF.assets/1576418060072.png" alt="1576418060072"></p>
+<p><a href="https://docs.microsoft.com/en-us/windows/win32/api/setupapi/nf-setupapi-setupdigetdeviceregistrypropertya" target="_blank" rel="noopener">SetupDiGetDeviceRegistryPropertyA</a>:</p>
+<p><img src="%E5%8F%8D%E6%B2%99%E7%AE%B1%E8%99%9A%E6%8B%9F%E6%9C%BA%E6%8A%80%E6%9C%AF.assets/1576418139422.png" alt="1576418139422"></p>
+<p>可以看到在在虚拟机中的设备管理器中的驱动器是带有VMware SATA、VMware Virtual等信息的。</p>
+<p><img src="%E5%8F%8D%E6%B2%99%E7%AE%B1%E8%99%9A%E6%8B%9F%E6%9C%BA%E6%8A%80%E6%9C%AF.assets/1576418561528.png" alt="1576418561528"></p>
+<p>或者通过WMI获取主机的主板序列号、主机型号等信息</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">wmic bios get serialnumber</span><br><span class="line">wmic csproduct get name</span><br></pre></td></tr></table></figure>
+
+<p><img src="%E5%8F%8D%E6%B2%99%E7%AE%B1%E8%99%9A%E6%8B%9F%E6%9C%BA%E6%8A%80%E6%9C%AF.assets/1576418403323.png" alt="1576418403323"></p>
+<h4 id="检测进程名"><a href="#检测进程名" class="headerlink" title="检测进程名"></a>检测进程名</h4><p>使用<a href="https://docs.microsoft.com/en-us/windows/win32/api/tlhelp32/nf-tlhelp32-process32first" target="_blank" rel="noopener">Process32First</a>，<a href="https://docs.microsoft.com/en-us/windows/win32/api/tlhelp32/nf-tlhelp32-process32next" target="_blank" rel="noopener">Process32Next</a>等WINAPI列举进程，查找是否存在虚拟机中特有的进程。</p>
+<p>常见虚拟化进程：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">vboxservice.exe(VirtualBox)</span><br><span class="line">vboxtray.exe(VirtualBox)</span><br><span class="line">vmtoolsd.exe(VMWARE)</span><br><span class="line">vmwaretray.exe(VMWARE)</span><br><span class="line">vmwareuser(VMWARE)</span><br><span class="line">VGAuthService.exe(VMWARE)</span><br><span class="line">vmacthlp.exe(VMWARE)</span><br><span class="line">vmsrvc.exe(VirtualPC)</span><br><span class="line">vmusrvc.exe(VirtualPC)</span><br><span class="line">prl_cc.exe(Parallels)</span><br><span class="line">prl_tools.exe(Parallels)</span><br><span class="line">xenservice.exe(Citrix Xen)</span><br><span class="line">qemu-ga.exe(QEMU)</span><br></pre></td></tr></table></figure>
+
+<h4 id="检测注册表"><a href="#检测注册表" class="headerlink" title="检测注册表"></a>检测注册表</h4><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">HARDWARE\DEVICEMAP\Scsi\Scsi Port 0\Scsi Bus 0\Target Id 0\Logical Unit Id 0 (Identifier)	(VirtualBox) </span><br><span class="line">HARDWARE\DEVICEMAP\Scsi\Scsi Port 0\Scsi Bus 0\Target Id 0\Logical Unit Id 0 (Identifier)   (QEMU)</span><br><span class="line">HARDWARE\Description\System (SystemBiosVersion)	(VBOX)</span><br><span class="line">HARDWARE\Description\System (SystemBiosVersion)	(QEMU) (VirtualBox) (VMWARE) (VMWARE) (VMWARE) (VMWARE) (VMWARE)</span><br><span class="line">(VirtualBox) (VirtualBox) (VirtualBox) (VirtualBox) (VirtualBox) (VirtualBox)</span><br><span class="line">SYSTEM\ControlSet001\Services\VBoxVideo	(VirtualBox)</span><br><span class="line">SOFTWARE\VMware, Inc.\VMware Tools</span><br></pre></td></tr></table></figure>
+
+<h4 id="检测硬盘中的文件"><a href="#检测硬盘中的文件" class="headerlink" title="检测硬盘中的文件"></a>检测硬盘中的文件</h4><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line">system32\drivers\VBoxMouse.sys </span><br><span class="line">system32\drivers\VBoxGuest.sys </span><br><span class="line">system32\drivers\VBoxSF.sys </span><br><span class="line">system32\drivers\VBoxVideo.sys </span><br><span class="line">system32\vboxdisp.dll </span><br><span class="line">system32\vboxservice.exe </span><br><span class="line">system32\vboxtray.exe </span><br><span class="line">system32\VBoxControl.exe </span><br><span class="line">system32\drivers\vmmouse.sys </span><br><span class="line">system32\drivers\vmhgfs.sys </span><br><span class="line">system32\drivers\vm3dmp.sys </span><br><span class="line">system32\drivers\vmci.sys </span><br><span class="line">system32\drivers\vmhgfs.sys </span><br><span class="line">system32\drivers\vmmemctl.sys </span><br><span class="line">system32\drivers\vmmouse.sys </span><br><span class="line">system32\drivers\vmrawdsk.sys </span><br><span class="line">system32\drivers\vmusbmouse.sys</span><br></pre></td></tr></table></figure>
+
+<h4 id="检测MAC地址"><a href="#检测MAC地址" class="headerlink" title="检测MAC地址"></a>检测MAC地址</h4><p>虚拟网卡信息会有固定的指纹，一般是前三个字节标识一个提供商</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">00:05:69:xx:xx:xx Vmware</span><br><span class="line">00:0C:29:xx:xx:xx Vmware</span><br><span class="line">00:1C:14:xx:xx:xx Vmware</span><br><span class="line">00:50:56:xx:xx:xx Vmware</span><br><span class="line">00:15:5D:xx:xx:xx Hyper-V</span><br><span class="line">00:16:3e:xx:xx:xx Xen</span><br><span class="line">08:00:27:xx:xx:xx VirtualBox</span><br><span class="line">0a:00:27:xx:xx:xx Hybrid Analysis</span><br></pre></td></tr></table></figure>
+
+<h4 id="检测相关服务"><a href="#检测相关服务" class="headerlink" title="检测相关服务"></a>检测相关服务</h4><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">VBoxWddm</span><br><span class="line">VBoxSF</span><br><span class="line">VBoxMouse</span><br><span class="line">VBoxGuest</span><br><span class="line">vmci</span><br><span class="line">vmhgfs</span><br><span class="line">vmmouse</span><br><span class="line">vmmemctl</span><br><span class="line">vmusb</span><br><span class="line">vmusbmouse</span><br><span class="line">vmx_svga</span><br><span class="line">vmxnet</span><br><span class="line">vmx86</span><br></pre></td></tr></table></figure>
+
+<h3 id="检测运行时的环境"><a href="#检测运行时的环境" class="headerlink" title="检测运行时的环境"></a>检测运行时的环境</h3><h4 id="wear-and-tear"><a href="#wear-and-tear" class="headerlink" title="wear and tear"></a>wear and tear</h4><p>也就是利用损耗特征来对虚拟机进行检测，细节可以参考：<a href="http://www.arkteam.net/?p=3897" target="_blank" rel="noopener">http://www.arkteam.net/?p=3897</a>     <a href="https://ieeexplore.ieee.org/document/7958622/" target="_blank" rel="noopener">https://ieeexplore.ieee.org/document/7958622/</a></p>
+<h4 id="检测开机时间"><a href="#检测开机时间" class="headerlink" title="检测开机时间"></a>检测开机时间</h4><p>许多沙箱检测完毕后会重置系统，我们可以检测开机时间来判断是否为真实的运行状况。 我们使用WinAPI GetTickCount()来获取机器已运行的时间（以秒为单位），然后判断开机运行时间是否大 于1个小时，如果开机时间小于1小时就表示当前机器是虚拟机。</p>
+<p><img src="%E5%8F%8D%E6%B2%99%E7%AE%B1%E8%99%9A%E6%8B%9F%E6%9C%BA%E6%8A%80%E6%9C%AF.assets/1578130813203.png" alt="1578130813203"></p>
+<h4 id="检测物理内存"><a href="#检测物理内存" class="headerlink" title="检测物理内存"></a>检测物理内存</h4><p>现在大多数PC机器都具有4GB以上的RAM,我们可以检测RAM是否大于4GB来判断是否是真实的运行机器。可以用GlobalMemoryStatusEx来获取内存信息，其中它的成员ullTotalPhys为物理内存大小。</p>
+<h4 id="检测临时文件"><a href="#检测临时文件" class="headerlink" title="检测临时文件"></a>检测临时文件</h4><p>正常使用的系统，其中用户的临时文件夹中有一定数量的临时文件，可以通过判断临时文件夹内的文件数量来检测是否在沙箱中运行。先使用GetEnvironmentVariable()获取temp路径， 再利用FindFirstFile()与FindNextFile()枚举temp文件 夹内的文件数量，如果小于30就表示当前机器是虚拟机。</p>
+<h4 id="检测CPU核心数"><a href="#检测CPU核心数" class="headerlink" title="检测CPU核心数"></a>检测CPU核心数</h4><p>一种方法是通过简单的API GetSystemInfo中的值dwNumberOfProcessors来计算CPU核心数，技术技术的进步，大多数恶意软件家族选择使用WMI以及更为隐蔽的引入基于PEB内联汇编代码或者使 用内部函数来实现的方法。</p>
+<h4 id="检测是否有用户交互"><a href="#检测是否有用户交互" class="headerlink" title="检测是否有用户交互"></a>检测是否有用户交互</h4><p>因为自动化分析系统永远不会与真实用户进行交互。早期传统的沙箱在设计上并没有去模拟用户行为，因此恶意软件在开发过程中加入了相关代码，用来检测自动化系统与真实系统之间的差异。例如恶意 软件会检查鼠标移动轨迹来判断是否有用户交互存在。有些恶意软件还会检查注册表键值，判断MRU（Most Recently Used，最近使用）文件来分析用户与被感染系统的历史交互行为。</p>
+<h4 id="延迟执行"><a href="#延迟执行" class="headerlink" title="延迟执行"></a>延迟执行</h4><p> 一般沙箱运行样本的时间是比较短的，因为其没有过多资源可以供程序长时间运行，所以恶 意软件可能会延迟等待一会儿后再进行真实的操作。<br>相关API：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">sleep()</span><br><span class="line">sleep_for()</span><br><span class="line">NtDelayExecution()</span><br><span class="line">CreateWaitTableTimer()</span><br><span class="line">SetTimer()</span><br></pre></td></tr></table></figure>
+
+<p>API Flooding：在循环中调用无用的API来引入执行延迟。比如延长10分钟之后执行。</p>
+<h4 id="利用漏洞指令"><a href="#利用漏洞指令" class="headerlink" title="利用漏洞指令"></a>利用漏洞指令</h4><p>这种方法主要是针对x86 ISA 中有十多条敏感指令不是特权指令，因此 x86 无法使用经典的虚拟化技术完全虚拟化导致的。<br>最常用的指令是：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">cpuid</span><br><span class="line">sidt</span><br><span class="line">sgdt</span><br><span class="line">sldt</span><br><span class="line">in</span><br><span class="line">str</span><br></pre></td></tr></table></figure>
+
+<p>这里说到特权指令，那么什么是特权指令？</p>
+<p>许多操作系统有至少两种独立的操作模式：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">用户模式（user mode)</span><br><span class="line">监督程序模式(nomitor mode)(也称为管理模式(supervisor mode)</span><br><span class="line"></span><br><span class="line">系统模式(system mode)</span><br><span class="line">特权模式(privileged mode))</span><br></pre></td></tr></table></figure>
+
+<p>设计这些模式的目的是为了区分操作系统代码和用户定义代码的执行，从而确保操作系统的正常执行。如果在用户模式下试图执行特权指令，那么硬件并不执行该指令，而是认为该指令非法，并将其以陷阱（trap）的形式通知操作系统。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">允许和禁止中断，控制中断禁止屏蔽位</span><br><span class="line">在进程间切换处理</span><br><span class="line">存取用于主存保护的寄存器</span><br><span class="line">执行I&#x2F;O操作</span><br><span class="line">停止一个中央处理器的工作</span><br><span class="line">清理内存</span><br><span class="line">设置时钟</span><br><span class="line">建立存储键</span><br><span class="line">加载PSW</span><br></pre></td></tr></table></figure>
+
+<p>特权指令CPUID</p>
+<p>当eax=0x40000000时，运行CPUID之后，ebx,ecx,edx不等于0，则运行在虚拟机里，如果等于0表示不在虚拟机里。示例代码（<a href="http://blog.nsfocus.net/malicious-sample-analysis-manual-virtual-machine-test-bottom/）：" target="_blank" rel="noopener">http://blog.nsfocus.net/malicious-sample-analysis-manual-virtual-machine-test-bottom/）：</a></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line">BOOL isVirtualBoxBySpecInstruct()</span><br><span class="line">&#123;</span><br><span class="line">    bool res &#x3D; FALSE;</span><br><span class="line">    __asm</span><br><span class="line">    &#123;</span><br><span class="line">        mov eax,0x40000000      &#x2F;&#x2F;HYPERV_CPUID_VENDOR_AND_MAX_FUNCTIONS</span><br><span class="line">        cpuid</span><br><span class="line">        cmp ebx,0               &#x2F;&#x2F;ebx,ecx,edx !&#x3D; 0 in vm other not in vm</span><br><span class="line">        jne l1</span><br><span class="line">        mov res,0</span><br><span class="line">        jmp ed</span><br><span class="line">        l1:</span><br><span class="line">        mov res,1</span><br><span class="line">        ed:</span><br><span class="line">    &#125;</span><br><span class="line">    return res;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>同事可以根据cpuid的返回信息来进行判断</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">EAX &#x3D; 0x40000000,获取hypervisor信息，返回12字节长度字符串：</span><br><span class="line">&quot;KVMKVMKVM\0\0\0&quot;; &#x2F;* KVM *&#x2F;</span><br><span class="line">&quot;Microsoft Hv&quot;; &#x2F;* Microsoft Hyper-V or Wi &quot;VMwareVMware&quot;; &#x2F;* VMware *&#x2F; &quot;XenVMMXenVMM&quot;; &#x2F;* Xen *&#x2F;</span><br><span class="line">&quot;prl hyperv&quot;; &#x2F;* Parallels *&#x2F;</span><br><span class="line">&quot;VBoxVBoxVBox&quot;; &#x2F;* VirtualBox *&#x2F;</span><br></pre></td></tr></table></figure>
+
+<p><img src="%E5%8F%8D%E6%B2%99%E7%AE%B1%E8%99%9A%E6%8B%9F%E6%9C%BA%E6%8A%80%E6%9C%AF.assets/1578132793061.png" alt="1578132793061"></p>
+<p>还有一些其他的指令也可以用于检测：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">sidt指令获取IDTR寄存器的值： IDTR寄存器是48位寄存器，，用于保存IDT表的信息，其中第五个字节（高32位）是IDT的内存基址 在Vmware虚拟机上的IDT地址高字节通常为0xff；VirtualPC则是0xe8；在真实主机上通常为0x80。</span><br><span class="line"></span><br><span class="line">sgdt和sldt指令获取GDTR寄存器和LDTR寄存器的值：</span><br><span class="line">正常情况下，windows是不会使用GDT 和LDT表的，所以主机上GDTR寄存器和LDTR寄存器的值为0；由于虚拟机 对GDT 和LDT进行了虚拟化，所以它们是非0值。</span><br><span class="line"></span><br><span class="line">in指令： 在指定功能号0A（获取VMware版本）的情况下，它会在EBX中返回其版本号“VMXH”；而当功能号为0x14时，可 用于获取VMware内存大小，当大于0时则说明处于虚拟机中，真实机器中会异常。</span><br><span class="line"></span><br><span class="line">str指令： 在虚拟机和真实主机之中，通过STR读取的地址是不同的，当地址等于0x0040xxxx时，说明处于虚拟机中，否则为真 实主机。</span><br></pre></td></tr></table></figure>
+
+<h4 id="利用时间差"><a href="#利用时间差" class="headerlink" title="利用时间差"></a>利用时间差</h4><p>由于在虚拟机中，代码的运行速度通常不如真实主机。所以恶意代码通过运行一段特定的代码来比较这段代码 在虚拟机和真实主机之中的相对运行时间，以此来判断是否处于虚拟机之中。</p>
+<p>xchg  ecx,  eax 一句指令的运行时间为例，这段指令在真实主机windows 7系统上的运行时间为0000001E，而该指令在虚拟机WinXP下的运行时间为00000442，两者之间的运行时 间明显差别很多。一般情况下，当它的运行时间大于0xFF 时，就可以确定它处于虚拟机之中。</p>
+<p><img src="%E5%8F%8D%E6%B2%99%E7%AE%B1%E8%99%9A%E6%8B%9F%E6%9C%BA%E6%8A%80%E6%9C%AF.assets/1578132930348.png" alt="1578132930348"></p>
+<h3 id="其他trips"><a href="#其他trips" class="headerlink" title="其他trips"></a>其他trips</h3><h4 id="重启操作系统"><a href="#重启操作系统" class="headerlink" title="重启操作系统"></a>重启操作系统</h4><p>许多沙箱无法在重新启动后生存，某些恶意软件尝试通过重新登录用户来模拟重新启动。</p>
+<h4 id="文件大小限制"><a href="#文件大小限制" class="headerlink" title="文件大小限制"></a>文件大小限制</h4><p>一些沙箱仅支持一定大小的文件，例如10 MB</p>
+<h4 id="多重压缩"><a href="#多重压缩" class="headerlink" title="多重压缩"></a>多重压缩</h4><p>一部分沙箱仅支持解压一两层压缩包</p>
+<h4 id="电脑常用软件"><a href="#电脑常用软件" class="headerlink" title="电脑常用软件"></a>电脑常用软件</h4><p>许多分析虚拟机中没有安装常用软件</p>
+<h4 id="检测CPU温度"><a href="#检测CPU温度" class="headerlink" title="检测CPU温度"></a>检测CPU温度</h4><p>虚拟机中的CPU温度是模拟的，会有异常。</p>
+
+        </div>
+
+        
+            <section class="post-copyright">
+                
+                
+                
+                
+
+            </section>
+        
+        <section class="post-tags">
+            <div>
+                <span>Tag(s):</span>
+                <span class="tag">
+                    
+                </span>
+            </div>
+            <div>
+                <a href="javascript:window.history.back();">back</a>
+                <span>· </span>
+                <a href="/">home</a>
+            </div>
+        </section>
+        <section class="post-nav">
+            
+                <a class="prev" rel="prev" href="/2020/12-18-%E5%AE%B9%E5%99%A8%E5%AE%89%E5%85%A8%E4%B9%8Bdocker%E9%80%83%E9%80%B8/">容器安全之docker逃逸</a>
+            
+            
+            <a class="next" rel="next" href="/2020/12-18-%E5%86%85%E5%AD%98%E6%98%A0%E5%B0%84%E6%96%87%E4%BB%B6%E7%9A%84%E6%B3%A8%E5%85%A5%E6%96%B9%E5%BC%8F/">内存映射文件的注入方式</a>
+            
+        </section>
+	
+		<section id="comments" class="comments">
+		  <style>
+			.comments{margin:30px;padding:10px;background:#fff}
+			@media screen and (max-width:800px){.comments{margin:auto;padding:10px;background:#fff}}
+		  </style>
+		  <div class="valine_comment"></div>
+<!--载入js，在</body>之前插入即可-->
+<!--Leancloud 操作库:-->
+<script src="//cdn1.lncld.net/static/js/3.0.4/av-min.js"></script>
+<!--Valine 的核心代码库-->
+<script src="//unpkg.com/valine/dist/Valine.min.js"></script>
+<script>
+  new Valine({
+      el: '.valine_comment',
+      app_id: 'ehQ0k7G3fcpwmkyxhG8U6DzL-gzGzoHsz',
+      app_key: 'AwwXGgbdqswiimAY0qJYhtRa',
+      placeholder: '这里留言。。',
+      notify: 'true',
+      verify: 'true',
+    });
+</script>
+		</section>
+	
+
+    </article>
+</div>
+
+        </div>
+        <footer id="footer" class="footer">
+    <div class="copyright">
+        <span>© SeikoSrp | Powered by <a href="https://hexo.io" target="_blank">Hexo</a> & <a href="https://github.com/Siricee/hexo-theme-Chic" target="_blank">Chic</a></span>
+    </div>
+</footer>
+
+    </div>
+</body>
+</html>

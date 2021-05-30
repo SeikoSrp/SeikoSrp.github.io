@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+<meta http-equiv="X-UA-Compatible" content="ie=edge">
+
+    <meta name="author" content="SeikoSrp">
+
+
+
+
+
+
+<title>Exchange+NTLMRelay | a blog</title>
+
+
+
+    <link rel="icon" href="/haidao.ico">
+
+
+
+
+    <!-- stylesheets list from _config.yml -->
+    
+    <link rel="stylesheet" href="/css/style.css">
+    
+
+
+
+    <!-- scripts list from _config.yml -->
+    
+    <script src="/js/script.js"></script>
+    
+    <script src="/js/tocbot.min.js"></script>
+    
+    <script src="/js/jquery.min.js"></script>
+    
+
+
+
+    
+    
+        
+    
+
+
+
+
+    <script>
+    function searchToggle() {
+        const width = $(document.body).width()
+        if(width > 479) {
+            return;
+        }
+        const search = $('.search');
+        const searchForm = $('.form-search');
+        const menuToggle = $('.menu-toggle');
+        const title = $('.navbar-header-title');
+
+        if(!search.hasClass("mobile-search")) {
+            search.addClass("mobile-search");
+            menuToggle.addClass("open-search")
+            title.addClass("mobile-title-hidden")
+        } else {
+            search.removeClass("mobile-search");
+            menuToggle.removeClass("open-search")
+            // title.css({visibility: 'visible'})
+            title.removeClass("mobile-title-hidden")
+        } 
+    }
+
+    function search(searchInputEl, formEl, flag) {
+        const path = "/" + "search.json"; // 可以在public 下查看这个search.json
+        $(formEl).submit(function(e){
+            e.preventDefault();
+            let target = null
+            if(searchInputEl == null) {
+                const screenWidth = $(document.body).width();
+                target = screenWidth > 479 ? $('#pc-search-input') : $('#mobile-search-input');
+                console.log(target);
+            } else {
+                target = $(searchInputEl)
+            }
+
+            if(!flag && target.val() === '') {
+                return ;
+            }
+
+            $("#u-search").fadeIn(500, function() {
+                $("body > .wrapper").addClass("modal-active");
+
+                $.ajax({
+                    url: path,
+                    dataType: "json",
+                    beforeSend: function (xhr) {
+                        $input = target.val();
+                        $(".form-input").val($input);
+                        const loadingBar = $('.search-loading-bar') 
+                        loadingBar.css({
+                            width:'100%',
+                            display: 'block'
+                        });
+                    },
+                    success: function( datas ) {
+                        // console.log(datas);
+                        const $resultPanel = $(".modal-body")[0];
+                        let str = `<ul class="modal-results">`;
+                        var keywords = $(".form-input").val().trim().toLowerCase().split(/[\s\-]+/);
+                        $resultPanel.innerHTML = "";
+                        let hasResult = false
+                        let text = `<div class="no-result">找不到与关键词相关的内容....</div>`;
+
+                        if ($(".form-input").val().trim().length <= 0) {
+                            // 没有结果
+                            $resultPanel.innerHTML = text;
+                            return;
+                        }
+                        datas.forEach(function (data) {
+                            var isMatch = true;
+                            if (!data.title || data.title.trim() === '') {
+                                data.title = "Untitled";
+                            }
+                            var data_title = data.title.trim().toLowerCase();
+                            var data_content = data.content.trim().replace(/<[^>]+>/g, "").toLowerCase();
+                            var data_url = data.url;
+                            var index_title = -1;
+                            var index_content = -1;
+                            var first_occur = -1;
+                            // only match artiles with not empty contents
+                            if (data_content !== '') {
+                                keywords.forEach(function (keyword, i) {
+                                    index_title = data_title.indexOf(keyword);
+                                    index_content = data_content.indexOf(keyword);
+
+                                    if (index_title < 0 && index_content < 0) {
+                                        isMatch = false;
+                                    } else {
+                                        hasResult = true
+                                        if (index_content < 0) {
+                                            index_content = 0;
+                                        }
+                                        if (i == 0) {
+                                            first_occur = index_content;
+                                        }
+                                    }
+                                });
+                            } else {
+                                isMatch = false;
+                            }
+                            // show search results
+                            if (isMatch) {
+                                str += `<li class='result-item'><a href='${data_url}' class='result-item-detail'> <span class="title">${data_title}</span>`;
+                                var content = data.content.trim().replace(/<[^>]+>/g, "");
+                                if (first_occur >= 0) {
+                                    // cut out 200 characters
+                                    var start = first_occur - 40;
+                                    var end = first_occur + 160;
+
+                                    if (start < 0) {
+                                        start = 0;
+                                    }
+
+                                    if (start == 0) {
+                                        end = 200;
+                                    }
+
+                                    if (end > content.length) {
+                                        end = content.length;
+                                    }
+
+                                    var match_content = content.substring(start, end);
+
+                                    // highlight all keywords
+                                    keywords.forEach(function (keyword) {
+                                        var regS = new RegExp(keyword, "gi");
+                                        match_content = match_content.replace(regS, `<em class="search-keyword">${keyword}</em>`);
+                                    });
+
+                                    str += `<span class="content"> ${match_content} ...</span></a>`;
+                                }
+                                str += "</li>";
+                            }
+                        });
+                        str += "</ul>";
+                        if(hasResult) {
+                            $resultPanel.innerHTML = str;
+                        } else {
+                            $resultPanel.innerHTML = text;
+                        }
+
+                    },
+                    complete: function() {
+                        setTimeout(() => {
+                                const loadingBar = $('.search-loading-bar') 
+                                loadingBar.css({
+                                    width:'0%',
+                                    display: 'none'
+                                });
+                        }, 300)
+                    }
+                });
+            })
+
+        });
+    }
+
+    $(document).ready(function() {
+        $('.modal-close').click(function () { 
+            $("#u-search").fadeOut();
+            $("body > .wrapper").removeClass("modal-active")
+        })
+
+        $('.modal-overlay').click(function() {
+            $("#u-search").fadeOut();
+            $("body > .wrapper").removeClass("modal-active")
+        })
+        search(null, ".form-search", false)
+        search("#u-search-modal-form .form-input", ".u-search-modal-form", true)
+    })
+</script>
+
+<meta name="generator" content="Hexo 4.2.1"></head>
+<body>
+<!-- Chic/layout.ejs -->
+ <div id="u-search">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="container">
+                    <form id="u-search-modal-form" class="u-search-modal-form">
+                        <button type="submit" class="form-submit-btn">
+                            <img src="/image/search.png" class="search-btn-img" />
+                        </button>
+                        <input placeholder="搜索文章。。。" class="form-input" id="modal-form-input">
+                    </form>
+                    <a class="modal-close">x</a>
+                </div>
+                <div class="search-loading">
+                    <div class="search-loading-bar"></div>
+                </div>
+            </div>
+            <div class="modal-body">
+                <!-- ul 格式如下 -->
+                <!-- <ul class="modal-results">
+                    <li class="result-item">
+                        <a class="result-item-detail">
+                            <span class="title">页面配置</span>
+                            <span class="content">
+                                content
+                            </span>
+                        </a>
+                    </li>
+                </ul> -->
+            </div>
+        </div>
+        <div class="modal-overlay"></div>
+    </div>
+    <div class="wrapper">
+        <header>
+    <nav class="navbar">
+        <div class="container">
+            <div class="navbar-header header-logo"><a href="/">SeikoSrp&#39;s Blog</a></div>
+            <div class="menu navbar-right">
+                <!-- 这里表示的是pc端搜索框 -->
+                
+                
+    <div class="search ">
+        <div class="search-btn" onClick="searchToggle()">
+            <img src="/image/search.png" class="search-btn-img" />
+        </div>
+        <form class="form-search">
+            <input class="input" placeholder="搜索文章" autocomplete="off" id="pc-search-input"/>
+        </form>
+    </div>
+
+                
+                    <a class="menu-item" href="/archives">文章</a>
+                
+                    <a class="menu-item" href="/category">分类</a>
+                
+                    <a class="menu-item" href="/about">关于</a>
+                
+                <input id="switch_default" type="checkbox" class="switch_default">
+                <label for="switch_default" class="toggleBtn"></label>
+            </div>
+        </div>
+    </nav>
+
+    
+    <nav class="navbar-mobile" id="nav-mobile">
+        <div class="container">
+            <div class="navbar-header">
+                <div>
+                    <a href="/">SeikoSrp&#39;s Blog</a><a id="mobile-toggle-theme">·&nbsp;Light</a>
+                </div>
+                <div class="navbar-mobile-right">
+                    
+                    
+    <div class="search ">
+        <div class="search-btn" onClick="searchToggle()">
+            <img src="/image/search.png" class="search-btn-img" />
+        </div>
+        <form class="form-search">
+            <input class="input" placeholder="搜索文章" autocomplete="off" id="mobile-search-input"/>
+        </form>
+    </div>
+
+                    <div class="menu-toggle" onclick="mobileBtn()">&#9776; 目录</div>
+                </div>
+                
+            </div>
+            <div class="menu" id="mobile-menu">
+                
+                    <a class="menu-item" href="/archives">文章</a>
+                
+                    <a class="menu-item" href="/category">分类</a>
+                
+                    <a class="menu-item" href="/about">关于</a>
+                
+            </div>
+        </div>
+    </nav>
+
+</header>
+<script>
+    var mobileBtn = function f() {
+        var toggleMenu = document.getElementsByClassName("menu-toggle")[0];
+        var mobileMenu = document.getElementById("mobile-menu");
+        if(toggleMenu.classList.contains("active")){
+           toggleMenu.classList.remove("active")
+            mobileMenu.classList.remove("active")
+        }else{
+            toggleMenu.classList.add("active")
+            mobileMenu.classList.add("active")
+        }
+    }
+</script>
+        <div class="main">
+            <div class="container">
+    
+    
+        <div class="post-toc">
+    <div class="tocbot-list">
+    </div>
+    <div class="tocbot-list-menu">
+        <a class="tocbot-toc-expand" onclick="expand_toc()">全部展开</a>
+        <a onclick="go_top()">回到顶部</a>
+        <a onclick="go_bottom()">前往底部</a>
+    </div>
+</div>
+
+<script>
+    document.ready(
+        function () {
+            tocbot.init({
+                tocSelector: '.tocbot-list',
+                contentSelector: '.post-content',
+                headingSelector: 'h1, h2, h3, h4, h5',
+                collapseDepth: 1,
+                orderedList: false,
+                scrollSmooth: true,
+            })
+        }
+    )
+
+    function expand_toc() {
+        var b = document.querySelector(".tocbot-toc-expand");
+        tocbot.init({
+            tocSelector: '.tocbot-list',
+            contentSelector: '.post-content',
+            headingSelector: 'h1, h2, h3, h4, h5',
+            collapseDepth: 6,
+            orderedList: false,
+            scrollSmooth: true,
+        });
+        b.setAttribute("onclick", "collapse_toc()");
+        b.innerHTML = "全部折叠"
+    }
+
+    function collapse_toc() {
+        var b = document.querySelector(".tocbot-toc-expand");
+        tocbot.init({
+            tocSelector: '.tocbot-list',
+            contentSelector: '.post-content',
+            headingSelector: 'h1, h2, h3, h4, h5',
+            collapseDepth: 1,
+            orderedList: false,
+            scrollSmooth: true,
+        });
+        b.setAttribute("onclick", "expand_toc()");
+        b.innerHTML = "全部展开"
+    }
+
+    function go_top() {
+        window.scrollTo(0, 0);
+    }
+
+    function go_bottom() {
+        window.scrollTo(0, document.body.scrollHeight);
+    }
+
+</script>
+    
+
+    
+    <article class="post-wrap">
+        <header class="post-header">
+            <h1 class="post-title">Exchange+NTLMRelay</h1>
+            
+                <div class="post-meta">
+                    
+                        作者: <a itemprop="author" rel="author" href="/">SeikoSrp</a>
+                    
+
+                    
+                        <span class="post-time">
+                        发布于: <a href="#">十二月 18, 2020&nbsp;&nbsp;18:47:41</a>
+                        </span>
+                    
+                    
+                        <span class="post-category">
+                    分类:
+                            
+                                <a href="/categories/RedTeam-%E5%9F%9F%E5%AE%89%E5%85%A8/">RedTeam&域安全</a>
+                            
+                        </span>
+                    
+                </div>
+            
+        </header>
+
+        <div class="post-content">
+            <p>Microsoft Exchange Server是Microsoft开发的邮件服务器和日历服务器。它仅在Windows Server操作系统上运行。在全世界都拥有广泛的用户，2018年底Exchange被爆出存在SSRF漏洞，并且通过此漏洞可以获取域内的域控权限，然后在2019年NTLM协议被爆出漏洞能够绕过SMB签名的限制，Exchange再次被与NTLMRelay结合使用，本篇来记录一些其中曾经迷惑与关注的一些点。首先进行两个实验的复现。</p>
+<h2 id="Exchange-SSRF-NTLMRelay"><a href="#Exchange-SSRF-NTLMRelay" class="headerlink" title="Exchange SSRF+NTLMRelay"></a>Exchange SSRF+NTLMRelay</h2><h3 id="环境"><a href="#环境" class="headerlink" title="环境"></a>环境</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">域控：</span><br><span class="line">windows server 2012</span><br><span class="line">IP：192.168.254.149</span><br><span class="line"></span><br><span class="line">Exchange服务器：</span><br><span class="line">windows server 2012</span><br><span class="line">Exchange 2013</span><br><span class="line">IP：192.168.254.150</span><br><span class="line"></span><br><span class="line">攻击机Ubuntu：</span><br><span class="line">IP：192.168.254.129</span><br></pre></td></tr></table></figure>
+
+<h3 id="复现HTTP-gt-LDAP"><a href="#复现HTTP-gt-LDAP" class="headerlink" title="复现HTTP-&gt;LDAP"></a>复现HTTP-&gt;LDAP</h3><p>首先直接用secretsdump.py直接尝试发现失败。</p>
+<p><img src="Exchange+NTLMRelay.assets/clip_image002.jpg" alt="img"></p>
+<p>然后开启NTLMRelay脚本和Privexchange，设置ldap服务器的地址（也就是域控的地址）。</p>
+<p><img src="Exchange+NTLMRelay.assets/clip_image004.jpg" alt="img"></p>
+<p><img src="Exchange+NTLMRelay.assets/clip_image006.jpg" alt="img"></p>
+<p>然后再次使用secretdump成功获取域内所有HASH（NTDS内容）</p>
+<p><img src="Exchange+NTLMRelay.assets/clip_image008.jpg" alt="img"></p>
+<h2 id="Exchange与CVE-2019-1040"><a href="#Exchange与CVE-2019-1040" class="headerlink" title="Exchange与CVE-2019-1040"></a>Exchange与CVE-2019-1040</h2><h3 id="环境-1"><a href="#环境-1" class="headerlink" title="环境"></a>环境</h3><p>这里的环境与上一个环境是一样的</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">域控：</span><br><span class="line">windows server 2012</span><br><span class="line">IP：192.168.254.149</span><br><span class="line"></span><br><span class="line">Exchange服务器：</span><br><span class="line">windows server 2012</span><br><span class="line">Exchange 2013</span><br><span class="line">IP：192.168.254.150</span><br><span class="line"></span><br><span class="line">Ubuntu：</span><br><span class="line">IP：192.168.254.129</span><br></pre></td></tr></table></figure>
+
+<h3 id="复现SMB-gt-LDAP"><a href="#复现SMB-gt-LDAP" class="headerlink" title="复现SMB-&gt;LDAP"></a>复现SMB-&gt;LDAP</h3><p>首先运行ntlmrelayx.py</p>
+<p><img src="Exchange+NTLMRelay.assets/clip_image010.jpg" alt="img"></p>
+<p>然后运行Printbug.py来触发SMB连接</p>
+<p><img src="Exchange+NTLMRelay.assets/clip_image011.png" alt="img"></p>
+<p>打完了之后成功DCSync获取域内所有用户密码的NTLM HASH值</p>
+<p><img src="Exchange+NTLMRelay.assets/clip_image013.jpg" alt="img"></p>
+<p>执行成功之后其实依然可以看到在LDAP的ACL中添加的<a href="mailto:xiaom@yunying.lab">xiaom@yunying.lab</a>，权限为复制目录更改所有项。</p>
+<h2 id="失败的NTLMRelay"><a href="#失败的NTLMRelay" class="headerlink" title="失败的NTLMRelay"></a>失败的NTLMRelay</h2><p>在这个实验之前在windows2008的环境下安装了Exchange2010，一直没有实验成功，这次换了环境成功之后分别抓包看了一下发现了两者的区别。首先看下报错，这里提示The client requested signing。This usually happens when relaying from smb to LDAP，也就是有签名。</p>
+<p><img src="Exchange+NTLMRelay.assets/clip_image015.jpg" alt="img"></p>
+<h3 id="PCAP对比"><a href="#PCAP对比" class="headerlink" title="PCAP对比"></a>PCAP对比</h3><p>看了下在windows server 2012+Exchange2013环境下成功的PCAP包和失败的包对比在签名处是不同的。</p>
+<p>这个是中继失败的：</p>
+<p><img src="Exchange+NTLMRelay.assets/clip_image017.jpg" alt="img"></p>
+<p>这个是中继成功的：</p>
+<p><img src="Exchange+NTLMRelay.assets/clip_image019.jpg" alt="img"></p>
+<p>同时可以在NTLM的第三个流程NTLMSSP_AUTH中看到用于数字签名的session key的区别，成功中继的Session Key是空的，而中继失败的是存在Session Key的。</p>
+<p><img src="Exchange+NTLMRelay.assets/clip_image021.jpg" alt="img"></p>
+<h3 id="SMB签名是如何被绕过的"><a href="#SMB签名是如何被绕过的" class="headerlink" title="SMB签名是如何被绕过的"></a>SMB签名是如何被绕过的</h3><p>微软为了防止SMB协议被中继使用了SMB签名的机制，但是只有一个SMB签名没办法防止中继攻击修改NTLM协议中的标志位，从而取消使用SMB签名。</p>
+<p><img src="Exchange+NTLMRelay.assets/clip_image022.jpg" alt="img"></p>
+<p>为了防止签名的标志位被修改，微软引入了MIC（Message Integrity Code）的概念，他的值根据三次NTLM的内容进行计算，具体方法可以参考：</p>
+<p><a href="https://social.msdn.microsoft.com/Forums/en-US/cc304532-74ba-43e6-be3d-bb010d11e6ae/about-ntlm-mic-item-in-authenticatemessage?forum=os_windowsprotocols" target="_blank" rel="noopener">https://social.msdn.microsoft.com/Forums/en-US/cc304532-74ba-43e6-be3d-bb010d11e6ae/about-ntlm-mic-item-in-authenticatemessage?forum=os_windowsprotocols</a></p>
+<p>如果存在任何一个NTLM包被修改，则验证不通过，同时MIC的值受协议中的msvAvFlag标志位限制，值为2时说明存在MIC。</p>
+<p><img src="Exchange+NTLMRelay.assets/clip_image024.jpg" alt="img"></p>
+<p>也就是说，SMB签名防止中间人攻击，MIC防止NTLM协议中的关于SMB的字段被修改，msvAvFlag防止MIC被删除，看似没有漏洞，但是实际情况是Microsoft服务器并没有对msvAvFlag的值做验证，并且允许无MIC的NTLM消息通过验证。这导致了攻击者可以直接删除MIC，并且通过修改FLAG中的标志位关闭SMB签名的验证。</p>
+<p>其中修改的位置有：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">1、将NTLM_NEGOTIAT中的NTLMSSP_NEGOTIATE_ALWAYS_SIGN，NTLMSSP_NEGOTIATE_SIGN标志位修改为0；</span><br><span class="line">2、从NTLM_AUTHENTICATE消息中删除MIC；</span><br><span class="line">3、从NTLM_AUTHENTICATE消息中删除版本字段（删除MIC字段而不删除版本字段将导致错误）；</span><br><span class="line">4、取消设置NTLM_AUTHENTICATE消息中的以下标志：NTLMSSP_NEGOTIATE_ALWAYS_SIGN，NTLMSSP_NEGOTIATE_SIGN，NEGOTIATE_KEY_EXCHANGE，NEGOTIATE_VERSION。</span><br></pre></td></tr></table></figure>
+
+<p>从而完美绕过SMB签名。</p>
+<h3 id="SMB签名为何能防止中继攻击"><a href="#SMB签名为何能防止中继攻击" class="headerlink" title="SMB签名为何能防止中继攻击"></a>SMB签名为何能防止中继攻击</h3><p>在NTLM中有个字段是Session Key，USER Session Key分为：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">The LM User Session Key</span><br><span class="line">The NTLM User Session Key</span><br><span class="line">The LMv2 User Session Key</span><br><span class="line">The NTLMv2 User Session Key</span><br><span class="line">The NTLM2 Session Response User Session Key</span><br></pre></td></tr></table></figure>
+
+<p>Negotiate Sign标志的存在表明支持签名（保证消息完整性），Negotiate Seal标志表示支持密封（消息机密性），两者一起执行时表示密封消息并且生成签名（分别由SSPI MakeSignature和SSPI EncryptMessage方法完成）。</p>
+<p>Session Key的生成：</p>
+<p>其中在NTLMv2中的Session Key是由NTLMv2 HASH作为HMAC-MD5的盐加密challenge与blob的连接值，产生的16字节的输出值。客户端计算出这个值之后在flags中设置好标记位，然后把Session Key和NTLMv2 Response一起发送给服务端，服务端再校验Session Key的值。<strong>所以Session Key不是签名，而是用来交换签名的加密密钥的**</strong>。<strong>交换密钥之后得到了Master Key然后使用MasterKey生成关于</strong>整个上层协议**（比如SMB或者LDAP）的签名。</p>
+<p>​         在找到得出这些结论的资料之前一直思考的是NTLM既然是一个嵌套的协议如果签名判断的是NTLM协议的内容，那在中继的整个过程中实际上NTLM的那一段是不发生变化的，实际上是对整个上层协议进行签名，而不是只签名NTLM这一部分协议内容。</p>
+<h2 id="攻击前后的对比及分析"><a href="#攻击前后的对比及分析" class="headerlink" title="攻击前后的对比及分析"></a>攻击前后的对比及分析</h2><h3 id="对比"><a href="#对比" class="headerlink" title="对比"></a>对比</h3><p>使用两种方式攻击之后，都能够获取域内所有用户的HASH值（DCSync），那这个过程是怎么样的呢？实际上不论是第一种还是第二种最终攻击的对象都是LDAP服务，区别在于一个是从HTTP中继到LDAP，一个是从SMB中继到LDAP。而在LDAP被攻击之后，两个实验所执行的操作都是相同的。同时要说的一个点是在中继的过程中，无论是HTTP中继到LDAP还是SMB中继到LDAP，在对LDAP进行验证的时候使用的User name都是EXCHANGE2012$。</p>
+<p><img src="Exchange+NTLMRelay.assets/clip_image026.jpg" alt="img"></p>
+<p>而EXCHANGE2012$作为主体属于Exchange Trusted Subsystem组，Exchange Trusted Subsystem组属于Exchange Windows Permissions组，而Exchange Windows Permissions组拥有WriteDACL的权限。</p>
+<p><img src="Exchange+NTLMRelay.assets/clip_image027.png" alt="img"></p>
+<p><img src="Exchange+NTLMRelay.assets/clip_image029.jpg" alt="img"></p>
+<p>在攻击之前和攻击之后的区别在于LDAP的ACL发生了一些变化，打开ADSI编辑器，通过“属性”中的权限，可以看到ACL列表，其中添加了<a href="mailto:xiaom@yunying.lab">xiaom@yunying.lab</a>，权限为复制目录更改所有项，其实也就是一个writeDACL的过程。</p>
+<p><img src="Exchange+NTLMRelay.assets/clip_image031.jpg" alt="img"></p>
+<h3 id="ACL与DACL"><a href="#ACL与DACL" class="headerlink" title="ACL与DACL"></a>ACL与DACL</h3><p>说到WriteDACL那肯定要知道DACL是什么，还有就是为何修改了DACL之后就能够进行DCSync从而获取域内密码。</p>
+<p>Windows的ACL分为两类：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">1、Discretionary Access Control List (DACL)  自由访问控制列表</span><br><span class="line">2、System Access Control List (SACL) 系统访问控制列表</span><br></pre></td></tr></table></figure>
+
+<p>每一种控制列表中都存在若干条ACE（Access Control Entries）</p>
+<p>Access Token：</p>
+<p>当线程与<a href="https://docs.microsoft.com/zh-cn/windows/win32/secauthz/securable-objects" target="_blank" rel="noopener">安全对象</a>交互或尝试执行需要特权的系统任务时，系统使用访问令牌来标识用户，访问令牌包括以下信息：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line">The security identifier (SID) for the user&#39;s account</span><br><span class="line">SIDs for the groups of which the user is a member</span><br><span class="line">A logon SID that identifies the current logon session</span><br><span class="line">A list of the privileges held by either the user or the user&#39;s groups</span><br><span class="line">An owner SID</span><br><span class="line">The SID for the primary group</span><br><span class="line">The default DACL that the system uses when the user creates a securable object without specifying a security descriptor</span><br><span class="line">The source of the access token</span><br><span class="line">Whether the token is a primary or impersonation token</span><br><span class="line">An optional list of restricting SIDs</span><br><span class="line">Current impersonation levels</span><br><span class="line">Other statistics</span><br></pre></td></tr></table></figure>
+
+<p>DACL：</p>
+<p>系统将每一个ACE中的受托人与线程访问令牌中标识的受托人进行比较。访问令牌包含标识用户和用户所属组账户的SID。令牌还包含标识当前会话的logon SID ，具体流程参见下图：</p>
+<p><img src="Exchange+NTLMRelay.assets/clip_image032.png" alt="img"></p>
+<p>线程与安全对象之间的交互：</p>
+<p>在Access check中，系统将线程访问令牌中的安全信息与安全对象安全描述符中的安全信息进行比较。</p>
+<p>系统检查对象的DACL，查找应用于用户的ACE，并从线程的访问令牌中分组SID，系统会检查每个SID，知道授予或拒绝访问，或者知道没有其他ACE要检查为止。</p>
+<p><img src="Exchange+NTLMRelay.assets/clip_image034.jpg" alt="img"></p>
+<p>而这个漏洞正是通过高权限的账户，在DACL中添加了一条ACE，这里就是将普通账户xiaom赋予了“复制目录更改所有”权限，从而成功进行DCSync攻击。能够进行DCSync的三个权限：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">1、复制目录更改Replicating Directory Changes (DS-Replication-Get-Changes)</span><br><span class="line">2、复制目录更改所有Replicating Directory Changes All (DS-Replication-Get-Changes-All)</span><br><span class="line">3、正在复制筛选集中的目录更改Replicating Directory Changes In Filtered Set (rare, only required in some environments)</span><br></pre></td></tr></table></figure>
+
+<h3 id="利用链"><a href="#利用链" class="headerlink" title="利用链"></a>利用链</h3><p>通过上述内容可以看到一个完整的利用链为：</p>
+<p><img src="Exchange+NTLMRelay.assets/clip_image036.png" alt="img"></p>
+<p>其中的关键点在于触发SSRF或者是SpoolService的bug，然后就是Exchange Windows Permissions组的高权限和添加的“复制目录更改所有”权限。</p>
+
+        </div>
+
+        
+            <section class="post-copyright">
+                
+                
+                
+                
+
+            </section>
+        
+        <section class="post-tags">
+            <div>
+                <span>Tag(s):</span>
+                <span class="tag">
+                    
+                </span>
+            </div>
+            <div>
+                <a href="javascript:window.history.back();">back</a>
+                <span>· </span>
+                <a href="/">home</a>
+            </div>
+        </section>
+        <section class="post-nav">
+            
+                <a class="prev" rel="prev" href="/2020/12-18-HIDS%E7%9A%84%E4%B8%80%E6%AC%A1%E6%B5%8B%E8%AF%95%E8%AE%B0%E5%BD%95/">HIDS的一次测试记录</a>
+            
+            
+            <a class="next" rel="next" href="/2020/12-18-DCSync%E4%BD%BF%E7%94%A8%E5%92%8C%E5%88%A9%E7%94%A8%E6%A3%80%E6%B5%8B/">DCSync使用和利用检测</a>
+            
+        </section>
+	
+		<section id="comments" class="comments">
+		  <style>
+			.comments{margin:30px;padding:10px;background:#fff}
+			@media screen and (max-width:800px){.comments{margin:auto;padding:10px;background:#fff}}
+		  </style>
+		  <div class="valine_comment"></div>
+<!--载入js，在</body>之前插入即可-->
+<!--Leancloud 操作库:-->
+<script src="//cdn1.lncld.net/static/js/3.0.4/av-min.js"></script>
+<!--Valine 的核心代码库-->
+<script src="//unpkg.com/valine/dist/Valine.min.js"></script>
+<script>
+  new Valine({
+      el: '.valine_comment',
+      app_id: 'ehQ0k7G3fcpwmkyxhG8U6DzL-gzGzoHsz',
+      app_key: 'AwwXGgbdqswiimAY0qJYhtRa',
+      placeholder: '这里留言。。',
+      notify: 'true',
+      verify: 'true',
+    });
+</script>
+		</section>
+	
+
+    </article>
+</div>
+
+        </div>
+        <footer id="footer" class="footer">
+    <div class="copyright">
+        <span>© SeikoSrp | Powered by <a href="https://hexo.io" target="_blank">Hexo</a> & <a href="https://github.com/Siricee/hexo-theme-Chic" target="_blank">Chic</a></span>
+    </div>
+</footer>
+
+    </div>
+</body>
+</html>

@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+<meta http-equiv="X-UA-Compatible" content="ie=edge">
+
+    <meta name="author" content="SeikoSrp">
+
+
+
+
+
+
+<title>ATT&amp;CK_Lateral Movement | a blog</title>
+
+
+
+    <link rel="icon" href="/haidao.ico">
+
+
+
+
+    <!-- stylesheets list from _config.yml -->
+    
+    <link rel="stylesheet" href="/css/style.css">
+    
+
+
+
+    <!-- scripts list from _config.yml -->
+    
+    <script src="/js/script.js"></script>
+    
+    <script src="/js/tocbot.min.js"></script>
+    
+    <script src="/js/jquery.min.js"></script>
+    
+
+
+
+    
+    
+        
+    
+
+
+
+
+    <script>
+    function searchToggle() {
+        const width = $(document.body).width()
+        if(width > 479) {
+            return;
+        }
+        const search = $('.search');
+        const searchForm = $('.form-search');
+        const menuToggle = $('.menu-toggle');
+        const title = $('.navbar-header-title');
+
+        if(!search.hasClass("mobile-search")) {
+            search.addClass("mobile-search");
+            menuToggle.addClass("open-search")
+            title.addClass("mobile-title-hidden")
+        } else {
+            search.removeClass("mobile-search");
+            menuToggle.removeClass("open-search")
+            // title.css({visibility: 'visible'})
+            title.removeClass("mobile-title-hidden")
+        } 
+    }
+
+    function search(searchInputEl, formEl, flag) {
+        const path = "/" + "search.json"; // 可以在public 下查看这个search.json
+        $(formEl).submit(function(e){
+            e.preventDefault();
+            let target = null
+            if(searchInputEl == null) {
+                const screenWidth = $(document.body).width();
+                target = screenWidth > 479 ? $('#pc-search-input') : $('#mobile-search-input');
+                console.log(target);
+            } else {
+                target = $(searchInputEl)
+            }
+
+            if(!flag && target.val() === '') {
+                return ;
+            }
+
+            $("#u-search").fadeIn(500, function() {
+                $("body > .wrapper").addClass("modal-active");
+
+                $.ajax({
+                    url: path,
+                    dataType: "json",
+                    beforeSend: function (xhr) {
+                        $input = target.val();
+                        $(".form-input").val($input);
+                        const loadingBar = $('.search-loading-bar') 
+                        loadingBar.css({
+                            width:'100%',
+                            display: 'block'
+                        });
+                    },
+                    success: function( datas ) {
+                        // console.log(datas);
+                        const $resultPanel = $(".modal-body")[0];
+                        let str = `<ul class="modal-results">`;
+                        var keywords = $(".form-input").val().trim().toLowerCase().split(/[\s\-]+/);
+                        $resultPanel.innerHTML = "";
+                        let hasResult = false
+                        let text = `<div class="no-result">找不到与关键词相关的内容....</div>`;
+
+                        if ($(".form-input").val().trim().length <= 0) {
+                            // 没有结果
+                            $resultPanel.innerHTML = text;
+                            return;
+                        }
+                        datas.forEach(function (data) {
+                            var isMatch = true;
+                            if (!data.title || data.title.trim() === '') {
+                                data.title = "Untitled";
+                            }
+                            var data_title = data.title.trim().toLowerCase();
+                            var data_content = data.content.trim().replace(/<[^>]+>/g, "").toLowerCase();
+                            var data_url = data.url;
+                            var index_title = -1;
+                            var index_content = -1;
+                            var first_occur = -1;
+                            // only match artiles with not empty contents
+                            if (data_content !== '') {
+                                keywords.forEach(function (keyword, i) {
+                                    index_title = data_title.indexOf(keyword);
+                                    index_content = data_content.indexOf(keyword);
+
+                                    if (index_title < 0 && index_content < 0) {
+                                        isMatch = false;
+                                    } else {
+                                        hasResult = true
+                                        if (index_content < 0) {
+                                            index_content = 0;
+                                        }
+                                        if (i == 0) {
+                                            first_occur = index_content;
+                                        }
+                                    }
+                                });
+                            } else {
+                                isMatch = false;
+                            }
+                            // show search results
+                            if (isMatch) {
+                                str += `<li class='result-item'><a href='${data_url}' class='result-item-detail'> <span class="title">${data_title}</span>`;
+                                var content = data.content.trim().replace(/<[^>]+>/g, "");
+                                if (first_occur >= 0) {
+                                    // cut out 200 characters
+                                    var start = first_occur - 40;
+                                    var end = first_occur + 160;
+
+                                    if (start < 0) {
+                                        start = 0;
+                                    }
+
+                                    if (start == 0) {
+                                        end = 200;
+                                    }
+
+                                    if (end > content.length) {
+                                        end = content.length;
+                                    }
+
+                                    var match_content = content.substring(start, end);
+
+                                    // highlight all keywords
+                                    keywords.forEach(function (keyword) {
+                                        var regS = new RegExp(keyword, "gi");
+                                        match_content = match_content.replace(regS, `<em class="search-keyword">${keyword}</em>`);
+                                    });
+
+                                    str += `<span class="content"> ${match_content} ...</span></a>`;
+                                }
+                                str += "</li>";
+                            }
+                        });
+                        str += "</ul>";
+                        if(hasResult) {
+                            $resultPanel.innerHTML = str;
+                        } else {
+                            $resultPanel.innerHTML = text;
+                        }
+
+                    },
+                    complete: function() {
+                        setTimeout(() => {
+                                const loadingBar = $('.search-loading-bar') 
+                                loadingBar.css({
+                                    width:'0%',
+                                    display: 'none'
+                                });
+                        }, 300)
+                    }
+                });
+            })
+
+        });
+    }
+
+    $(document).ready(function() {
+        $('.modal-close').click(function () { 
+            $("#u-search").fadeOut();
+            $("body > .wrapper").removeClass("modal-active")
+        })
+
+        $('.modal-overlay').click(function() {
+            $("#u-search").fadeOut();
+            $("body > .wrapper").removeClass("modal-active")
+        })
+        search(null, ".form-search", false)
+        search("#u-search-modal-form .form-input", ".u-search-modal-form", true)
+    })
+</script>
+
+<meta name="generator" content="Hexo 4.2.1"></head>
+<body>
+<!-- Chic/layout.ejs -->
+ <div id="u-search">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="container">
+                    <form id="u-search-modal-form" class="u-search-modal-form">
+                        <button type="submit" class="form-submit-btn">
+                            <img src="/image/search.png" class="search-btn-img" />
+                        </button>
+                        <input placeholder="搜索文章。。。" class="form-input" id="modal-form-input">
+                    </form>
+                    <a class="modal-close">x</a>
+                </div>
+                <div class="search-loading">
+                    <div class="search-loading-bar"></div>
+                </div>
+            </div>
+            <div class="modal-body">
+                <!-- ul 格式如下 -->
+                <!-- <ul class="modal-results">
+                    <li class="result-item">
+                        <a class="result-item-detail">
+                            <span class="title">页面配置</span>
+                            <span class="content">
+                                content
+                            </span>
+                        </a>
+                    </li>
+                </ul> -->
+            </div>
+        </div>
+        <div class="modal-overlay"></div>
+    </div>
+    <div class="wrapper">
+        <header>
+    <nav class="navbar">
+        <div class="container">
+            <div class="navbar-header header-logo"><a href="/">SeikoSrp&#39;s Blog</a></div>
+            <div class="menu navbar-right">
+                <!-- 这里表示的是pc端搜索框 -->
+                
+                
+    <div class="search ">
+        <div class="search-btn" onClick="searchToggle()">
+            <img src="/image/search.png" class="search-btn-img" />
+        </div>
+        <form class="form-search">
+            <input class="input" placeholder="搜索文章" autocomplete="off" id="pc-search-input"/>
+        </form>
+    </div>
+
+                
+                    <a class="menu-item" href="/archives">文章</a>
+                
+                    <a class="menu-item" href="/category">分类</a>
+                
+                    <a class="menu-item" href="/about">关于</a>
+                
+                <input id="switch_default" type="checkbox" class="switch_default">
+                <label for="switch_default" class="toggleBtn"></label>
+            </div>
+        </div>
+    </nav>
+
+    
+    <nav class="navbar-mobile" id="nav-mobile">
+        <div class="container">
+            <div class="navbar-header">
+                <div>
+                    <a href="/">SeikoSrp&#39;s Blog</a><a id="mobile-toggle-theme">·&nbsp;Light</a>
+                </div>
+                <div class="navbar-mobile-right">
+                    
+                    
+    <div class="search ">
+        <div class="search-btn" onClick="searchToggle()">
+            <img src="/image/search.png" class="search-btn-img" />
+        </div>
+        <form class="form-search">
+            <input class="input" placeholder="搜索文章" autocomplete="off" id="mobile-search-input"/>
+        </form>
+    </div>
+
+                    <div class="menu-toggle" onclick="mobileBtn()">&#9776; 目录</div>
+                </div>
+                
+            </div>
+            <div class="menu" id="mobile-menu">
+                
+                    <a class="menu-item" href="/archives">文章</a>
+                
+                    <a class="menu-item" href="/category">分类</a>
+                
+                    <a class="menu-item" href="/about">关于</a>
+                
+            </div>
+        </div>
+    </nav>
+
+</header>
+<script>
+    var mobileBtn = function f() {
+        var toggleMenu = document.getElementsByClassName("menu-toggle")[0];
+        var mobileMenu = document.getElementById("mobile-menu");
+        if(toggleMenu.classList.contains("active")){
+           toggleMenu.classList.remove("active")
+            mobileMenu.classList.remove("active")
+        }else{
+            toggleMenu.classList.add("active")
+            mobileMenu.classList.add("active")
+        }
+    }
+</script>
+        <div class="main">
+            <div class="container">
+    
+    
+        <div class="post-toc">
+    <div class="tocbot-list">
+    </div>
+    <div class="tocbot-list-menu">
+        <a class="tocbot-toc-expand" onclick="expand_toc()">全部展开</a>
+        <a onclick="go_top()">回到顶部</a>
+        <a onclick="go_bottom()">前往底部</a>
+    </div>
+</div>
+
+<script>
+    document.ready(
+        function () {
+            tocbot.init({
+                tocSelector: '.tocbot-list',
+                contentSelector: '.post-content',
+                headingSelector: 'h1, h2, h3, h4, h5',
+                collapseDepth: 1,
+                orderedList: false,
+                scrollSmooth: true,
+            })
+        }
+    )
+
+    function expand_toc() {
+        var b = document.querySelector(".tocbot-toc-expand");
+        tocbot.init({
+            tocSelector: '.tocbot-list',
+            contentSelector: '.post-content',
+            headingSelector: 'h1, h2, h3, h4, h5',
+            collapseDepth: 6,
+            orderedList: false,
+            scrollSmooth: true,
+        });
+        b.setAttribute("onclick", "collapse_toc()");
+        b.innerHTML = "全部折叠"
+    }
+
+    function collapse_toc() {
+        var b = document.querySelector(".tocbot-toc-expand");
+        tocbot.init({
+            tocSelector: '.tocbot-list',
+            contentSelector: '.post-content',
+            headingSelector: 'h1, h2, h3, h4, h5',
+            collapseDepth: 1,
+            orderedList: false,
+            scrollSmooth: true,
+        });
+        b.setAttribute("onclick", "expand_toc()");
+        b.innerHTML = "全部展开"
+    }
+
+    function go_top() {
+        window.scrollTo(0, 0);
+    }
+
+    function go_bottom() {
+        window.scrollTo(0, document.body.scrollHeight);
+    }
+
+</script>
+    
+
+    
+    <article class="post-wrap">
+        <header class="post-header">
+            <h1 class="post-title">ATT&amp;CK_Lateral Movement</h1>
+            
+                <div class="post-meta">
+                    
+                        作者: <a itemprop="author" rel="author" href="/">SeikoSrp</a>
+                    
+
+                    
+                        <span class="post-time">
+                        发布于: <a href="#">十二月 18, 2020&nbsp;&nbsp;18:47:41</a>
+                        </span>
+                    
+                    
+                        <span class="post-category">
+                    分类:
+                            
+                                <a href="/categories/ATT-CK/">ATT&CK</a>
+                            
+                        </span>
+                    
+                </div>
+            
+        </header>
+
+        <div class="post-content">
+            <h2 id="AppleScript"><a href="#AppleScript" class="headerlink" title="AppleScript"></a>AppleScript</h2><p> MACOS</p>
+<h2 id="Application-Deployment-Software-T1017"><a href="#Application-Deployment-Software-T1017" class="headerlink" title="Application Deployment Software-T1017"></a>Application Deployment Software-T1017</h2><p>严格来说这是一种思路，而不是一种具体形式的攻击</p>
+<p>简单来说就是通过控制网络中的分发软件控制台，将恶意代码嵌入到原本需要分发给内网主机的软件中。</p>
+<p>比如一个内网中存在终端管理系统，攻击者攻破了终端管理系统的服务器，则可以通过这个服务器分发控制端至内网主机上。</p>
+<h2 id="未完成Distributed-Component-Object-Model-T1175"><a href="#未完成Distributed-Component-Object-Model-T1175" class="headerlink" title="未完成Distributed Component Object Model-T1175"></a>未完成Distributed Component Object Model-T1175</h2><p>COM组件主要是说攻击者可能会使用COM组件和DCOM（分布式组件对象模型）进行本地代码执行，或者是作为远程移动的一部分在远程系统上执行。</p>
+<p><a href="https://ired.team/offensive-security/lateral-movement/t1175-distributed-component-object-model" target="_blank" rel="noopener">https://ired.team/offensive-security/lateral-movement/t1175-distributed-component-object-model</a></p>
+<h2 id="Exploitation-of-Remote-Services-T1210"><a href="#Exploitation-of-Remote-Services-T1210" class="headerlink" title="Exploitation of Remote Services-T1210"></a>Exploitation of Remote Services-T1210</h2><p>攻击远程服务，其中提到了比如SMB和RDP的一些CVE漏洞，还有一些MySQL等的远程服务的漏洞。比如最著名的MS17-010和今年的RDP的远程代码执行漏洞。</p>
+<p>MS17010直接使用MSF就可以利用,网上已退</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">msfconsole</span><br><span class="line">use exploit&#x2F;windows&#x2F;smb&#x2F;ms17_010_eternalblue</span><br><span class="line">set rhost 192.168.144.130</span><br><span class="line">exploit</span><br></pre></td></tr></table></figure>
+
+<h2 id="Logon-Scripts-T1037"><a href="#Logon-Scripts-T1037" class="headerlink" title="Logon Scripts-T1037"></a>Logon Scripts-T1037</h2><p>Windows中允许在特定用户或用户组在登录系统时运行登录脚本。也就是开机自启动脚本，一般情况下用来权限维持，原文中提到的关于横向渗透的场景是在一个中央服务器中，其他主机会定时来请求脚本并执行的情况。</p>
+<p><img src="Lateral_Movement.assets/1574328137025.png" alt="1574328137025"></p>
+<p>运行修改注册表的bat文件，执行命令修改注册表，然后再次重新登录时设定的UserInitMprLogonScript的值会被执行（也就是c:\run_calc.bat）。</p>
+<p>命令为：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">REG.exe ADD HKEY_CURRENT_USER\Environment &#x2F;v UserInitMprLogonScript &#x2F;t REG_SZ &#x2F;d &quot;c:\run_calc.bat&quot;</span><br></pre></td></tr></table></figure>
+
+<p>同时UserInitMprLogonScript的值是可以直接设置为命令的。</p>
+<p><img src="Lateral_Movement.assets/1574328195643.png" alt="1574328195643"></p>
+<h2 id="Pass-the-Hash-T1075"><a href="#Pass-the-Hash-T1075" class="headerlink" title="Pass the Hash-T1075"></a>Pass the Hash-T1075</h2><p>Pass the Hash是指通过已经有的HASH值来进行hash传递获得目标主机的访问权限。</p>
+<p>例如在其他主机中想要访问0m0a1.com域中的主机dc.0m0a1.com,那么可以使用mimikatz进行PTH的攻击。</p>
+<p><img src="Lateral_Movement.assets/1574328241859.png" alt="1574328241859"></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">mimikatz#privilege::debug</span><br><span class="line">mimikatz#sekurlsa::pth &#x2F;user:administrator &#x2F;domain:0m0a1.com &#x2F;ntlm: 4cb55ea6471d29ccbb2ce4cf00271fe3</span><br></pre></td></tr></table></figure>
+
+<p><img src="Lateral_Movement.assets/1574328257831.png" alt="1574328257831"></p>
+<p>同样还有Wmiexec等其他工具也可以实现相同的功能：</p>
+<p><img src="Lateral_Movement.assets/1574328359528.png" alt="1574328359528"></p>
+<p>像crackmapexec工具还可以批量进行试探。</p>
+<h2 id="Pass-the-Ticket-T1097"><a href="#Pass-the-Ticket-T1097" class="headerlink" title="Pass the Ticket-T1097"></a>Pass the Ticket-T1097</h2><p>Pass the ticket是指在kerberos协议中使用的票据传递攻击</p>
+<p>票据传递攻击，两种，黄金票据和白银票据</p>
+<p><strong>黄金票据</strong></p>
+<p>黄金票据其实就是伪造的TGT，因为只要有了高权限的TGT，那么就可以发送给TGS换取任意服务的ST，黄金票据的条件要求：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">1.域名称 </span><br><span class="line">2.域的SID值 </span><br><span class="line">3.域的KRBTGT账户NTLM hash</span><br><span class="line">4.伪造用户名，直接写了administrator，可以是任意的</span><br></pre></td></tr></table></figure>
+
+<p>假如在上一步获得了权限之后，可以通过dcsync攻击获取指定账户的HASH值</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">lsadump::dcsync &#x2F;domain:0m0a1.com &#x2F;user:krbtgt</span><br></pre></td></tr></table></figure>
+
+<p>这里会向域控请求krbtgt账户的hash值</p>
+<p><img src="Lateral_Movement.assets/1574328478292.png" alt="1574328478292"></p>
+<p>然后抓到ktbtgt的NTLM hash之后之后生成黄金票据（TGT 由ktbtgt HASH加密sessionkey-as和TimeStamp），这个过程是不与TGS进行KDC进行交互的</p>
+<p><img src="Lateral_Movement.assets/1574328487038.png" alt="1574328487038"></p>
+<p><img src="Lateral_Movement.assets/1574328503885.png" alt="1574328503885"></p>
+<p>这样的方式导入的票据20分钟之内生效，如果过期再次导入就可以，只要krbtgt的账号不变，通常情况下是和域控的账密一样，但是不会随域控管理员密码改变而改变</p>
+<p><img src="Lateral_Movement.assets/1574328510920.png" alt="1574328510920"></p>
+<h2 id="Remote-Desktop-Protocol-T1076"><a href="#Remote-Desktop-Protocol-T1076" class="headerlink" title="Remote Desktop Protocol-T1076"></a>Remote Desktop Protocol-T1076</h2><p>通过RDP协议进行的攻击，主要提到了RDP的劫持和通过窃取域管理员或者更高权限的账户会话来提升权限。</p>
+<p>想要理解RDP的劫持，首先通过RDP登陆一台主机，在退出之后查看windows任务管理器可以看到之前的记录</p>
+<p><img src="Lateral_Movement.assets/1574328537700.png" alt="1574328537700"></p>
+<p>也可以通过query user在命令行查看</p>
+<p><img src="Lateral_Movement.assets/1574328545759.png" alt="1574328545759"></p>
+<p>这时可以通过tscon命令切换到已经断开连接的用户界面，Tscon的作用就是将用户会话连接到远程桌面会话。</p>
+<p><img src="Lateral_Movement.assets/1574328559009.png" alt="1574328559009"></p>
+<p>此时有两种可能：</p>
+<p>1、 有本地system权限，那么可以直接使用tscon 2跳转到session 2（testwin7）的桌面</p>
+<p>使用psexec64.exe –s cmd创建一个system权限的cmd窗口。</p>
+<p><img src="Lateral_Movement.assets/1574328575986.png" alt="1574328575986"></p>
+<p><img src="Lateral_Movement.assets/1574328584828.png" alt="1574328584828"></p>
+<p>2、 没有本地system权限，需要使用密码才能跳转</p>
+<p><img src="Lateral_Movement.assets/1574328595004.png" alt="1574328595004"></p>
+<p>命令执行成功之后会直接从administrator的桌面跳转到session 2 也就是testwin7的桌面</p>
+<p><img src="Lateral_Movement.assets/1574328603868.png" alt="1574328603868"></p>
+<h2 id="Remote-File-Copy-T1105"><a href="#Remote-File-Copy-T1105" class="headerlink" title="Remote File Copy-T1105"></a>Remote File Copy-T1105</h2><p>说明了再横向渗透中可以通过一些SMB等协议，或者是FTP协议等进行横向移动，这种复制一般是需要账号密码，或者是需要未授权、本地以及有了Session的情况。</p>
+<p>比如Windows下通过SMB协议进行远程复制：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">cp \\hostA\c$\aaa.txt c:\</span><br></pre></td></tr></table></figure>
+
+<p>使用上面的命令就可以把远程主机hostA上C盘的aaa.txt文件复制到本地c盘。</p>
+<h2 id="Remote-Services-T1021"><a href="#Remote-Services-T1021" class="headerlink" title="Remote Services-T1021"></a>Remote Services-T1021</h2><p>原文说的是“远程服务，指攻击者可以使用有效的账户，登录远程服务”。比如SSH、Telnet等。但是个人认为在实际环境中在遇到SSH、Telnet之类的情况应该大部分需要进行暴力破解。</p>
+<h2 id="Replication-Through-Removable-Media-T1091"><a href="#Replication-Through-Removable-Media-T1091" class="headerlink" title="Replication Through Removable Media-T1091"></a>Replication Through Removable Media-T1091</h2><p>通过可移动媒体，主要是说通过USB或者U盘等设备来进行感染病毒。比如比较有名的Bad USB，在U盘插入电脑的时候就会自动执行恶意程序。</p>
+<p><a href="https://www.freebuf.com/sectool/107242.html" target="_blank" rel="noopener">https://www.freebuf.com/sectool/107242.html</a></p>
+<p>在Freebuf上有比较详细的复现方法，这里因为需要硬件，所以我没有复现。</p>
+<h2 id="Shared-Webroot-T1051"><a href="#Shared-Webroot-T1051" class="headerlink" title="Shared Webroot-T1051"></a>Shared Webroot-T1051</h2><p>Webroot是ASP.NET WEB应用程序的根目录，攻击者通过Webroot或者是Web内容目录开放网络文件共享将恶意内容（比如一个webshell）添加到内部可访问的网站，然后使用Web浏览器访问上传的webshell使服务器执行恶意内容。</p>
+<p><img src="Lateral_Movement.assets/1574332242527.png" alt="1574332242527"></p>
+<p>但是实际上C盘对外部开放的情况还是比较小的</p>
+<h2 id="（未完成）SSH-Hijacking-T1184"><a href="#（未完成）SSH-Hijacking-T1184" class="headerlink" title="（未完成）SSH Hijacking-T1184"></a>（未完成）SSH Hijacking-T1184</h2><p>SSH劫持</p>
+<p>1、 劫持screen会话</p>
+<p>Screen命令可以创建后台运行的会话</p>
+<p>这里是通过root通过su – testuser和screen –r 4772.pts-4.kali跳转到了testuser创建的screen会话中。但是从root到testuser的意义是什么？</p>
+<p><img src="Lateral_Movement.assets/1574332297450.png" alt="1574332297450"></p>
+<h2 id="Taint-Shared-Content-T1080"><a href="#Taint-Shared-Content-T1080" class="headerlink" title="Taint Shared Content-T1080"></a>Taint Shared Content-T1080</h2><p>指一些污染共享的例子，比如公司的FTP服务器等，通过隐藏文件或者是目录隐藏等方式。个人认为算一种思路而不是一种技术。</p>
+<h2 id="Third-party-Software-T1072"><a href="#Third-party-Software-T1072" class="headerlink" title="Third-party Software-T1072"></a>Third-party Software-T1072</h2><p>攻击第三方软件，如客户端管理软件。个人认为算一种思路而不是一种技术。</p>
+<h2 id="Windows-Admin-Shares-T1077"><a href="#Windows-Admin-Shares-T1077" class="headerlink" title="Windows Admin Shares-T1077"></a>Windows Admin Shares-T1077</h2><p>通过Admin Shares共享，默认情况下IPC$和ADMIN$是访问不了的，通过net use访问一般情况下需要输入账号密码。存在一种情况是发起请求的主机中已经保存了曾经访问过的session值，那么就可以根据已经有的session值去访问。</p>
+<p>同时也可以通过PTH、PTT的方式。</p>
+<h2 id="Windows-Remote-Management-T1028"><a href="#Windows-Remote-Management-T1028" class="headerlink" title="Windows Remote Management-T1028"></a>Windows Remote Management-T1028</h2><p>WINRM是WS-Management协议的Microsoft实现，该协议的目的是为跨多种类型的设备（包括固件）和操作系统的管理操作提供一致性和互操作性。WS-Management协议的当前实现基于以下标准规范：HTTPS，HTTP上的SOAP（WS-I配置文件），SOAP 1.2，WS-Addressing，WS-Transfer，WS-Enumeration和WS-Eventing。</p>
+<p>在拥有本地管理员权限以及目的的权限的情况下可以通过WINRM的WSMAN进行执行命令：</p>
+<figure class="highlight powershell"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">Invoke-Command</span> <span class="literal">-ComputerName</span> exchange2012 <span class="literal">-ScriptBlock</span> &#123;ipconfig&#125;</span><br></pre></td></tr></table></figure>
+
+<p><img src="Lateral_Movement.assets/1574333040602.png" alt="1574333040602"></p>
+<figure class="highlight powershell"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">Invoke-Command</span> <span class="literal">-ComputerName</span> exchange2012 <span class="literal">-ScriptBlock</span> &#123;whoami&#125;</span><br></pre></td></tr></table></figure>
+
+<p><img src="Lateral_Movement.assets/1574333045835.png" alt="1574333045835"></p>
+<p>通过抓包可以看到走的主要是HTTP协议，命令以及执行结果的传输全部进行了加密:</p>
+<p><img src="Lateral_Movement.assets/1574333076975.png" alt="1574333076975"></p>
+<p><img src="Lateral_Movement.assets/1574333082062.png" alt="1574333082062"></p>
+<p>同时mimikatz还支持使用WINRM进行远程获取LSASS中存储的hash值:</p>
+<figure class="highlight powershell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">Import-Module</span> .\<span class="built_in">Invoke-Mimikatz</span>.ps1</span><br><span class="line"><span class="built_in">Invoke-Mimikatz</span> <span class="literal">-ComputerName</span> exchange2012</span><br></pre></td></tr></table></figure>
+
+<p><img src="Lateral_Movement.assets/1574333109782.png" alt="1574333109782"></p>
+<p>同时也可以用于持久化，将原本没有开启WINRM的主机使用下列命令开启:</p>
+<figure class="highlight powershell"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">Enable-PSRemoting</span> –Force</span><br></pre></td></tr></table></figure>
+
+<p><img src="Lateral_Movement.assets/1574333138165.png" alt="1574333138165"></p>
+<p>在一些情况下可能无法通过WinRM连接，就是说明需要做一些其他的配置:</p>
+<figure class="highlight powershell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">winrm quickconfig</span><br><span class="line">winrm set winrm/config/Client <span class="selector-tag">@</span>&#123;AllowUnencrypted = <span class="string">"true"</span>&#125;</span><br><span class="line"><span class="built_in">Set-Item</span> WSMan:localhost\client\trustedhosts <span class="literal">-value</span> *</span><br></pre></td></tr></table></figure>
+
+
+        </div>
+
+        
+            <section class="post-copyright">
+                
+                
+                
+                
+
+            </section>
+        
+        <section class="post-tags">
+            <div>
+                <span>Tag(s):</span>
+                <span class="tag">
+                    
+                </span>
+            </div>
+            <div>
+                <a href="javascript:window.history.back();">back</a>
+                <span>· </span>
+                <a href="/">home</a>
+            </div>
+        </section>
+        <section class="post-nav">
+            
+                <a class="prev" rel="prev" href="/2020/12-18-ATT&CK_Persistence/">ATT&CK_Persistence</a>
+            
+            
+            <a class="next" rel="next" href="/2020/12-18-ATT&CK_Execution/">ATT&CK_Execution</a>
+            
+        </section>
+	
+		<section id="comments" class="comments">
+		  <style>
+			.comments{margin:30px;padding:10px;background:#fff}
+			@media screen and (max-width:800px){.comments{margin:auto;padding:10px;background:#fff}}
+		  </style>
+		  <div class="valine_comment"></div>
+<!--载入js，在</body>之前插入即可-->
+<!--Leancloud 操作库:-->
+<script src="//cdn1.lncld.net/static/js/3.0.4/av-min.js"></script>
+<!--Valine 的核心代码库-->
+<script src="//unpkg.com/valine/dist/Valine.min.js"></script>
+<script>
+  new Valine({
+      el: '.valine_comment',
+      app_id: 'ehQ0k7G3fcpwmkyxhG8U6DzL-gzGzoHsz',
+      app_key: 'AwwXGgbdqswiimAY0qJYhtRa',
+      placeholder: '这里留言。。',
+      notify: 'true',
+      verify: 'true',
+    });
+</script>
+		</section>
+	
+
+    </article>
+</div>
+
+        </div>
+        <footer id="footer" class="footer">
+    <div class="copyright">
+        <span>© SeikoSrp | Powered by <a href="https://hexo.io" target="_blank">Hexo</a> & <a href="https://github.com/Siricee/hexo-theme-Chic" target="_blank">Chic</a></span>
+    </div>
+</footer>
+
+    </div>
+</body>
+</html>

