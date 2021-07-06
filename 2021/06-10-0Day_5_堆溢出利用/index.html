@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+<meta http-equiv="X-UA-Compatible" content="ie=edge">
+
+    <meta name="author" content="SeikoSrp">
+
+
+
+
+
+
+<title>0Day_5_堆溢出利用 | a blog</title>
+
+
+
+    <link rel="icon" href="/haidao.ico">
+
+
+
+
+    <!-- stylesheets list from _config.yml -->
+    
+    <link rel="stylesheet" href="/css/style.css">
+    
+
+
+
+    <!-- scripts list from _config.yml -->
+    
+    <script src="/js/script.js"></script>
+    
+    <script src="/js/tocbot.min.js"></script>
+    
+    <script src="/js/jquery.min.js"></script>
+    
+
+
+
+    
+    
+        
+    
+
+
+
+
+    <script>
+    function searchToggle() {
+        const width = $(document.body).width()
+        if(width > 479) {
+            return;
+        }
+        const search = $('.search');
+        const searchForm = $('.form-search');
+        const menuToggle = $('.menu-toggle');
+        const title = $('.navbar-header-title');
+
+        if(!search.hasClass("mobile-search")) {
+            search.addClass("mobile-search");
+            menuToggle.addClass("open-search")
+            title.addClass("mobile-title-hidden")
+        } else {
+            search.removeClass("mobile-search");
+            menuToggle.removeClass("open-search")
+            // title.css({visibility: 'visible'})
+            title.removeClass("mobile-title-hidden")
+        } 
+    }
+
+    function search(searchInputEl, formEl, flag) {
+        const path = "/" + "search.json"; // 可以在public 下查看这个search.json
+        $(formEl).submit(function(e){
+            e.preventDefault();
+            let target = null
+            if(searchInputEl == null) {
+                const screenWidth = $(document.body).width();
+                target = screenWidth > 479 ? $('#pc-search-input') : $('#mobile-search-input');
+                console.log(target);
+            } else {
+                target = $(searchInputEl)
+            }
+
+            if(!flag && target.val() === '') {
+                return ;
+            }
+
+            $("#u-search").fadeIn(500, function() {
+                $("body > .wrapper").addClass("modal-active");
+
+                $.ajax({
+                    url: path,
+                    dataType: "json",
+                    beforeSend: function (xhr) {
+                        $input = target.val();
+                        $(".form-input").val($input);
+                        const loadingBar = $('.search-loading-bar') 
+                        loadingBar.css({
+                            width:'100%',
+                            display: 'block'
+                        });
+                    },
+                    success: function( datas ) {
+                        // console.log(datas);
+                        const $resultPanel = $(".modal-body")[0];
+                        let str = `<ul class="modal-results">`;
+                        var keywords = $(".form-input").val().trim().toLowerCase().split(/[\s\-]+/);
+                        $resultPanel.innerHTML = "";
+                        let hasResult = false
+                        let text = `<div class="no-result">找不到与关键词相关的内容....</div>`;
+
+                        if ($(".form-input").val().trim().length <= 0) {
+                            // 没有结果
+                            $resultPanel.innerHTML = text;
+                            return;
+                        }
+                        datas.forEach(function (data) {
+                            var isMatch = true;
+                            if (!data.title || data.title.trim() === '') {
+                                data.title = "Untitled";
+                            }
+                            var data_title = data.title.trim().toLowerCase();
+                            var data_content = data.content.trim().replace(/<[^>]+>/g, "").toLowerCase();
+                            var data_url = data.url;
+                            var index_title = -1;
+                            var index_content = -1;
+                            var first_occur = -1;
+                            // only match artiles with not empty contents
+                            if (data_content !== '') {
+                                keywords.forEach(function (keyword, i) {
+                                    index_title = data_title.indexOf(keyword);
+                                    index_content = data_content.indexOf(keyword);
+
+                                    if (index_title < 0 && index_content < 0) {
+                                        isMatch = false;
+                                    } else {
+                                        hasResult = true
+                                        if (index_content < 0) {
+                                            index_content = 0;
+                                        }
+                                        if (i == 0) {
+                                            first_occur = index_content;
+                                        }
+                                    }
+                                });
+                            } else {
+                                isMatch = false;
+                            }
+                            // show search results
+                            if (isMatch) {
+                                str += `<li class='result-item'><a href='${data_url}' class='result-item-detail'> <span class="title">${data_title}</span>`;
+                                var content = data.content.trim().replace(/<[^>]+>/g, "");
+                                if (first_occur >= 0) {
+                                    // cut out 200 characters
+                                    var start = first_occur - 40;
+                                    var end = first_occur + 160;
+
+                                    if (start < 0) {
+                                        start = 0;
+                                    }
+
+                                    if (start == 0) {
+                                        end = 200;
+                                    }
+
+                                    if (end > content.length) {
+                                        end = content.length;
+                                    }
+
+                                    var match_content = content.substring(start, end);
+
+                                    // highlight all keywords
+                                    keywords.forEach(function (keyword) {
+                                        var regS = new RegExp(keyword, "gi");
+                                        match_content = match_content.replace(regS, `<em class="search-keyword">${keyword}</em>`);
+                                    });
+
+                                    str += `<span class="content"> ${match_content} ...</span></a>`;
+                                }
+                                str += "</li>";
+                            }
+                        });
+                        str += "</ul>";
+                        if(hasResult) {
+                            $resultPanel.innerHTML = str;
+                        } else {
+                            $resultPanel.innerHTML = text;
+                        }
+
+                    },
+                    complete: function() {
+                        setTimeout(() => {
+                                const loadingBar = $('.search-loading-bar') 
+                                loadingBar.css({
+                                    width:'0%',
+                                    display: 'none'
+                                });
+                        }, 300)
+                    }
+                });
+            })
+
+        });
+    }
+
+    $(document).ready(function() {
+        $('.modal-close').click(function () { 
+            $("#u-search").fadeOut();
+            $("body > .wrapper").removeClass("modal-active")
+        })
+
+        $('.modal-overlay').click(function() {
+            $("#u-search").fadeOut();
+            $("body > .wrapper").removeClass("modal-active")
+        })
+        search(null, ".form-search", false)
+        search("#u-search-modal-form .form-input", ".u-search-modal-form", true)
+    })
+</script>
+
+<meta name="generator" content="Hexo 4.2.1"></head>
+<body>
+<!-- Chic/layout.ejs -->
+ <div id="u-search">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="container">
+                    <form id="u-search-modal-form" class="u-search-modal-form">
+                        <button type="submit" class="form-submit-btn">
+                            <img src="/image/search.png" class="search-btn-img" />
+                        </button>
+                        <input placeholder="搜索文章。。。" class="form-input" id="modal-form-input">
+                    </form>
+                    <a class="modal-close">x</a>
+                </div>
+                <div class="search-loading">
+                    <div class="search-loading-bar"></div>
+                </div>
+            </div>
+            <div class="modal-body">
+                <!-- ul 格式如下 -->
+                <!-- <ul class="modal-results">
+                    <li class="result-item">
+                        <a class="result-item-detail">
+                            <span class="title">页面配置</span>
+                            <span class="content">
+                                content
+                            </span>
+                        </a>
+                    </li>
+                </ul> -->
+            </div>
+        </div>
+        <div class="modal-overlay"></div>
+    </div>
+    <div class="wrapper">
+        <header>
+    <nav class="navbar">
+        <div class="container">
+            <div class="navbar-header header-logo"><a href="/">SeikoSrp&#39;s Blog</a></div>
+            <div class="menu navbar-right">
+                <!-- 这里表示的是pc端搜索框 -->
+                
+                
+    <div class="search ">
+        <div class="search-btn" onClick="searchToggle()">
+            <img src="/image/search.png" class="search-btn-img" />
+        </div>
+        <form class="form-search">
+            <input class="input" placeholder="搜索文章" autocomplete="off" id="pc-search-input"/>
+        </form>
+    </div>
+
+                
+                    <a class="menu-item" href="/archives">文章</a>
+                
+                    <a class="menu-item" href="/category">分类</a>
+                
+                    <a class="menu-item" href="/about">关于</a>
+                
+                <input id="switch_default" type="checkbox" class="switch_default">
+                <label for="switch_default" class="toggleBtn"></label>
+            </div>
+        </div>
+    </nav>
+
+    
+    <nav class="navbar-mobile" id="nav-mobile">
+        <div class="container">
+            <div class="navbar-header">
+                <div>
+                    <a href="/">SeikoSrp&#39;s Blog</a><a id="mobile-toggle-theme">·&nbsp;Light</a>
+                </div>
+                <div class="navbar-mobile-right">
+                    
+                    
+    <div class="search ">
+        <div class="search-btn" onClick="searchToggle()">
+            <img src="/image/search.png" class="search-btn-img" />
+        </div>
+        <form class="form-search">
+            <input class="input" placeholder="搜索文章" autocomplete="off" id="mobile-search-input"/>
+        </form>
+    </div>
+
+                    <div class="menu-toggle" onclick="mobileBtn()">&#9776; 目录</div>
+                </div>
+                
+            </div>
+            <div class="menu" id="mobile-menu">
+                
+                    <a class="menu-item" href="/archives">文章</a>
+                
+                    <a class="menu-item" href="/category">分类</a>
+                
+                    <a class="menu-item" href="/about">关于</a>
+                
+            </div>
+        </div>
+    </nav>
+
+</header>
+<script>
+    var mobileBtn = function f() {
+        var toggleMenu = document.getElementsByClassName("menu-toggle")[0];
+        var mobileMenu = document.getElementById("mobile-menu");
+        if(toggleMenu.classList.contains("active")){
+           toggleMenu.classList.remove("active")
+            mobileMenu.classList.remove("active")
+        }else{
+            toggleMenu.classList.add("active")
+            mobileMenu.classList.add("active")
+        }
+    }
+</script>
+        <div class="main">
+            <div class="container">
+    
+    
+        <div class="post-toc">
+    <div class="tocbot-list">
+    </div>
+    <div class="tocbot-list-menu">
+        <a class="tocbot-toc-expand" onclick="expand_toc()">全部展开</a>
+        <a onclick="go_top()">回到顶部</a>
+        <a onclick="go_bottom()">前往底部</a>
+    </div>
+</div>
+
+<script>
+    document.ready(
+        function () {
+            tocbot.init({
+                tocSelector: '.tocbot-list',
+                contentSelector: '.post-content',
+                headingSelector: 'h1, h2, h3, h4, h5',
+                collapseDepth: 1,
+                orderedList: false,
+                scrollSmooth: true,
+            })
+        }
+    )
+
+    function expand_toc() {
+        var b = document.querySelector(".tocbot-toc-expand");
+        tocbot.init({
+            tocSelector: '.tocbot-list',
+            contentSelector: '.post-content',
+            headingSelector: 'h1, h2, h3, h4, h5',
+            collapseDepth: 6,
+            orderedList: false,
+            scrollSmooth: true,
+        });
+        b.setAttribute("onclick", "collapse_toc()");
+        b.innerHTML = "全部折叠"
+    }
+
+    function collapse_toc() {
+        var b = document.querySelector(".tocbot-toc-expand");
+        tocbot.init({
+            tocSelector: '.tocbot-list',
+            contentSelector: '.post-content',
+            headingSelector: 'h1, h2, h3, h4, h5',
+            collapseDepth: 1,
+            orderedList: false,
+            scrollSmooth: true,
+        });
+        b.setAttribute("onclick", "expand_toc()");
+        b.innerHTML = "全部展开"
+    }
+
+    function go_top() {
+        window.scrollTo(0, 0);
+    }
+
+    function go_bottom() {
+        window.scrollTo(0, document.body.scrollHeight);
+    }
+
+</script>
+    
+
+    
+    <article class="post-wrap">
+        <header class="post-header">
+            <h1 class="post-title">0Day_5_堆溢出利用</h1>
+            
+                <div class="post-meta">
+                    
+                        作者: <a itemprop="author" rel="author" href="/">SeikoSrp</a>
+                    
+
+                    
+                        <span class="post-time">
+                        发布于: <a href="#">六月 10, 2021&nbsp;&nbsp;22:30:36</a>
+                        </span>
+                    
+                    
+                </div>
+            
+        </header>
+
+        <div class="post-content">
+            <h1 id="堆的工作原理"><a href="#堆的工作原理" class="headerlink" title="堆的工作原理"></a>堆的工作原理</h1><h2 id="堆的特性"><a href="#堆的特性" class="headerlink" title="堆的特性"></a>堆的特性</h2><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">1、堆是一种再程序运行时动态分配的内存。</span><br><span class="line">2、堆在使用时需要程序员用专用函数进行申请。</span><br><span class="line">3、一般用一个堆指针来使用申请得到的内存，读、写、释放都通过这个指针来完成。</span><br><span class="line">问题：如果是一个指针又是链表，指针肯定要变化的，如何一直指向空白处？</span><br><span class="line">4、使用完毕后，需要把堆指针传给堆释放函数回收这片内存，否则会造成内存泄漏，典型的释放函数包括free、delete等。</span><br></pre></td></tr></table></figure>
+
+<h2 id="堆的数据结构"><a href="#堆的数据结构" class="headerlink" title="堆的数据结构"></a>堆的数据结构</h2><p>程序使用堆时做的三件事情：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">申请一定大小的内存</span><br><span class="line">使用内存</span><br><span class="line">释放内存</span><br></pre></td></tr></table></figure>
+
+<p>堆的数据结构，分为两类：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">堆块</span><br><span class="line">堆表</span><br></pre></td></tr></table></figure>
+
+<p>参考下图：</p>
+<p><img src="0Day_5_%E5%A0%86%E6%BA%A2%E5%87%BA%E5%88%A9%E7%94%A8.assets/%E6%9C%AA%E5%91%BD%E5%90%8D%E6%96%87%E4%BB%B6.png" alt="未命名文件"></p>
+<h3 id="空表"><a href="#空表" class="headerlink" title="空表"></a>空表</h3><p>空表是由空闲堆块组成的双向链表，按照堆块的大小不同，一共有128条</p>
+<p><img src="0Day_5_%E5%A0%86%E6%BA%A2%E5%87%BA%E5%88%A9%E7%94%A8.assets/image-20210619104027844.png" alt="image-20210619104027844"></p>
+<p>链表大小规定：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">free[0]中都是&gt;&#x3D; 1024字节的</span><br><span class="line">free[1]中都是8字节的</span><br><span class="line">free[2]中都是16字节的</span><br><span class="line">free[3]中都是24字节的</span><br><span class="line">以此类推，数组每增加一个就堆块的大小就增加8个字节</span><br></pre></td></tr></table></figure>
+
+<h3 id="快表"><a href="#快表" class="headerlink" title="快表"></a>快表</h3><p>快表就是快速单项链表，也就是说堆块按照单链表组织</p>
+<p>每条快表最多只有4个节点：</p>
+<p><img src="0Day_5_%E5%A0%86%E6%BA%A2%E5%87%BA%E5%88%A9%E7%94%A8.assets/image-20210619104425679.png" alt="image-20210619104425679"></p>
+<p>也是依次按照大小排列</p>
+<h2 id="堆的分配策略"><a href="#堆的分配策略" class="headerlink" title="堆的分配策略"></a>堆的分配策略</h2><p>快表只有在精确匹配时才会被分配，就是申请的字节数正好和单链表中的现有的区块大小相同，比如申请的是8字节的、16字节的等等</p>
+<p>快表被分配时，流程为：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">寻找到大小匹配的空闲堆块</span><br><span class="line">-----&gt;</span><br><span class="line">将其状态修改为占用态</span><br><span class="line">-----&gt;</span><br><span class="line">把堆块从堆表中卸下</span><br><span class="line">-----&gt;</span><br><span class="line">返回一个指向堆块块身的指针给程序</span><br></pre></td></tr></table></figure>
+
+<p>普通空表分配分为几个场景：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">1、普通空表分配时首先寻找最优的空闲块分配，如果失败，则寻找次优的空闲块分配(即最小的能够满足要求的空闲块)</span><br><span class="line">2、零号空表中按照大小升序链着大小不同的空闲块，故在分配时先从free[0]反向查找最后一个块，看是否能满足，如果能，再正想搜索最小的能够满足要求的空闲堆块进行分配</span><br><span class="line">3、找零钱现象：无法找到匹配的最优堆块时，一个稍大一些的堆块会被用于分配，按照请求的大小割出一块进行分配，剩下的部分重新标注块首，链入空表</span><br></pre></td></tr></table></figure>
+
+<h2 id="堆块释放"><a href="#堆块释放" class="headerlink" title="堆块释放"></a>堆块释放</h2><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">释放堆块的操作包括将堆块状态改为空闲，链入相应的堆表。所有的释放块都链入堆表的末尾，分配的时候也先从堆表末尾拿。</span><br></pre></td></tr></table></figure>
+
+<h2 id="堆块合并"><a href="#堆块合并" class="headerlink" title="堆块合并"></a>堆块合并</h2><p><img src="0Day_5_%E5%A0%86%E6%BA%A2%E5%87%BA%E5%88%A9%E7%94%A8.assets/image-20210619105723515.png" alt="image-20210619105723515"></p>
+<p>这里还提到了内存紧缩的一个概念：</p>
+<p><img src="0Day_5_%E5%A0%86%E6%BA%A2%E5%87%BA%E5%88%A9%E7%94%A8.assets/image-20210619105805604.png" alt="image-20210619105805604"></p>
+<p>实际上也就是堆块合并的一种。</p>
+<p>堆块分配和释放也会受到大小的影响，windows按照大小分为三种：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">小块 size &lt; 1KB</span><br><span class="line">大块 1KB &lt; size &lt; 512KB</span><br><span class="line">巨块 size &gt; 512KB</span><br></pre></td></tr></table></figure>
+
+<p>按照大小对应的分配和释放策略参照下表：</p>
+<p><img src="0Day_5_%E5%A0%86%E6%BA%A2%E5%87%BA%E5%88%A9%E7%94%A8.assets/image-20210619110559931.png" alt="image-20210619110559931"></p>
+<p>Windows堆管理的几个要点：</p>
+<p><img src="0Day_5_%E5%A0%86%E6%BA%A2%E5%87%BA%E5%88%A9%E7%94%A8.assets/image-20210619111418957.png" alt="image-20210619111418957"></p>
+<h1 id="在堆中漫游"><a href="#在堆中漫游" class="headerlink" title="在堆中漫游"></a>在堆中漫游</h1><h2 id="堆分配函数之间的调用关系"><a href="#堆分配函数之间的调用关系" class="headerlink" title="堆分配函数之间的调用关系"></a>堆分配函数之间的调用关系</h2><p><img src="0Day_5_%E5%A0%86%E6%BA%A2%E5%87%BA%E5%88%A9%E7%94%A8.assets/image-20210619111621567.png" alt="image-20210619111621567"></p>
+<p>这里说到了堆的管理架构和堆分配最底层的调用函数</p>
+<h2 id="堆的调试方法"><a href="#堆的调试方法" class="headerlink" title="堆的调试方法"></a>堆的调试方法</h2><p>首先创建一个简单的程序，通过这个程序创建一个堆，然后使用堆分配函数从这个堆中分配内存：</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;windows.h&gt;</span></span></span><br><span class="line"></span><br><span class="line">main()</span><br><span class="line">&#123;</span><br><span class="line">	HLOCAL h1,h2,h3,h4,h5,h6;</span><br><span class="line">	HANDLE hp;</span><br><span class="line">    <span class="comment">// </span></span><br><span class="line">	hp= HeapCreate(<span class="number">0</span>,<span class="number">0x1000</span>,<span class="number">0x10000</span>);</span><br><span class="line">    <span class="built_in">printf</span>(<span class="string">"hp: %x"</span>,hp);</span><br><span class="line">	__asm <span class="keyword">int</span> <span class="number">3</span></span><br><span class="line">	</span><br><span class="line">    <span class="comment">//</span></span><br><span class="line">	h1 = HeapAlloc(hp,HEAP_ZERO_MEMORY,<span class="number">3</span>);</span><br><span class="line">	h2 = HeapAlloc(hp,HEAP_ZERO_MEMORY,<span class="number">5</span>);</span><br><span class="line">	h3 = HeapAlloc(hp,HEAP_ZERO_MEMORY,<span class="number">6</span>);</span><br><span class="line">	h4 = HeapAlloc(hp,HEAP_ZERO_MEMORY,<span class="number">8</span>);</span><br><span class="line">	h5 = HeapAlloc(hp,HEAP_ZERO_MEMORY,<span class="number">19</span>);</span><br><span class="line">	h6 = HeapAlloc(hp,HEAP_ZERO_MEMORY,<span class="number">24</span>);</span><br><span class="line"></span><br><span class="line">	HeapFree(hp,<span class="number">0</span>,h1);</span><br><span class="line">	HeapFree(hp,<span class="number">0</span>,h3);</span><br><span class="line">	HeapFree(hp,<span class="number">0</span>,h5);</span><br><span class="line">	HeapFree(hp,<span class="number">0</span>,h4);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>heapcreate创建一个只有调用进程才能访问的私有堆</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">HANDLE <span class="title">HeapCreate</span><span class="params">(</span></span></span><br><span class="line"><span class="function"><span class="params">  DWORD  flOptions,<span class="comment">// 堆分配选项</span></span></span></span><br><span class="line"><span class="function"><span class="params">  SIZE_T dwInitialSize,<span class="comment">// 堆的初始大小</span></span></span></span><br><span class="line"><span class="function"><span class="params">  SIZE_T dwMaximumSize<span class="comment">// 堆的最大大小</span></span></span></span><br><span class="line"><span class="function"><span class="params">)</span></span>;</span><br></pre></td></tr></table></figure>
+
+<p>关于dwMaximumSized的详解：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">使用场景：</span><br><span class="line">	如果函数 HeapAlloc 和 HeapReAlloc 要求分配的空间超过参数 dwInitialSize 指定的大小，系统会分配额外的空间给该堆直到这个堆的最大大小(dwMaximumSize)。</span><br><span class="line"></span><br><span class="line">参数含义：</span><br><span class="line">	dwMaximumSize !&#x3D; 0：</span><br><span class="line">	堆的大小固定，不能超过最大大小，此外，可以从堆分配的最大内存块对于 32 位进程略小于 512 KB，对于 64 位进程略小于 1,024 KB。即使堆的最大大小足以容纳该块，分配更大块的请求也会失败。</span><br><span class="line"></span><br><span class="line">	dwMaximumSize &#x3D; 0：</span><br><span class="line">	那么该堆大小的唯一限制是可用的内存空间，并且通过HeapAlloc能分配的内存空间大小不受固定限制，系统会通过调用 VirtualAlloc分配足够大小的内存。</span><br><span class="line"></span><br><span class="line">此外，实际申请内存时，最终申请的内存总和并不一定能达到设定的 最大值dwMaxmumSize</span><br></pre></td></tr></table></figure>
+
+<p>HeapAlloc在指定的堆上分配内存</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">DECLSPEC_ALLOCATOR LPVOID <span class="title">HeapAlloc</span><span class="params">(</span></span></span><br><span class="line"><span class="function"><span class="params">  HANDLE hHeap,	<span class="comment">//堆句柄</span></span></span></span><br><span class="line"><span class="function"><span class="params">  DWORD  dwFlags,<span class="comment">// 分配选项，下面的HEAP_ZERO_MEMORY表示分配的内存会被初始化为0</span></span></span></span><br><span class="line"><span class="function"><span class="params">  SIZE_T dwBytes<span class="comment">// 要分配的字节数</span></span></span></span><br><span class="line"><span class="function"><span class="params">)</span></span>;</span><br></pre></td></tr></table></figure>
+
+<p>详情：<a href="https://docs.microsoft.com/en-us/windows/win32/api/heapapi/nf-heapapi-heapalloc" target="_blank" rel="noopener">https://docs.microsoft.com/en-us/windows/win32/api/heapapi/nf-heapapi-heapalloc</a></p>
+<p>这里编译成Release版本之后将Ollydbg设置为默认调试程序：</p>
+<p><img src="0Day_5_%E5%A0%86%E6%BA%A2%E5%87%BA%E5%88%A9%E7%94%A8.assets/image-20210617225604283.png" alt="image-20210617225604283"></p>
+<p>上面是在XP执行的，由于执行程序之后担心堆的分配不一样，所以换成了windows2000，这里可以看到创建的堆(句柄为hp)的地址是360000，大小为1000：</p>
+<p><img src="0Day_5_%E5%A0%86%E6%BA%A2%E5%87%BA%E5%88%A9%E7%94%A8.assets/image-20210619002717429.png" alt="image-20210619002717429"></p>
+<p>这里进程中主要关注三个堆</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">1、起始地址为0x00130000，大小为0x6000的堆，可以通过&#96;GetProcessHeap()&#96;获得这个堆的句柄并使用，起始地址是0x00130000是因为在windows2000中，堆的内存起始地址在一般时候为0x00130000</span><br><span class="line"></span><br><span class="line">2、起始地址为0x00340000,大小为0x5000的堆，是属于分配函数malloc()的堆区</span><br><span class="line"></span><br><span class="line">3、起始地址为0x00360000,大小为0x1000的堆，为heapcreate创建的</span><br></pre></td></tr></table></figure>
+
+<p>参考：<a href="https://jingyan.baidu.com/article/425e69e68a0df4be15fc1615.html" target="_blank" rel="noopener">https://jingyan.baidu.com/article/425e69e68a0df4be15fc1615.html</a></p>
+<p>这里的Type有Priv、Map、Imag三种</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">priv是private，即本进程私有内存区域，一般是进程的堆和栈。以及HeapAlloc和VirtualAlloc申请的内存块。</span><br><span class="line"></span><br><span class="line">img是image，即本块内存是映像文件加载进来的，就是exe、dll被装载到的地方。</span><br><span class="line"></span><br><span class="line">map是mapping，是被映射进来的文件的内存块，即createfilemapping函数相关的。</span><br></pre></td></tr></table></figure>
+
+<h2 id="识别堆表"><a href="#识别堆表" class="headerlink" title="识别堆表"></a>识别堆表</h2><h3 id="堆区的结构"><a href="#堆区的结构" class="headerlink" title="堆区的结构"></a>堆区的结构</h3><p>上面申请的堆区的返回值为0x00360000，也就是说申请的堆是从这个位置开始，包含的信息依次为：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">段表索引</span><br><span class="line">虚表索引</span><br><span class="line">空表使用标识</span><br></pre></td></tr></table></figure>
+
+<p>从0x178位置开始是<code>空表索引区</code>，因为是双向链表，所以Freelist的一个元素占8个字节，两个指针</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">1、初始化之后，这里只有一个空闲态的大块，被称为尾块</span><br><span class="line">2、尾块的位置为图中红线标注的00360688，也就是在偏移0x688的位置</span><br><span class="line">3、其他的索引数组元素当前都指向自身的地址，意味着其余的空闲列表都没有空闲块</span><br></pre></td></tr></table></figure>
+
+<p><img src="0Day_5_%E5%A0%86%E6%BA%A2%E5%87%BA%E5%88%A9%E7%94%A8.assets/image-20210619120308156.png" alt="image-20210619120308156"></p>
+<h3 id="堆块的结构"><a href="#堆块的结构" class="headerlink" title="堆块的结构"></a>堆块的结构</h3><p>空闲态堆块和占用态堆块的块首的说明：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">占用态 块首占8个字节，内容如下图</span><br></pre></td></tr></table></figure>
+
+<p><img src="0Day_5_%E5%A0%86%E6%BA%A2%E5%87%BA%E5%88%A9%E7%94%A8.assets/image-20210619121812652.png" alt="image-20210619121812652"></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">空闲态 块首实际是16个字节，在占用态块首的基础上多出来8个字节保存空表的地址</span><br></pre></td></tr></table></figure>
+
+<p><img src="0Day_5_%E5%A0%86%E6%BA%A2%E5%87%BA%E5%88%A9%E7%94%A8.assets/image-20210619122429486.png" alt="image-20210619122429486"></p>
+<p>堆块块首的结构为，注意这里<code>Self Size</code>不是表示堆块大小的字节数，分配粒度为8个字节，参考下图（来自<code>《软件调试》</code>）：</p>
+<p><img src="0Day_5_%E5%A0%86%E6%BA%A2%E5%87%BA%E5%88%A9%E7%94%A8.assets/image-20210619181400812.png" alt="image-20210619181400812"></p>
+<p>这个堆块的地址实际是00360680，但是空表索引里的指针会直接越过块首</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">00360680开头的8个字节，就是空闲块的块首</span><br><span class="line">00360688开头的8个字节，保存了空表索引的指针</span><br></pre></td></tr></table></figure>
+
+<p><img src="0Day_5_%E5%A0%86%E6%BA%A2%E5%87%BA%E5%88%A9%E7%94%A8.assets/image-20210619121648400.png" alt="image-20210619121648400"></p>
+<p>这里根据上图红圈可以看到，这个块的<code>Self size</code>为0x130，堆块长度为0x8，结果两者相乘为0x980</p>
+<p><code>Previous chunk size</code>表示上一个堆块的大小，和自身大小没有关系，这里只是碰巧也为0x8</p>
+<p>这里有个注意事项，主要是要记住，想要创建可扩展的堆需要使用heapCreate(0,0,0)：</p>
+<p><img src="0Day_5_%E5%A0%86%E6%BA%A2%E5%87%BA%E5%88%A9%E7%94%A8.assets/image-20210619181805041.png" alt="image-20210619181805041"></p>
+<h2 id="堆块的分配"><a href="#堆块的分配" class="headerlink" title="堆块的分配"></a>堆块的分配</h2><p>堆块的分配策略：</p>
+<p><img src="0Day_5_%E5%A0%86%E6%BA%A2%E5%87%BA%E5%88%A9%E7%94%A8.assets/image-20210619183209438.png" alt="image-20210619183209438"></p>
+<p>对于程序中的6次堆块分配结果为：</p>
+<p><img src="0Day_5_%E5%A0%86%E6%BA%A2%E5%87%BA%E5%88%A9%E7%94%A8.assets/image-20210619183232183.png" alt="image-20210619183232183"></p>
+<p>单步执行到6个堆块分配完毕，查看堆的情况如下所示，使用红框框出来的是6个堆块的块首：</p>
+<p><img src="0Day_5_%E5%A0%86%E6%BA%A2%E5%87%BA%E5%88%A9%E7%94%A8.assets/image-20210619183052930.png" alt="image-20210619183052930"></p>
+<p>其中最下面一块尾块的大小由0x130变为了0x120，因为上面六次分配一共分配了0x10个单位的空间</p>
+<p><img src="0Day_5_%E5%A0%86%E6%BA%A2%E5%87%BA%E5%88%A9%E7%94%A8.assets/image-20210619184014825.png" alt="image-20210619184014825"></p>
+<p>空表索引已经指向了新的尾块地址<code>0x00360708</code></p>
+<h3 id="堆块的释放"><a href="#堆块的释放" class="headerlink" title="堆块的释放"></a>堆块的释放</h3><p><img src="0Day_5_%E5%A0%86%E6%BA%A2%E5%87%BA%E5%88%A9%E7%94%A8.assets/image-20210619185040643.png" alt="image-20210619185040643"></p>
+<p>堆块被释放之后，根据大小链入相应的freelist，三次执行完之后，可以看到，在空表索引处，也就是下面的三个红框，分别指向：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">freelist[0]	指向尾块</span><br><span class="line">freelist[0]	指向h1和h3释放的堆块,因为h1和h3的大小相同</span><br><span class="line">freelist[0]	指向h5释放的堆块</span><br></pre></td></tr></table></figure>
+
+<p><img src="0Day_5_%E5%A0%86%E6%BA%A2%E5%87%BA%E5%88%A9%E7%94%A8.assets/image-20210619185025867.png" alt="image-20210619185025867"></p>
+<p>此时堆块的内容为：</p>
+<p><img src="0Day_5_%E5%A0%86%E6%BA%A2%E5%87%BA%E5%88%A9%E7%94%A8.assets/image-20210619185636719.png" alt="image-20210619185636719"></p>
+<p>可以看到，h1、h3、h5的块身的内容已经变为空表索引的地址，其他的块身的内容仍然为00填充</p>
+<h2 id="堆块的合并"><a href="#堆块的合并" class="headerlink" title="堆块的合并"></a>堆块的合并</h2><p>在执行最后一步<code>HeapFree(hp,0,h4)</code>之后，由于h4和h3大小相同，所以会合并为一个4单位的堆块，然后再和h5合并为一个8单位的堆块，被链入<code>freelist[8]</code></p>
+<p><img src="0Day_5_%E5%A0%86%E6%BA%A2%E5%87%BA%E5%88%A9%E7%94%A8.assets/image-20210619190334642.png" alt="image-20210619190334642"></p>
+<p>上图可见，原本<code>0x003606A0</code>处的大小为2，现在变为了8，并且<code>0x003606A8</code>处指向<code>freelist[8]</code>的位置</p>
+<h1 id="堆溢出利用-上-DWORD-SHOOT"><a href="#堆溢出利用-上-DWORD-SHOOT" class="headerlink" title="堆溢出利用(上)-DWORD SHOOT"></a>堆溢出利用(上)-DWORD SHOOT</h1><p>dword shoot是说能够向任意内存写入任意数据的一个情况，主要是通过向堆中写入数据然后溢出下一个堆块的块首，改写块首中的前向指针(flink)和后向指针(blink)</p>
+<h2 id="链表”拆卸”中的问题"><a href="#链表”拆卸”中的问题" class="headerlink" title="链表”拆卸”中的问题"></a>链表”拆卸”中的问题</h2><p>卸下链表的操作类似下面的代码：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">remove</span><span class="params">(ListNode * node)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">	node -&gt; <span class="built_in">blink</span> -&gt; flink = node -&gt; flink;</span><br><span class="line">	node -&gt; flink -&gt; bink = node -&gt; <span class="built_in">blink</span>;</span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="在调试中体会DWORD-SHOOT"><a href="#在调试中体会DWORD-SHOOT" class="headerlink" title="在调试中体会DWORD SHOOT"></a>在调试中体会DWORD SHOOT</h2><p>代码和上一节的类似，稍作修改：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;windows.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;stdio.h&gt;</span></span></span><br><span class="line"></span><br><span class="line">main()</span><br><span class="line">&#123;</span><br><span class="line">	HLOCAL h1,h2,h3,h4,h5,h6;</span><br><span class="line">	HANDLE hp;</span><br><span class="line">    <span class="comment">// </span></span><br><span class="line">	hp= HeapCreate(<span class="number">0</span>,<span class="number">0x1000</span>,<span class="number">0x10000</span>);</span><br><span class="line">	<span class="built_in">printf</span>(<span class="string">"hp: %x"</span>,hp);</span><br><span class="line"></span><br><span class="line">	</span><br><span class="line">    <span class="comment">//</span></span><br><span class="line">	h1 = HeapAlloc(hp,HEAP_ZERO_MEMORY,<span class="number">8</span>);</span><br><span class="line">	h2 = HeapAlloc(hp,HEAP_ZERO_MEMORY,<span class="number">8</span>);</span><br><span class="line">	h3 = HeapAlloc(hp,HEAP_ZERO_MEMORY,<span class="number">8</span>);</span><br><span class="line">	h4 = HeapAlloc(hp,HEAP_ZERO_MEMORY,<span class="number">8</span>);</span><br><span class="line">	h5 = HeapAlloc(hp,HEAP_ZERO_MEMORY,<span class="number">8</span>);</span><br><span class="line">	h6 = HeapAlloc(hp,HEAP_ZERO_MEMORY,<span class="number">8</span>);</span><br><span class="line"></span><br><span class="line">	__asm <span class="keyword">int</span> <span class="number">3</span></span><br><span class="line">	</span><br><span class="line">	HeapFree(hp,<span class="number">0</span>,h1);</span><br><span class="line">	HeapFree(hp,<span class="number">0</span>,h3);</span><br><span class="line">	HeapFree(hp,<span class="number">0</span>,h5);</span><br><span class="line"></span><br><span class="line">	h1 = HeapAlloc(hp,HEAP_ZERO_MEMORY,<span class="number">8</span>);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>然后依然默认使用ollydbg直接运行，会在<code>__asm int 3</code>处中断，直接F8执行到三次HeapFree之后，查看堆区的内容：</p>
+<p><img src="0Day_5_%E5%A0%86%E6%BA%A2%E5%87%BA%E5%88%A9%E7%94%A8.assets/image-20210620210624495.png" alt="image-20210620210624495"></p>
+<p>h1、h3、h5在释放之后都会被链入freelist[2]，因为加上块首都是16字节</p>
+<p>最后<code>h1 = HeapAlloc(hp,HEAP_ZERO_MEMORY,8);</code>这里，会将h5的堆块分配出去，也就是说，执行完毕之后h1指向的是h5</p>
+<p>这里直接将h5堆块的flink和blink修改为<code>0x44444444</code>和<code>0x00000000</code>，之后继续执行最后一个HeapAlloc会直接报错</p>
+<p><img src="0Day_5_%E5%A0%86%E6%BA%A2%E5%87%BA%E5%88%A9%E7%94%A8.assets/image-20210620213130730.png" alt="image-20210620213130730"></p>
+<p>ECX被修改</p>
+<p><img src="0Day_5_%E5%A0%86%E6%BA%A2%E5%87%BA%E5%88%A9%E7%94%A8.assets/image-20210620213218762.png" alt="image-20210620213218762"></p>
+<h1 id="堆溢出利用-下-代码植入"><a href="#堆溢出利用-下-代码植入" class="headerlink" title="堆溢出利用(下)-代码植入"></a>堆溢出利用(下)-代码植入</h1><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;windows.h&gt;</span></span></span><br><span class="line"></span><br><span class="line"><span class="keyword">char</span> shellcode[] = <span class="string">"\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90"</span>;</span><br><span class="line"></span><br><span class="line">main()</span><br><span class="line">&#123;</span><br><span class="line">    HLOCAL h1 = <span class="number">0</span>, h2 = <span class="number">0</span>;</span><br><span class="line">    HANDLE hp;</span><br><span class="line">    hp = HeapCreate(<span class="number">0</span>,<span class="number">0x1000</span>,<span class="number">0x10000</span>);</span><br><span class="line">    h1 = HeapAlloc(hp,HEAP_ZERO_MEMORY,<span class="number">200</span>);</span><br><span class="line">    </span><br><span class="line">    __asm <span class="keyword">int</span> <span class="number">3</span></span><br><span class="line">    <span class="built_in">memcpy</span>(h1,shellcode,<span class="number">0x200</span>);</span><br><span class="line">    h2 = HeapAlloc(hp,HEAP_ZERO_MEMORY,<span class="number">8</span>);</span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+        </div>
+
+        
+            <section class="post-copyright">
+                
+                
+                
+                
+
+            </section>
+        
+        <section class="post-tags">
+            <div>
+                <span>Tag(s):</span>
+                <span class="tag">
+                    
+                </span>
+            </div>
+            <div>
+                <a href="javascript:window.history.back();">back</a>
+                <span>· </span>
+                <a href="/">home</a>
+            </div>
+        </section>
+        <section class="post-nav">
+            
+                <a class="prev" rel="prev" href="/2021/07-05-windows%E6%B6%88%E6%81%AFhook/">windows消息hook</a>
+            
+            
+            <a class="next" rel="next" href="/2021/06-03-0day%E6%BC%8F%E6%B4%9E%E6%8C%96%E6%8E%98_3.5_%E6%9E%84%E9%80%A0%E4%B8%80%E4%B8%AA%E5%8F%8D%E5%BC%B9shell%E7%9A%84shellcode/">0day漏洞挖掘_3.5_构造一个反弹shell的shellcode</a>
+            
+        </section>
+	
+		<section id="comments" class="comments">
+		  <style>
+			.comments{margin:30px;padding:10px;background:#fff}
+			@media screen and (max-width:800px){.comments{margin:auto;padding:10px;background:#fff}}
+		  </style>
+		  <div class="valine_comment"></div>
+<!--载入js，在</body>之前插入即可-->
+<!--Leancloud 操作库:-->
+<script src="//cdn1.lncld.net/static/js/3.0.4/av-min.js"></script>
+<!--Valine 的核心代码库-->
+<script src="//unpkg.com/valine/dist/Valine.min.js"></script>
+<script>
+  new Valine({
+      el: '.valine_comment',
+      app_id: 'ehQ0k7G3fcpwmkyxhG8U6DzL-gzGzoHsz',
+      app_key: 'AwwXGgbdqswiimAY0qJYhtRa',
+      placeholder: '这里留言。。',
+      notify: 'true',
+      verify: 'true',
+    });
+</script>
+		</section>
+	
+
+    </article>
+</div>
+
+        </div>
+        <footer id="footer" class="footer">
+    <div class="copyright">
+        <span>© SeikoSrp | Powered by <a href="https://hexo.io" target="_blank">Hexo</a> & <a href="https://github.com/Siricee/hexo-theme-Chic" target="_blank">Chic</a></span>
+    </div>
+</footer>
+
+    </div>
+</body>
+</html>
