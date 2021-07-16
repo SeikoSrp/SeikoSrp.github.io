@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+<meta http-equiv="X-UA-Compatible" content="ie=edge">
+
+    <meta name="author" content="SeikoSrp">
+
+
+
+
+
+
+<title>逆向工程_通过修改PE加载DLL | a blog</title>
+
+
+
+    <link rel="icon" href="/haidao.ico">
+
+
+
+
+    <!-- stylesheets list from _config.yml -->
+    
+    <link rel="stylesheet" href="/css/style.css">
+    
+
+
+
+    <!-- scripts list from _config.yml -->
+    
+    <script src="/js/script.js"></script>
+    
+    <script src="/js/tocbot.min.js"></script>
+    
+    <script src="/js/jquery.min.js"></script>
+    
+
+
+
+    
+    
+        
+    
+
+
+
+
+    <script>
+    function searchToggle() {
+        const width = $(document.body).width()
+        if(width > 479) {
+            return;
+        }
+        const search = $('.search');
+        const searchForm = $('.form-search');
+        const menuToggle = $('.menu-toggle');
+        const title = $('.navbar-header-title');
+
+        if(!search.hasClass("mobile-search")) {
+            search.addClass("mobile-search");
+            menuToggle.addClass("open-search")
+            title.addClass("mobile-title-hidden")
+        } else {
+            search.removeClass("mobile-search");
+            menuToggle.removeClass("open-search")
+            // title.css({visibility: 'visible'})
+            title.removeClass("mobile-title-hidden")
+        } 
+    }
+
+    function search(searchInputEl, formEl, flag) {
+        const path = "/" + "search.json"; // 可以在public 下查看这个search.json
+        $(formEl).submit(function(e){
+            e.preventDefault();
+            let target = null
+            if(searchInputEl == null) {
+                const screenWidth = $(document.body).width();
+                target = screenWidth > 479 ? $('#pc-search-input') : $('#mobile-search-input');
+                console.log(target);
+            } else {
+                target = $(searchInputEl)
+            }
+
+            if(!flag && target.val() === '') {
+                return ;
+            }
+
+            $("#u-search").fadeIn(500, function() {
+                $("body > .wrapper").addClass("modal-active");
+
+                $.ajax({
+                    url: path,
+                    dataType: "json",
+                    beforeSend: function (xhr) {
+                        $input = target.val();
+                        $(".form-input").val($input);
+                        const loadingBar = $('.search-loading-bar') 
+                        loadingBar.css({
+                            width:'100%',
+                            display: 'block'
+                        });
+                    },
+                    success: function( datas ) {
+                        // console.log(datas);
+                        const $resultPanel = $(".modal-body")[0];
+                        let str = `<ul class="modal-results">`;
+                        var keywords = $(".form-input").val().trim().toLowerCase().split(/[\s\-]+/);
+                        $resultPanel.innerHTML = "";
+                        let hasResult = false
+                        let text = `<div class="no-result">找不到与关键词相关的内容....</div>`;
+
+                        if ($(".form-input").val().trim().length <= 0) {
+                            // 没有结果
+                            $resultPanel.innerHTML = text;
+                            return;
+                        }
+                        datas.forEach(function (data) {
+                            var isMatch = true;
+                            if (!data.title || data.title.trim() === '') {
+                                data.title = "Untitled";
+                            }
+                            var data_title = data.title.trim().toLowerCase();
+                            var data_content = data.content.trim().replace(/<[^>]+>/g, "").toLowerCase();
+                            var data_url = data.url;
+                            var index_title = -1;
+                            var index_content = -1;
+                            var first_occur = -1;
+                            // only match artiles with not empty contents
+                            if (data_content !== '') {
+                                keywords.forEach(function (keyword, i) {
+                                    index_title = data_title.indexOf(keyword);
+                                    index_content = data_content.indexOf(keyword);
+
+                                    if (index_title < 0 && index_content < 0) {
+                                        isMatch = false;
+                                    } else {
+                                        hasResult = true
+                                        if (index_content < 0) {
+                                            index_content = 0;
+                                        }
+                                        if (i == 0) {
+                                            first_occur = index_content;
+                                        }
+                                    }
+                                });
+                            } else {
+                                isMatch = false;
+                            }
+                            // show search results
+                            if (isMatch) {
+                                str += `<li class='result-item'><a href='${data_url}' class='result-item-detail'> <span class="title">${data_title}</span>`;
+                                var content = data.content.trim().replace(/<[^>]+>/g, "");
+                                if (first_occur >= 0) {
+                                    // cut out 200 characters
+                                    var start = first_occur - 40;
+                                    var end = first_occur + 160;
+
+                                    if (start < 0) {
+                                        start = 0;
+                                    }
+
+                                    if (start == 0) {
+                                        end = 200;
+                                    }
+
+                                    if (end > content.length) {
+                                        end = content.length;
+                                    }
+
+                                    var match_content = content.substring(start, end);
+
+                                    // highlight all keywords
+                                    keywords.forEach(function (keyword) {
+                                        var regS = new RegExp(keyword, "gi");
+                                        match_content = match_content.replace(regS, `<em class="search-keyword">${keyword}</em>`);
+                                    });
+
+                                    str += `<span class="content"> ${match_content} ...</span></a>`;
+                                }
+                                str += "</li>";
+                            }
+                        });
+                        str += "</ul>";
+                        if(hasResult) {
+                            $resultPanel.innerHTML = str;
+                        } else {
+                            $resultPanel.innerHTML = text;
+                        }
+
+                    },
+                    complete: function() {
+                        setTimeout(() => {
+                                const loadingBar = $('.search-loading-bar') 
+                                loadingBar.css({
+                                    width:'0%',
+                                    display: 'none'
+                                });
+                        }, 300)
+                    }
+                });
+            })
+
+        });
+    }
+
+    $(document).ready(function() {
+        $('.modal-close').click(function () { 
+            $("#u-search").fadeOut();
+            $("body > .wrapper").removeClass("modal-active")
+        })
+
+        $('.modal-overlay').click(function() {
+            $("#u-search").fadeOut();
+            $("body > .wrapper").removeClass("modal-active")
+        })
+        search(null, ".form-search", false)
+        search("#u-search-modal-form .form-input", ".u-search-modal-form", true)
+    })
+</script>
+
+<meta name="generator" content="Hexo 4.2.1"></head>
+<body>
+<!-- Chic/layout.ejs -->
+ <div id="u-search">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="container">
+                    <form id="u-search-modal-form" class="u-search-modal-form">
+                        <button type="submit" class="form-submit-btn">
+                            <img src="/image/search.png" class="search-btn-img" />
+                        </button>
+                        <input placeholder="搜索文章。。。" class="form-input" id="modal-form-input">
+                    </form>
+                    <a class="modal-close">x</a>
+                </div>
+                <div class="search-loading">
+                    <div class="search-loading-bar"></div>
+                </div>
+            </div>
+            <div class="modal-body">
+                <!-- ul 格式如下 -->
+                <!-- <ul class="modal-results">
+                    <li class="result-item">
+                        <a class="result-item-detail">
+                            <span class="title">页面配置</span>
+                            <span class="content">
+                                content
+                            </span>
+                        </a>
+                    </li>
+                </ul> -->
+            </div>
+        </div>
+        <div class="modal-overlay"></div>
+    </div>
+    <div class="wrapper">
+        <header>
+    <nav class="navbar">
+        <div class="container">
+            <div class="navbar-header header-logo"><a href="/">SeikoSrp&#39;s Blog</a></div>
+            <div class="menu navbar-right">
+                <!-- 这里表示的是pc端搜索框 -->
+                
+                
+    <div class="search ">
+        <div class="search-btn" onClick="searchToggle()">
+            <img src="/image/search.png" class="search-btn-img" />
+        </div>
+        <form class="form-search">
+            <input class="input" placeholder="搜索文章" autocomplete="off" id="pc-search-input"/>
+        </form>
+    </div>
+
+                
+                    <a class="menu-item" href="/archives">文章</a>
+                
+                    <a class="menu-item" href="/category">分类</a>
+                
+                    <a class="menu-item" href="/about">关于</a>
+                
+                <input id="switch_default" type="checkbox" class="switch_default">
+                <label for="switch_default" class="toggleBtn"></label>
+            </div>
+        </div>
+    </nav>
+
+    
+    <nav class="navbar-mobile" id="nav-mobile">
+        <div class="container">
+            <div class="navbar-header">
+                <div>
+                    <a href="/">SeikoSrp&#39;s Blog</a><a id="mobile-toggle-theme">·&nbsp;Light</a>
+                </div>
+                <div class="navbar-mobile-right">
+                    
+                    
+    <div class="search ">
+        <div class="search-btn" onClick="searchToggle()">
+            <img src="/image/search.png" class="search-btn-img" />
+        </div>
+        <form class="form-search">
+            <input class="input" placeholder="搜索文章" autocomplete="off" id="mobile-search-input"/>
+        </form>
+    </div>
+
+                    <div class="menu-toggle" onclick="mobileBtn()">&#9776; 目录</div>
+                </div>
+                
+            </div>
+            <div class="menu" id="mobile-menu">
+                
+                    <a class="menu-item" href="/archives">文章</a>
+                
+                    <a class="menu-item" href="/category">分类</a>
+                
+                    <a class="menu-item" href="/about">关于</a>
+                
+            </div>
+        </div>
+    </nav>
+
+</header>
+<script>
+    var mobileBtn = function f() {
+        var toggleMenu = document.getElementsByClassName("menu-toggle")[0];
+        var mobileMenu = document.getElementById("mobile-menu");
+        if(toggleMenu.classList.contains("active")){
+           toggleMenu.classList.remove("active")
+            mobileMenu.classList.remove("active")
+        }else{
+            toggleMenu.classList.add("active")
+            mobileMenu.classList.add("active")
+        }
+    }
+</script>
+        <div class="main">
+            <div class="container">
+    
+    
+        <div class="post-toc">
+    <div class="tocbot-list">
+    </div>
+    <div class="tocbot-list-menu">
+        <a class="tocbot-toc-expand" onclick="expand_toc()">全部展开</a>
+        <a onclick="go_top()">回到顶部</a>
+        <a onclick="go_bottom()">前往底部</a>
+    </div>
+</div>
+
+<script>
+    document.ready(
+        function () {
+            tocbot.init({
+                tocSelector: '.tocbot-list',
+                contentSelector: '.post-content',
+                headingSelector: 'h1, h2, h3, h4, h5',
+                collapseDepth: 1,
+                orderedList: false,
+                scrollSmooth: true,
+            })
+        }
+    )
+
+    function expand_toc() {
+        var b = document.querySelector(".tocbot-toc-expand");
+        tocbot.init({
+            tocSelector: '.tocbot-list',
+            contentSelector: '.post-content',
+            headingSelector: 'h1, h2, h3, h4, h5',
+            collapseDepth: 6,
+            orderedList: false,
+            scrollSmooth: true,
+        });
+        b.setAttribute("onclick", "collapse_toc()");
+        b.innerHTML = "全部折叠"
+    }
+
+    function collapse_toc() {
+        var b = document.querySelector(".tocbot-toc-expand");
+        tocbot.init({
+            tocSelector: '.tocbot-list',
+            contentSelector: '.post-content',
+            headingSelector: 'h1, h2, h3, h4, h5',
+            collapseDepth: 1,
+            orderedList: false,
+            scrollSmooth: true,
+        });
+        b.setAttribute("onclick", "expand_toc()");
+        b.innerHTML = "全部展开"
+    }
+
+    function go_top() {
+        window.scrollTo(0, 0);
+    }
+
+    function go_bottom() {
+        window.scrollTo(0, document.body.scrollHeight);
+    }
+
+</script>
+    
+
+    
+    <article class="post-wrap">
+        <header class="post-header">
+            <h1 class="post-title">逆向工程_通过修改PE加载DLL</h1>
+            
+                <div class="post-meta">
+                    
+                        作者: <a itemprop="author" rel="author" href="/">SeikoSrp</a>
+                    
+
+                    
+                        <span class="post-time">
+                        发布于: <a href="#">七月 17, 2021&nbsp;&nbsp;0:11:21</a>
+                        </span>
+                    
+                    
+                        <span class="post-category">
+                    分类:
+                            
+                                <a href="/categories/%E4%BA%8C%E8%BF%9B%E5%88%B6%E7%9B%B8%E5%85%B3/">二进制相关</a>
+                            
+                        </span>
+                    
+                </div>
+            
+        </header>
+
+        <div class="post-content">
+            <h2 id="编译TextView"><a href="#编译TextView" class="headerlink" title="编译TextView"></a>编译TextView</h2><p>首先使用VS2019编译TextView.exe，源码为：</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">"windows.h"</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">"stdio.h"</span></span></span><br><span class="line"></span><br><span class="line"><span class="function">LRESULT CALLBACK <span class="title">WndProc</span><span class="params">(HWND, UINT, WPARAM, LPARAM)</span></span>;</span><br><span class="line"></span><br><span class="line">TCHAR szAppName[] = <span class="string">L"TextView"</span>;</span><br><span class="line">TCHAR szFile[MAX_PATH] = &#123; <span class="number">0</span>, &#125;;</span><br><span class="line">TCHAR szMsg[<span class="number">2048</span>] = &#123; <span class="number">0</span>, &#125;;</span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> MAX_BUF_SIZE (32768)</span></span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">int</span> WINAPI <span class="title">WinMain</span><span class="params">(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine, <span class="keyword">int</span> iCmdShow)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">	HWND       hwnd;</span><br><span class="line">	MSG        msg;</span><br><span class="line">	WNDCLASSEX wndclass;</span><br><span class="line"></span><br><span class="line">	wndclass.cbSize = <span class="keyword">sizeof</span>(wndclass);</span><br><span class="line">	wndclass.style = CS_HREDRAW | CS_VREDRAW;</span><br><span class="line">	wndclass.lpfnWndProc = WndProc;</span><br><span class="line">	wndclass.cbClsExtra = <span class="number">0</span>;</span><br><span class="line">	wndclass.cbWndExtra = <span class="number">0</span>;</span><br><span class="line">	wndclass.hInstance = hInstance;</span><br><span class="line">	wndclass.hIcon = LoadIcon(<span class="literal">NULL</span>, IDI_APPLICATION);</span><br><span class="line">	wndclass.hCursor = LoadCursor(<span class="literal">NULL</span>, IDC_ARROW);</span><br><span class="line">	wndclass.hbrBackground = (HBRUSH)GetStockObject(WHITE_BRUSH);</span><br><span class="line">	wndclass.lpszMenuName = <span class="literal">NULL</span>;</span><br><span class="line">	wndclass.lpszClassName = szAppName;</span><br><span class="line">	wndclass.hIconSm = LoadIcon(<span class="literal">NULL</span>, IDI_APPLICATION);</span><br><span class="line"></span><br><span class="line">	RegisterClassEx(&amp;wndclass);</span><br><span class="line"></span><br><span class="line">	hwnd = CreateWindow(</span><br><span class="line">		szAppName, szAppName,</span><br><span class="line">		WS_OVERLAPPEDWINDOW,</span><br><span class="line">		CW_USEDEFAULT, CW_USEDEFAULT,</span><br><span class="line">		CW_USEDEFAULT, CW_USEDEFAULT,</span><br><span class="line">		<span class="literal">NULL</span>, <span class="literal">NULL</span>, hInstance, <span class="literal">NULL</span>);</span><br><span class="line"></span><br><span class="line">	ShowWindow(hwnd, iCmdShow);</span><br><span class="line">	UpdateWindow(hwnd);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">while</span> (GetMessage(&amp;msg, <span class="literal">NULL</span>, <span class="number">0</span>, <span class="number">0</span>))</span><br><span class="line">	&#123;</span><br><span class="line">		TranslateMessage(&amp;msg);</span><br><span class="line">		DispatchMessage(&amp;msg);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> msg.wParam;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function">LRESULT CALLBACK <span class="title">WndProc</span><span class="params">(HWND hwnd, UINT iMsg, WPARAM wParam, LPARAM lParam)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">	<span class="keyword">static</span> HWND hwndEdit;</span><br><span class="line">	HFONT hFont;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">switch</span> (iMsg)</span><br><span class="line">	&#123;</span><br><span class="line">	<span class="keyword">case</span> WM_CREATE:</span><br><span class="line">		hwndEdit = CreateWindow(<span class="string">L"Edit"</span>, <span class="literal">NULL</span>,</span><br><span class="line">			WS_CHILD | WS_VISIBLE | WS_HSCROLL | WS_VSCROLL |</span><br><span class="line">			WS_BORDER | ES_LEFT | ES_MULTILINE |</span><br><span class="line">			ES_AUTOHSCROLL | ES_AUTOVSCROLL,</span><br><span class="line">			<span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>,</span><br><span class="line">			hwnd, (HMENU)<span class="number">1</span>,</span><br><span class="line">			((LPCREATESTRUCT)lParam)-&gt;hInstance, <span class="literal">NULL</span>);</span><br><span class="line"></span><br><span class="line">		hFont = CreateFont(<span class="number">16</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="string">L"Courier New"</span>);</span><br><span class="line">		SendMessage(hwndEdit, WM_SETFONT, (WPARAM)hFont, (LPARAM)FALSE);</span><br><span class="line"></span><br><span class="line">		DragAcceptFiles(hwnd, TRUE);</span><br><span class="line"></span><br><span class="line">		<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">case</span> WM_DROPFILES:</span><br><span class="line">		<span class="keyword">if</span> (DragQueryFile((HDROP)wParam, <span class="number">0</span>, szFile, MAX_PATH))</span><br><span class="line">		&#123;</span><br><span class="line">			HANDLE hFile = CreateFile(szFile, GENERIC_READ, FILE_SHARE_READ,</span><br><span class="line">				<span class="literal">NULL</span>, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, <span class="literal">NULL</span>);</span><br><span class="line">			<span class="keyword">if</span> (hFile == INVALID_HANDLE_VALUE)</span><br><span class="line">			&#123;</span><br><span class="line">				wsprintf(szMsg, <span class="string">L"file(\"%s\") open error!!! [%d]\n"</span>, szFile, GetLastError());</span><br><span class="line">				MessageBox(hwndEdit, szMsg, szAppName, MB_OK);</span><br><span class="line">				<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">			&#125;</span><br><span class="line"></span><br><span class="line">			DWORD dwBytesRead = <span class="number">0</span>;</span><br><span class="line">			<span class="keyword">char</span>* pBuf = <span class="keyword">new</span> <span class="keyword">char</span>[MAX_BUF_SIZE];</span><br><span class="line">			ZeroMemory(pBuf, MAX_BUF_SIZE);</span><br><span class="line"></span><br><span class="line">			ReadFile(hFile, pBuf, MAX_BUF_SIZE, &amp;dwBytesRead, <span class="literal">NULL</span>);</span><br><span class="line"></span><br><span class="line">			SetWindowTextA(hwndEdit, pBuf);</span><br><span class="line"></span><br><span class="line">			wsprintf(szMsg, <span class="string">L"TextView (%s)"</span>, szFile);</span><br><span class="line">			SetWindowText(hwnd, szMsg);</span><br><span class="line"></span><br><span class="line">			<span class="keyword">delete</span>[]pBuf;</span><br><span class="line"></span><br><span class="line">			CloseHandle(hFile);</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">case</span> WM_SETFOCUS:</span><br><span class="line">		SetFocus(hwndEdit);</span><br><span class="line">		<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">case</span> WM_SIZE:</span><br><span class="line">		MoveWindow(hwndEdit, <span class="number">0</span>, <span class="number">0</span>, LOWORD(lParam), HIWORD(lParam), TRUE);</span><br><span class="line">		<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">case</span> WM_DESTROY:</span><br><span class="line">		PostQuitMessage(<span class="number">0</span>);</span><br><span class="line">		<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> DefWindowProc(hwnd, iMsg, wParam, lParam);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>使用Release+x86，如果是debug则节区会不一样：</p>
+<p><img src="%E9%80%86%E5%90%91%E5%B7%A5%E7%A8%8B_%E9%80%9A%E8%BF%87%E4%BF%AE%E6%94%B9PE%E5%8A%A0%E8%BD%BDDLL.assets/image-20210714173246745.png" alt="image-20210714173246745"></p>
+<h2 id="编译myhack3-dll文件"><a href="#编译myhack3-dll文件" class="headerlink" title="编译myhack3.dll文件"></a>编译myhack3.dll文件</h2><p>源码参见:</p>
+<h2 id="流程"><a href="#流程" class="headerlink" title="流程"></a>流程</h2><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">1、修改导入表的RVA值</span><br><span class="line">2、删除绑定导入表(BOUND IMPORT TABLE)</span><br><span class="line">3、创建新的IDT</span><br><span class="line">4、设置新加的DLL对应的IID中的值</span><br><span class="line">5、修改IAT节区的属性值</span><br></pre></td></tr></table></figure>
+
+<h3 id="1-修改导入表的RVA值"><a href="#1-修改导入表的RVA值" class="headerlink" title="1.修改导入表的RVA值"></a>1.修改导入表的RVA值</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">180位置的389C改成40E0</span><br><span class="line">184位置的长度dc改为dc+14&#x3D;F0</span><br></pre></td></tr></table></figure>
+
+<p><img src="%E9%80%86%E5%90%91%E5%B7%A5%E7%A8%8B_%E9%80%9A%E8%BF%87%E4%BF%AE%E6%94%B9PE%E5%8A%A0%E8%BD%BDDLL.assets/image-20210714222604381.png" alt="image-20210714222604381"></p>
+<p>修改为RVA为40E0，文件偏移为28D0的空闲区域，长度为DC+14(16进制，不是14个字节)：</p>
+<p><img src="%E9%80%86%E5%90%91%E5%B7%A5%E7%A8%8B_%E9%80%9A%E8%BF%87%E4%BF%AE%E6%94%B9PE%E5%8A%A0%E8%BD%BDDLL.assets/image-20210714222628757.png" alt="image-20210714222628757"></p>
+<p>修改完之后的：</p>
+<p><img src="%E9%80%86%E5%90%91%E5%B7%A5%E7%A8%8B_%E9%80%9A%E8%BF%87%E4%BF%AE%E6%94%B9PE%E5%8A%A0%E8%BD%BDDLL.assets/image-20210716235927555.png" alt="image-20210716235927555"></p>
+<h3 id="2、删除绑定导入表-BOUND-IMPORT-TABLE"><a href="#2、删除绑定导入表-BOUND-IMPORT-TABLE" class="headerlink" title="2、删除绑定导入表(BOUND IMPORT TABLE)"></a>2、删除绑定导入表(BOUND IMPORT TABLE)</h3><p>这里原本就是0000，如果有的话就修改成0000</p>
+<p><img src="%E9%80%86%E5%90%91%E5%B7%A5%E7%A8%8B_%E9%80%9A%E8%BF%87%E4%BF%AE%E6%94%B9PE%E5%8A%A0%E8%BD%BDDLL.assets/image-20210716183350787.png" alt="image-20210716183350787"></p>
+<h3 id="3、创建新的IDT"><a href="#3、创建新的IDT" class="headerlink" title="3、创建新的IDT"></a>3、创建新的IDT</h3><p>将原本的RVA为389C，文件偏移为209C处的数据，复制到文件偏移为28D0的空闲区域</p>
+<p><img src="%E9%80%86%E5%90%91%E5%B7%A5%E7%A8%8B_%E9%80%9A%E8%BF%87%E4%BF%AE%E6%94%B9PE%E5%8A%A0%E8%BD%BDDLL.assets/image-20210716182909256.png" alt="image-20210716182909256"></p>
+<p><img src="%E9%80%86%E5%90%91%E5%B7%A5%E7%A8%8B_%E9%80%9A%E8%BF%87%E4%BF%AE%E6%94%B9PE%E5%8A%A0%E8%BD%BDDLL.assets/image-20210716234732801.png" alt="image-20210716234732801"></p>
+<h3 id="4、设置新加的DLL对应的IID中的值"><a href="#4、设置新加的DLL对应的IID中的值" class="headerlink" title="4、设置新加的DLL对应的IID中的值"></a>4、设置新加的DLL对应的IID中的值</h3><p>原来的IID数据是到文件偏移为2990的位置，在<code>30 CC</code>后面还有20个字节的00</p>
+<p><img src="%E9%80%86%E5%90%91%E5%B7%A5%E7%A8%8B_%E9%80%9A%E8%BF%87%E4%BF%AE%E6%94%B9PE%E5%8A%A0%E8%BD%BDDLL.assets/image-20210716185111134.png" alt="image-20210716185111134"></p>
+<p><img src="%E9%80%86%E5%90%91%E5%B7%A5%E7%A8%8B_%E9%80%9A%E8%BF%87%E4%BF%AE%E6%94%B9PE%E5%8A%A0%E8%BD%BDDLL.assets/image-20210716234849342.png" alt="image-20210716234849342"></p>
+<p>现在将这20个字节的00换成要myhack3.dll的IID，上面的三个框中的内存在修改之后分别为：</p>
+<p>IID的结构对应的值为：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">typedef</span> <span class="class"><span class="keyword">struct</span> _<span class="title">IMAGE_IMPORT_DESCRIPTOR</span> &#123;</span></span><br><span class="line">	<span class="keyword">union</span> &#123;</span><br><span class="line">		DWORD Characteristics;</span><br><span class="line">		DWORD OriginalFirstThunk;			<span class="comment">//00005110,指向INT</span></span><br><span class="line">	&#125;;</span><br><span class="line">	DWORD TimeDateStamp;					<span class="comment">// 00000000</span></span><br><span class="line">	DWORD ForwarderChain;					<span class="comment">// 00000000</span></span><br><span class="line">	DWORD Name;								<span class="comment">//00005120,指向dll名称</span></span><br><span class="line">	DWORD FirstThunk;						<span class="comment">//00005130,指向IAT</span></span><br><span class="line">&#125; IMAGE_IMPORT_DESCRIPTOR;</span><br></pre></td></tr></table></figure>
+
+<p>这里的IID中分别设置了三个地址：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">INT	RVA地址为5110,FileOffSet为2B10</span><br><span class="line">DLLName RVA地址为5120,FileOffSet为2B20</span><br><span class="line">IAT RVA地址为5130,FileOffSet为2B30</span><br></pre></td></tr></table></figure>
+
+<p><img src="%E9%80%86%E5%90%91%E5%B7%A5%E7%A8%8B_%E9%80%9A%E8%BF%87%E4%BF%AE%E6%94%B9PE%E5%8A%A0%E8%BD%BDDLL.assets/image-20210716235531123.png" alt="image-20210716235531123"></p>
+<h3 id="5、修改IAT节区的属性值"><a href="#5、修改IAT节区的属性值" class="headerlink" title="5、修改IAT节区的属性值"></a>5、修改IAT节区的属性值</h3><p>直接将FileOffSet位置的<code>40000040</code>修改为<code>C0000040</code></p>
+<p><img src="%E9%80%86%E5%90%91%E5%B7%A5%E7%A8%8B_%E9%80%9A%E8%BF%87%E4%BF%AE%E6%94%B9PE%E5%8A%A0%E8%BD%BDDLL.assets/image-20210716194106991.png" alt="image-20210716194106991"></p>
+<p><img src="%E9%80%86%E5%90%91%E5%B7%A5%E7%A8%8B_%E9%80%9A%E8%BF%87%E4%BF%AE%E6%94%B9PE%E5%8A%A0%E8%BD%BDDLL.assets/image-20210716194044388.png" alt="image-20210716194044388"></p>
+<p>然后保存修改后的exe，将myhack3.dll文件和exe文件放在同一个文件夹，打开exe之后，可以看到请求了baidu的首页</p>
+<p><img src="%E9%80%86%E5%90%91%E5%B7%A5%E7%A8%8B_%E9%80%9A%E8%BF%87%E4%BF%AE%E6%94%B9PE%E5%8A%A0%E8%BD%BDDLL.assets/image-20210717000041323.png" alt="image-20210717000041323"></p>
+
+        </div>
+
+        
+            <section class="post-copyright">
+                
+                
+                
+                
+
+            </section>
+        
+        <section class="post-tags">
+            <div>
+                <span>Tag(s):</span>
+                <span class="tag">
+                    
+                </span>
+            </div>
+            <div>
+                <a href="javascript:window.history.back();">back</a>
+                <span>· </span>
+                <a href="/">home</a>
+            </div>
+        </section>
+        <section class="post-nav">
+            
+            
+            <a class="next" rel="next" href="/2021/07-05-windows%E6%B6%88%E6%81%AFhook/">windows消息hook</a>
+            
+        </section>
+	
+		<section id="comments" class="comments">
+		  <style>
+			.comments{margin:30px;padding:10px;background:#fff}
+			@media screen and (max-width:800px){.comments{margin:auto;padding:10px;background:#fff}}
+		  </style>
+		  <div class="valine_comment"></div>
+<!--载入js，在</body>之前插入即可-->
+<!--Leancloud 操作库:-->
+<script src="//cdn1.lncld.net/static/js/3.0.4/av-min.js"></script>
+<!--Valine 的核心代码库-->
+<script src="//unpkg.com/valine/dist/Valine.min.js"></script>
+<script>
+  new Valine({
+      el: '.valine_comment',
+      app_id: 'ehQ0k7G3fcpwmkyxhG8U6DzL-gzGzoHsz',
+      app_key: 'AwwXGgbdqswiimAY0qJYhtRa',
+      placeholder: '这里留言。。',
+      notify: 'true',
+      verify: 'true',
+    });
+</script>
+		</section>
+	
+
+    </article>
+</div>
+
+        </div>
+        <footer id="footer" class="footer">
+    <div class="copyright">
+        <span>© SeikoSrp | Powered by <a href="https://hexo.io" target="_blank">Hexo</a> & <a href="https://github.com/Siricee/hexo-theme-Chic" target="_blank">Chic</a></span>
+    </div>
+</footer>
+
+    </div>
+</body>
+</html>
