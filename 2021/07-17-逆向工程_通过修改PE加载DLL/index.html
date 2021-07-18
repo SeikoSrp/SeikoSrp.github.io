@@ -436,7 +436,8 @@
 
 <p>使用Release+x86，如果是debug则节区会不一样：</p>
 <p><img src="%E9%80%86%E5%90%91%E5%B7%A5%E7%A8%8B_%E9%80%9A%E8%BF%87%E4%BF%AE%E6%94%B9PE%E5%8A%A0%E8%BD%BDDLL.assets/image-20210714173246745.png" alt="image-20210714173246745"></p>
-<h2 id="编译myhack3-dll文件"><a href="#编译myhack3-dll文件" class="headerlink" title="编译myhack3.dll文件"></a>编译myhack3.dll文件</h2><p>源码参见:</p>
+<h2 id="编译myhack3-dll文件"><a href="#编译myhack3-dll文件" class="headerlink" title="编译myhack3.dll文件"></a>编译myhack3.dll文件</h2><p>DLL的源码没有放上来，可以直接在下面链接查看，最后修改过的EXE文件也可以下面地址下载：</p>
+<p><a href="https://github.com/SeikoSrp/ReversecoreCode" target="_blank" rel="noopener">https://github.com/SeikoSrp/ReversecoreCode</a></p>
 <h2 id="流程"><a href="#流程" class="headerlink" title="流程"></a>流程</h2><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">1、修改导入表的RVA值</span><br><span class="line">2、删除绑定导入表(BOUND IMPORT TABLE)</span><br><span class="line">3、创建新的IDT</span><br><span class="line">4、设置新加的DLL对应的IID中的值</span><br><span class="line">5、修改IAT节区的属性值</span><br></pre></td></tr></table></figure>
 
 <h3 id="1-修改导入表的RVA值"><a href="#1-修改导入表的RVA值" class="headerlink" title="1.修改导入表的RVA值"></a>1.修改导入表的RVA值</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">180位置的389C改成40E0</span><br><span class="line">184位置的长度dc改为dc+14&#x3D;F0</span><br></pre></td></tr></table></figure>
